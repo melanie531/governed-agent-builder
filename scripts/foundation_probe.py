@@ -119,7 +119,7 @@ def offline(directory):
     raw = example_config()
     saved = save_config(raw, directory / 'manifests')
     archive = directory / (saved.stem + '.zip')
-    packaged = package(saved, archive)
+    packaged = package(saved, archive, mode='base')
     cfg = load_config(raw, saved.stem)
     binding = Binding('offline-run', 'synthetic-owner', 'synthetic-workspace', 'synthetic-workload',
                       'offline-runtime', '1', 'offline-session', saved.stem,

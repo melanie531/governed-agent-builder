@@ -13,7 +13,7 @@ from foundation_harness.config import canonical, digest, load_config
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = tuple('foundation_harness/' + name + '.py' for name in (
     '__init__', 'config', 'context', 'admission', 'skills', 'budget', 'transport',
-    'model_client', 'tool_client', 'telemetry', 'engine', 'backend_exchange')) + (
+    'model_client', 'tool_client', 'telemetry', 'engine', 'backend_exchange', 'package_admission')) + (
     'runtime/__init__.py', 'runtime/custom_foundation/__init__.py',
     'runtime/custom_foundation/main.py', 'runtime/custom_foundation/requirements.lock')
 
@@ -91,7 +91,7 @@ def dependency_files(directory):
     return result
 
 
-def package(saved, destination, *, admission=None, dependencies=None):
+def package(saved, destination, *, admission=None, dependencies=None, mode="live", approved=None):
     path = Path(saved)
     raw = json.loads(path.read_bytes())
     load_config(raw, path.stem)
@@ -99,12 +99,22 @@ def package(saved, destination, *, admission=None, dependencies=None):
     if raw['foundation']['digest'] != source:
         raise ValueError('FOUNDATION_SOURCE_DIGEST_MISMATCH')
     files = {name: (ROOT / name).read_bytes() for name in SOURCES}
-    if admission is not None:
-        from foundation_harness.backend_exchange import BackendExchange
-        if set(admission) != {'endpoint', 'manifest_digest'} or admission['manifest_digest'] != path.stem:
-            raise ValueError('IMMUTABLE_ADMISSION_BINDING_REQUIRED')
-        BackendExchange(None, admission['endpoint'], admission['manifest_digest'])
+    if mode not in {'live', 'base'}:
+        raise ValueError('EXPLICIT_PACKAGE_MODE_REQUIRED')
+    if mode == 'base':
+        if admission is not None or approved is not None:
+            raise ValueError('BASE_MUST_NOT_CLAIM_ADMISSION')
+    else:
+        from foundation_harness.package_admission import validate_admission
+        validate_admission(admission, raw)
+        from scripts.verify_package_admission import verify_package_admission
+        if verify_package_admission(raw, approved=approved) != admission:
+            raise ValueError('PLATFORM_VERIFIED_BINDING_REQUIRED')
+        if dependencies is None:
+            raise ValueError('LIVE_LOCKED_DEPENDENCIES_REQUIRED')
         files['runtime/custom_foundation/admission.json'] = canonical(admission)
+    files['package-status.json'] = canonical({'mode': mode, 'deploy_ready': False,
+        'linux_execution': 'UNVERIFIED', 'admission_config_present': mode == 'live'})
     if dependencies is not None:
         installed = dependency_files(dependencies)
         if files.keys() & installed.keys():
@@ -122,7 +132,8 @@ def package(saved, destination, *, admission=None, dependencies=None):
                 archive.writestr(info, data)
     return {'source_digest': source, 'manifest_digest': path.stem,
             'package_digest': hashlib.sha256(Path(destination).read_bytes()).hexdigest(),
-            'artifact_kind': ('linux-arm64-python3.13-locked' if dependencies is not None else
+            'package_mode': mode, 'admission_config_present': mode == 'live',
+            'deploy_ready': False, 'artifact_kind': ('linux-arm64-python3.13-locked' if dependencies is not None else
                               'source-only; install locked Linux ARM64 dependencies before deployment'),
             'runtime_created': False, 'production_ready': False}
 
@@ -133,9 +144,17 @@ if __name__ == '__main__':
     parser.add_argument('--store', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--linux-dependencies', action='store_true')
+    parser.add_argument('--mode', choices=['base', 'live'], required=True)
+    parser.add_argument('--definition-digest', help='Exact protected platform approval selector; not authority')
     args = parser.parse_args()
     saved = save_config(json.loads(args.config.read_text()), args.store)
+    admission = approved = None
+    if args.mode == 'live':
+        from scripts.verify_package_admission import verify_package_admission, read_platform_approval
+        approved = read_platform_approval(args.definition_digest)
+        admission = verify_package_admission(json.loads(saved.read_bytes()), approved=approved)
     with tempfile.TemporaryDirectory(prefix='foundation-deps-') as deps:
         if args.linux_dependencies:
             subprocess.run(dependency_command(deps), check=True)
-        print(json.dumps(package(saved, args.output, dependencies=deps if args.linux_dependencies else None)))
+        print(json.dumps(package(saved, args.output, dependencies=deps if args.linux_dependencies else None,
+                                 mode=args.mode, admission=admission, approved=approved)))

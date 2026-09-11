@@ -316,15 +316,18 @@ def test_approved_artifact_readback_rejects_changed_zip():
         reader({'artifact_key': 'package.zip', 'artifact_version': 'version', 'package_digest': '0'*64})
 
 
-def test_deployable_package_admission_is_deterministic(tmp_path):
+def test_deployable_package_admission_is_deterministic(tmp_path, monkeypatch):
     from scripts.package_foundation import package
+    from foundation_harness.package_admission import admission_config
     raw = config()
     raw['foundation']['digest'] = source_digest()
     saved = save_config(raw, tmp_path)
-    admission = {'endpoint': 'https://synthetic.execute-api.us-west-2.amazonaws.com/internal/foundation/exchange',
-                 'manifest_digest': saved.stem}
-    a = package(saved, tmp_path/'a.zip', admission=admission)
-    b = package(saved, tmp_path/'b.zip', admission=admission)
+    admission = admission_config(raw, 'https://synthetic.execute-api.us-west-2.amazonaws.com/internal/foundation/exchange',
+                                 'arn:aws:iam::'+'9988'+'77665544'+':role/synthetic')
+    monkeypatch.setattr('scripts.verify_package_admission.verify_package_admission', lambda *a, **k: admission)
+    monkeypatch.setattr('scripts.package_foundation.dependency_files', lambda path: {})
+    a = package(saved, tmp_path/'a.zip', admission=admission, dependencies=tmp_path)
+    b = package(saved, tmp_path/'b.zip', admission=admission, dependencies=tmp_path)
     assert a == b
     assert a['production_ready'] is False
 

@@ -259,8 +259,15 @@ class ArtifactReadback:
             admission_path = 'runtime/custom_foundation/admission.json'
             if archive.getinfo(config_path).file_size > 32768 or archive.getinfo(admission_path).file_size > 4096:
                 raise Denied('ARTIFACT_CONFIG_CAP')
+            names = archive.namelist()
+            if len(names) != len(set(names)):
+                raise Denied('DUPLICATE_ARTIFACT_ENTRIES')
             config = json.loads(archive.read(config_path))
             admission = json.loads(archive.read(admission_path))
+            from foundation_harness.package_admission import validate_admission
+            validate_admission(admission, config)
+            if admission['runtime_role'] != approved['role']:
+                raise Denied('ARTIFACT_ROLE_BINDING_DENIED')
             if config != approved['config'] or admission != approved['admission']:
                 raise Denied('ARTIFACT_MANIFEST_DENIED')
             # A source-only ZIP is not a deployable Linux dependency package.

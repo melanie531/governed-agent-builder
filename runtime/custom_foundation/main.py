@@ -56,10 +56,15 @@ def invoke(payload, context=None):
     try:
         settings = json.loads(admission.read_bytes())
         raw = json.loads((root / 'harness.json').read_bytes())
+        from foundation_harness.package_admission import validate_admission
+        validate_admission(settings, raw)
         cfg = load_config(raw, settings['manifest_digest'])
         session = boto3.Session(region_name='us-west-2')
         authority = BackendExchange(session, settings['endpoint'], digest(raw))
         entry = authority.resolve(payload['run_ref'], context)
+        if (entry.binding.workload != settings['runtime_role']
+                or entry.binding.foundation_digest != settings['foundation_digest']):
+            raise Denied('PACKAGE_WORKLOAD_BINDING_DENIED')
         budget = Budget(entry.limits, reservation_usd=entry.reservation.amount_usd, reservation=authority)
         if entry.limits != cfg.limits:
             raise Denied('SERVER_LIMITS_BINDING_DENIED')

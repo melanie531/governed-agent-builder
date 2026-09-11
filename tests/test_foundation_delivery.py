@@ -64,8 +64,8 @@ def test_save_before_runtime_and_deterministic_source_package(tmp_path):
     saved = save_config(raw, tmp_path / 'manifests')
     assert save_config(raw, tmp_path / 'manifests') == saved
     assert saved.stat().st_mode & 0o777 == 0o600
-    first = package(saved, tmp_path / 'first.zip')
-    second = package(saved, tmp_path / 'second.zip')
+    first = package(saved, tmp_path / 'first.zip', mode='base')
+    second = package(saved, tmp_path / 'second.zip', mode='base')
     assert first == second and first['production_ready'] is False
     assert (tmp_path / 'first.zip').stat().st_mode & 0o777 == 0o600
     import zipfile
@@ -75,7 +75,7 @@ def test_save_before_runtime_and_deterministic_source_package(tmp_path):
     raw['systemPrompt'][0]['text'] = 'Another domain, same executable source'
     another = save_config(raw, tmp_path / 'manifests')
     assert another != saved
-    assert package(another, tmp_path / 'third.zip')['source_digest'] == first['source_digest']
+    assert package(another, tmp_path / 'third.zip', mode='base')['source_digest'] == first['source_digest']
 
 
 def test_new_runtime_idempotency_and_exact_manifest_vpc(tmp_path):

@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from scripts.admission_role_policy import overlay, inspect_change_set, exact_invoke_arn, POLICY_NAME
+from scripts.admission_role_policy import overlay, inspect_change_set, exact_invoke_arn, POLICY_NAME, verify_dependency
 from scripts.foundation_target import StudioTarget, STACK, PROJECT, REGION, sanitized
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +61,12 @@ def run(action):
     role = iam.get_role(RoleName=role_name)['Role']
     assert role['Arn'] == f'arn:aws:iam::{target.account}:role/{role_name}'
     trust_digest = fingerprint(role['AssumeRolePolicyDocument'])
+    ids = {r['LogicalResourceId']: r['PhysicalResourceId'] for r in resources['StackResourceSummaries']}
+    outputs = {r['OutputKey']: r['OutputValue'] for r in stack['Outputs']}
+    control = target.client('bedrock-agentcore-control')
+    policy_args = dict(policyEngineId=ids['PolicyEngine'].split('/')[-1], policyId=ids['ToolPolicy'].split('/')[-1])
+    live_policy = control.get_policy(**policy_args)
+    dependency = verify_dependency(old, desired, role['Arn'], outputs['ToolsGateway'], target.account, live_policy)
     if action == 'prepare':
         assert not RECEIPT.exists(), 'EXISTING_RECEIPT_REVIEW_REQUIRED'
         assert desired != old, 'ALREADY_CONFIGURED_READBACK_REQUIRED'
@@ -97,13 +103,26 @@ def run(action):
         save(proof)
         return proof
     proof = json.loads(RECEIPT.read_text())
+    if action == 'review':
+        assert proof['status'] in ('BLOCKED_UNEXPECTED_CHANGESET_NOT_EXECUTED', 'REVIEWED_NOT_EXECUTED')
+        assert fingerprint(old) == proof['before_template_digest']
+        assert fingerprint(desired) == proof['desired_template_digest']
+        assert trust_digest == proof['trust_digest_before']
+        change = cf.describe_change_set(StackName=STACK, ChangeSetName=proof['change_set'])
+        inspect_change_set(change, STACK, dependency_evidence=dependency)
+        assert template(cf, StackName=STACK, ChangeSetName=proof['change_set']) == desired
+        proof.update(status='REVIEWED_NOT_EXECUTED', source_sha=sha(),
+                     dependency_evidence=dependency, tool_policy_digest_before=fingerprint(live_policy['definition']))
+        proof.pop('error', None)
+        save(proof)
+        return proof
     assert proof['status'] == 'REVIEWED_NOT_EXECUTED'
     assert proof['source_sha'] == sha(), 'SOURCE_CHANGED'
     assert fingerprint(old) == proof['before_template_digest']
     assert fingerprint(desired) == proof['desired_template_digest']
     assert trust_digest == proof['trust_digest_before']
     change = cf.describe_change_set(StackName=STACK, ChangeSetName=proof['change_set'])
-    inspect_change_set(change, STACK)
+    inspect_change_set(change, STACK, dependency_evidence=dependency)
     assert template(cf, StackName=STACK, ChangeSetName=proof['change_set']) == desired
     target.verify()
     proof['status'] = 'EXECUTION_OUTCOME_UNKNOWN'
@@ -128,6 +147,9 @@ def run(action):
         {'Effect':'Allow','Action':['execute-api:Invoke'],'Resource':exact_invoke_arn(target.account,api)},
         {'Effect':'Deny','Action':['lambda:InvokeFunction'],'Resource':'*'}]}
     assert policy == expected
+    assert control.get_policy(**policy_args)['definition'] == live_policy['definition']
+    assert iam.get_role(RoleName=role_name)['Role']['Arn'] == role['Arn']
+    proof['tool_policy_readback'] = 'RESOLVED_CEDAR_UNCHANGED'
     proof.update(policy_readback='EXACT_MATCH', trust_readback='UNCHANGED', other_resources='UNCHANGED',
                  target_after=target.verify())
     # IAM simulation is labeled as simulation, never actual workload evidence.
@@ -151,7 +173,7 @@ def run(action):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare','execute'])
+    parser.add_argument('action', choices=['prepare','review','execute'])
     args = parser.parse_args()
     try:
         print(json.dumps(run(args.action), indent=2))
