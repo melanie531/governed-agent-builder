@@ -118,7 +118,13 @@ Baseline: `8a00504317b27776d500ec8c20423e11cd12eeb5` on `feat/live-capabilities`
 Focused integration/regression run: **231 passed** across exporter, executor,
 collector, code evaluator, evidence, foundation wiring and serverless tests.
 Final private-content/input-cap hardening rerun: **59 passed** across exporter and
-executor (includes eight new cases). Two existing warnings; no failing tests.
+executor (includes eight new cases). Finalization reran all seven focused modules
+against source commit `8446af86455bb8a832faec6845d9b63de0181703` after that hardening:
+**239 passed, 2 deprecation warnings in 30.32 seconds**. Modules: exporter, executor,
+collector, code evaluator, result evidence, foundation wiring and serverless.
+Outbound socket connect/connect_ex were blocked for the entire pytest process;
+AWS config/credentials file lookup pointed to `/dev/null`, metadata lookup disabled.
+Only offline fixtures, SDK Stubber and Moto were used. No source edits followed.
 Frontend unchanged, so no frontend build was run.
 
 Private capture rejects recognizable credential-bearing keys, bearer credentials,
