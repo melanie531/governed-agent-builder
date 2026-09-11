@@ -1,0 +1,62 @@
+{
+  "approved_domain_digest": "c11a59c6f442185fb883b7c00cd210e8224f9dd6827668586e91aa2741861913",
+  "epoch": 1,
+  "grants": [
+    {
+      "entry_digest": "27cf9f949efc9efe68db6c4238c94108ba1c7af14cc1ba73f9d8892a235ec1cf",
+      "epoch": 1,
+      "kind": "foundation",
+      "ref": {
+        "id": "generic-native",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "ddfd74b04f668737720a97c14e9e43e9a45c4bdfc1ae1b53ab3774d45b13387e",
+      "epoch": 1,
+      "kind": "model",
+      "ref": {
+        "id": "claude-route",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "b4e7b8ecfe364007a817f1e91c3f4768fa5f1d81af1744d5a42c1cfdfcac371a",
+      "epoch": 1,
+      "kind": "tool",
+      "ref": {
+        "id": "browser-read",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "ebb66658aec2a106ed16fa28c76d0b10d730ab8a8963bae912e74809130a65c2",
+      "epoch": 1,
+      "kind": "skill",
+      "ref": {
+        "id": "citations",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "13cf9a9588c280efc5ef3ab2befabe0a8c565ee4b189d6c4098f26540c3a89fa",
+      "epoch": 1,
+      "kind": "dataset",
+      "ref": {
+        "id": "web-cases",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "d7f7f74e541e28ac27cf9f7d3309d450e84837364d32ae01f6888fc54a74db7b",
+      "epoch": 1,
+      "kind": "rubric",
+      "ref": {
+        "id": "web-rubric",
+        "version": 1
+      }
+    }
+  ],
+  "subject": "example-owner",
+  "workspace": "example-workspace"
+}

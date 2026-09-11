@@ -1,0 +1,24 @@
+{
+  "versions": [
+    {
+      "approved": true,
+      "capabilities": [
+        "browser",
+        "readonly_mcp"
+      ],
+      "gateway_only": true,
+      "limits": {
+        "eval_cases": 20,
+        "max_iterations": 12,
+        "max_tokens": 4096,
+        "timeout_seconds": 120
+      },
+      "native_skill_loading_verified": false,
+      "ref": {
+        "id": "generic-native",
+        "version": 1
+      },
+      "source_digest": "58597dcfaf8c5e5ef943dbf1e0d343e6d6624db9c1fbb8160eb442e271cffbcf"
+    }
+  ]
+}

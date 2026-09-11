@@ -1,0 +1,155 @@
+{
+  "datasets": [
+    {
+      "approved": true,
+      "content_digest": "8f9b350031a3cce247c84abe02e44511d1e5bd20e0a23f1989ac431954df6a33",
+      "immutable_approved": true,
+      "ref": {
+        "id": "web-cases",
+        "version": 1
+      },
+      "source_ref": "approved-content:web-cases:v1",
+      "workspace": "example-workspace"
+    },
+    {
+      "approved": true,
+      "content_digest": "cd14e331aef0bacdaa6e0fcd477a531a49a4928b6d24bc18689f8418355383bf",
+      "immutable_approved": true,
+      "ref": {
+        "id": "policy-cases",
+        "version": 1
+      },
+      "source_ref": "approved-content:policy-cases:v1",
+      "workspace": "example-workspace"
+    }
+  ],
+  "model_routes": [
+    {
+      "adapter": null,
+      "approved": true,
+      "auth_evidence_digest": null,
+      "gateway_auth": "unverified",
+      "model_gateway": {
+        "id": "example-model-gateway",
+        "version": 1
+      },
+      "protocol": "messages",
+      "provider": "bedrock-claude",
+      "ref": {
+        "id": "claude-route",
+        "version": 1
+      },
+      "target_model": "target:claude",
+      "workspace": "example-workspace"
+    },
+    {
+      "adapter": null,
+      "approved": true,
+      "auth_evidence_digest": null,
+      "gateway_auth": "unverified",
+      "model_gateway": {
+        "id": "example-model-gateway",
+        "version": 1
+      },
+      "protocol": "chat_completions",
+      "provider": "bedrock-openai",
+      "ref": {
+        "id": "openai-route",
+        "version": 1
+      },
+      "target_model": "target:openai",
+      "workspace": "example-workspace"
+    }
+  ],
+  "rubrics": [
+    {
+      "approved": true,
+      "content_digest": "28a7057baba8dce4ee9f1a3a2aa33cdfea7a2ae6c146bab2f56f115ef603a558",
+      "immutable_approved": true,
+      "ref": {
+        "id": "web-rubric",
+        "version": 1
+      },
+      "source_ref": "approved-content:web-rubric:v1",
+      "workspace": "example-workspace"
+    },
+    {
+      "approved": true,
+      "content_digest": "ddde35461aaf3cea087c126ba1b2283ed3ccc3352ac096edd61b395f4cb3941c",
+      "immutable_approved": true,
+      "ref": {
+        "id": "policy-rubric",
+        "version": 1
+      },
+      "source_ref": "approved-content:policy-rubric:v1",
+      "workspace": "example-workspace"
+    }
+  ],
+  "skills": [
+    {
+      "approved": true,
+      "content_digest": "ae94ae8d6b91c3309925a613cf6969d9807e45c108f543026fa0c14e6f0d593c",
+      "immutable_approved": true,
+      "ref": {
+        "id": "citations",
+        "version": 1
+      },
+      "requires_shell": false,
+      "source_ref": "approved-content:citations:v1",
+      "workspace": "example-workspace"
+    },
+    {
+      "approved": true,
+      "content_digest": "49a2d932ac3ebaa844c5fabe5035bbb3c80925fda4334e71bd36ddd9671cd0a5",
+      "immutable_approved": true,
+      "ref": {
+        "id": "policy-grounding",
+        "version": 1
+      },
+      "requires_shell": false,
+      "source_ref": "approved-content:policy-grounding:v1",
+      "workspace": "example-workspace"
+    }
+  ],
+  "tool_bindings": [
+    {
+      "adapter": {
+        "id": "browser-operation-adapter",
+        "version": 1
+      },
+      "adapter_verified": false,
+      "approved": true,
+      "capability": "browser",
+      "gateway_name": "approved_tools",
+      "operation": "browser_read",
+      "policy_verified": false,
+      "ref": {
+        "id": "browser-read",
+        "version": 1
+      },
+      "tool_gateway": {
+        "id": "example-tool-gateway",
+        "version": 1
+      },
+      "workspace": "example-workspace"
+    },
+    {
+      "adapter": null,
+      "adapter_verified": false,
+      "approved": true,
+      "capability": "readonly_mcp",
+      "gateway_name": "approved_tools",
+      "operation": "policy_read",
+      "policy_verified": false,
+      "ref": {
+        "id": "policy-read",
+        "version": 1
+      },
+      "tool_gateway": {
+        "id": "example-tool-gateway",
+        "version": 1
+      },
+      "workspace": "example-workspace"
+    }
+  ]
+}

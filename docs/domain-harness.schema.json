@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "eval_cases": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Eval Cases",
+          "type": "integer"
+        },
+        "max_iterations": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Iterations",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_iterations",
+        "max_tokens",
+        "timeout_seconds",
+        "eval_cases"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "Ref",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dataset": {
+      "$ref": "#/$defs/Ref"
+    },
+    "foundation": {
+      "$ref": "#/$defs/Ref"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits"
+    },
+    "model_route": {
+      "$ref": "#/$defs/Ref"
+    },
+    "owner": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Owner",
+      "type": "string"
+    },
+    "ref": {
+      "$ref": "#/$defs/Ref"
+    },
+    "rubric": {
+      "$ref": "#/$defs/Ref"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "skills": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Ref"
+      },
+      "title": "Skills",
+      "type": "array"
+    },
+    "system_prompt": {
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "System Prompt",
+      "type": "string"
+    },
+    "tool_bindings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Ref"
+      },
+      "title": "Tool Bindings",
+      "type": "array"
+    },
+    "workspace": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ref",
+    "owner",
+    "workspace",
+    "foundation",
+    "model_route",
+    "system_prompt",
+    "dataset",
+    "rubric",
+    "limits"
+  ],
+  "title": "DomainHarnessDefinition",
+  "type": "object"
+}

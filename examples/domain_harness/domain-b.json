@@ -1,0 +1,44 @@
+{
+  "dataset": {
+    "id": "policy-cases",
+    "version": 1
+  },
+  "foundation": {
+    "id": "generic-native",
+    "version": 1
+  },
+  "limits": {
+    "eval_cases": 20,
+    "max_iterations": 12,
+    "max_tokens": 4096,
+    "timeout_seconds": 120
+  },
+  "model_route": {
+    "id": "openai-route",
+    "version": 1
+  },
+  "owner": "example-owner",
+  "ref": {
+    "id": "domain-b",
+    "version": 1
+  },
+  "rubric": {
+    "id": "policy-rubric",
+    "version": 1
+  },
+  "schema_version": 1,
+  "skills": [
+    {
+      "id": "policy-grounding",
+      "version": 1
+    }
+  ],
+  "system_prompt": "Answer policy questions only from approved read-only MCP evidence. Refuse unsupported claims.",
+  "tool_bindings": [
+    {
+      "id": "policy-read",
+      "version": 1
+    }
+  ],
+  "workspace": "example-workspace"
+}

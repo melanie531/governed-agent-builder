@@ -1,0 +1,44 @@
+{
+  "dataset": {
+    "id": "web-cases",
+    "version": 1
+  },
+  "foundation": {
+    "id": "generic-native",
+    "version": 1
+  },
+  "limits": {
+    "eval_cases": 20,
+    "max_iterations": 12,
+    "max_tokens": 4096,
+    "timeout_seconds": 120
+  },
+  "model_route": {
+    "id": "claude-route",
+    "version": 1
+  },
+  "owner": "example-owner",
+  "ref": {
+    "id": "domain-a",
+    "version": 1
+  },
+  "rubric": {
+    "id": "web-rubric",
+    "version": 1
+  },
+  "schema_version": 1,
+  "skills": [
+    {
+      "id": "citations",
+      "version": 1
+    }
+  ],
+  "system_prompt": "Analyze the selected public webpage using Browser operations. Cite sources and distinguish evidence from inference.",
+  "tool_bindings": [
+    {
+      "id": "browser-read",
+      "version": 1
+    }
+  ],
+  "workspace": "example-workspace"
+}

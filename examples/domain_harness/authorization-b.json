@@ -1,0 +1,62 @@
+{
+  "approved_domain_digest": "7f4d0e54451422e7947a00a4d612b084af589a775aa69543377a25eb1729b050",
+  "epoch": 1,
+  "grants": [
+    {
+      "entry_digest": "27cf9f949efc9efe68db6c4238c94108ba1c7af14cc1ba73f9d8892a235ec1cf",
+      "epoch": 1,
+      "kind": "foundation",
+      "ref": {
+        "id": "generic-native",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "f6cd2e8d41cbb4c4bcc003f909435335d758731336af761dda97bcf233cc0c70",
+      "epoch": 1,
+      "kind": "model",
+      "ref": {
+        "id": "openai-route",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "21dc52bea15b6cf82a00432dd81e59b3d8a390cf357102d0d2f1a42bf04b01b5",
+      "epoch": 1,
+      "kind": "tool",
+      "ref": {
+        "id": "policy-read",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "0bd029d7379d04b8839594db355147ca1108c1eff14f4a7990a2d79feadb9548",
+      "epoch": 1,
+      "kind": "skill",
+      "ref": {
+        "id": "policy-grounding",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "196fd356d2576e75c60e33146fe328184d472e62b51062fecabcd4a6ae3c9bf8",
+      "epoch": 1,
+      "kind": "dataset",
+      "ref": {
+        "id": "policy-cases",
+        "version": 1
+      }
+    },
+    {
+      "entry_digest": "42af4666fea0dae6ff4aefe1a01f221f42c6e79106f0432e60e7cd51a1e9ae5e",
+      "epoch": 1,
+      "kind": "rubric",
+      "ref": {
+        "id": "policy-rubric",
+        "version": 1
+      }
+    }
+  ],
+  "subject": "example-owner",
+  "workspace": "example-workspace"
+}
