@@ -66,6 +66,10 @@ def deploy(name, body, parameters=None):
         prior = None
     if prior:
         if not any(t["Key"] == "architecture" and t["Value"] == "managed-serverless" for t in prior.get("Tags", [])): raise RuntimeError("Refusing unowned stack")
+        if prior["StackStatus"].endswith("IN_PROGRESS"):
+            raise RuntimeError("Existing stack operation still running; inspect and wait, do not submit twice")
+        if prior["StackStatus"] in ("CREATE_FAILED", "UPDATE_FAILED"):
+            request["DisableRollback"] = True
         try: CF.update_stack(**request)
         except ClientError as exc:
             if "No updates are to be performed" not in exc.response["Error"]["Message"]: raise

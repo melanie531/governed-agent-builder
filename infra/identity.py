@@ -22,7 +22,7 @@ def template(origin):
             "UsernameAttributes": ["email"], "UsernameConfiguration": {"CaseSensitive": False},
             "AutoVerifiedAttributes": ["email"], "AccountRecoverySetting": {"RecoveryMechanisms": [{"Name": "verified_email", "Priority": 1}]},
             "Policies": {"PasswordPolicy": {"MinimumLength": 14, "RequireLowercase": True, "RequireUppercase": True, "RequireNumbers": True, "RequireSymbols": True, "TemporaryPasswordValidityDays": 1}},
-            "UserPoolTier": "ESSENTIALS", "MfaConfiguration": "OPTIONAL", "SoftwareTokenMfaConfiguration": {"Enabled": True},
+            "UserPoolTier": "ESSENTIALS", "MfaConfiguration": "OPTIONAL", "EnabledMfas": ["SOFTWARE_TOKEN_MFA"],
             "DeletionProtection": "ACTIVE",
         }},
         "Client": {"Type": "AWS::Cognito::UserPoolClient", "Properties": {

@@ -28,6 +28,8 @@ def test_business_authorizer_and_separate_auth_routes():
             assert "AuthIntegration" in str(route["Target"])
     assert r["Pool"]["Properties"]["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"]
     assert not r["Client"]["Properties"]["GenerateSecret"]
+    assert r["Pool"]["Properties"]["EnabledMfas"] == ["SOFTWARE_TOKEN_MFA"]
+    assert "SoftwareTokenMfaConfiguration" not in r["Pool"]["Properties"]
 
 
 def test_scoped_roles_and_durable_queue():
