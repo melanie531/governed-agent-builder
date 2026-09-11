@@ -38,3 +38,20 @@ Security: private buckets, encrypted durable state, invite-only Cognito and two-
 - Hosted worker deadline is 15 minutes (local remains 60 seconds) to allow bounded SQS visibility retry; each invocation runs at most five fixture stages and requires 10 seconds remaining before a stage.
 - GitHub remote verified private. This repository has no main branch: default and release branch are feat/local-first. Outgoing lineage is checked against origin/feat/local-first instead.
 - DLQ alarms have no external notification recipient configured; operator must inspect alarms/queues. No invite/user has been created.
+
+## Live release verification: 2026-09-11
+
+Application: https://de32ssfw7gsad.cloudfront.net
+
+Source milestone: 8b855bb6122c340643305e57ed6d1778aa4d7e50 on private `feat/local-first`.
+
+- Separate artifacts and app stacks: CREATE_COMPLETE. All five Lambda functions Active / Successful; deployed CodeSha256 matches the packaged source release for each. No Lambda VPC attachment.
+- CloudFront `/`: HTTP 200; browser renders accepted Agent Studio UI, CLOUD-HOSTED DEMO badge and invitation-only sign-in. No persona selector or anonymous admin switch.
+- `/studio-config.json`: HTTP 200, hosted=true, CLOUD-HOSTED DEMO.
+- CloudFront and direct managed HTTP API `/api/me` and `/api/admin/catalog`: HTTP 401 without session cookie.
+- `/auth/login`: HTTP 302 to the new Cognito authorize endpoint with S256 PKCE; browser follows to actual Cognito email/password login form. This is NOT proof of completed user authentication.
+- State table encryption ENABLED; both private application buckets retain all public-access blocks. SQS and stream Lambda mappings Enabled. No actual authorized job submitted yet; stream status reports No records processed.
+- Effective VPC BPA still block-ingress. Previous failed EC2/NAT/EBS resources not changed or removed; their charges continue separately.
+- Cognito user count: zero. No invitations, password handling, membership assignment, or reused old users/clients.
+
+Remaining acceptance gate: owner approves exact invitation email and exactly one research/operations/admin group per user; human signs in through Cognito (no credentials in chat). Then verify actual authorized create/version/test/SQS completion/invoke/export plus second-user isolation and admin revocation. Offline 149 passing tests cover these business contracts, but they do not replace this real cloud authenticated journey. User/group authority is the current blocker, not a claimed finished end-to-end release.
