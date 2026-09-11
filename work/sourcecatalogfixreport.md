@@ -54,3 +54,8 @@ migration/receipts; Sustainability cache reuse unchanged, no infrastructure adde
 
 Final focused result: **201 passed**, 3 existing deprecation warnings, 10.08 seconds.
 `git diff --check` passed. No UI files changed.
+
+Exact tested source commit: `848c0f4dd33b483a265123fb762562f9bdcf3af3`.
+The following report-only commit adds this receipt; implementation/tests are unchanged.
+`origin/main` is not present in this checkout; outgoing commits were inspected against
+the existing tracking branch `origin/feat/live-capabilities` instead.
