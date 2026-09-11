@@ -141,3 +141,38 @@ Deny remains. Only AFTER successful fault evidence and independent peer review
 prepare an exact model-conditioned inference Allow diff. No Allow diff is offered
 now because its prerequisite has not been met. This is an implemented/published
 candidate plus a real scope blocker, NOT a whole-journey success.
+
+## Authorized dependency continuation review
+
+The user's existing project integration authority explicitly covers reviewing
+and executing the existing ChangeSet after proving these two dependencies. This
+is not a new permission grant or an approval to weaken the quarantine.
+Started at clean 48b372c (a3812cd plus documentation-only receipt handoff).
+Live SDK review now compares every existing role's full inline-policy set and
+trust against exact intrinsic resolution from actual IAM/Gateway/PolicyEngine
+identifiers. No attached managed policies or unreviewed boundaries admitted.
+Active ToolPolicy Cedar definition, enforcement mode, actual principal ARN and
+Gateway resource resolve exactly; both actual Gateway ENFORCE bindings match.
+The desired template equals the original reviewed overlay, not a regeneration.
+FoundationRole and ToolPolicy entire definitions remain identical.
+
+The guard permits ONLY the enumerated Dynamic/ResourceAttribute/Never details:
+FoundationRole.Policies <- ModelGateway.GatewayArn and
+ToolPolicy.Definition <- FoundationRole.Arn; exact type, Modify and no replacement
+are mandatory. Missing live semantic evidence, changed definitions and all
+other dependency details fail closed. Execution reruns the live comparison and
+compares receipt digests immediately before writing. Readback repeats IAM/Cedar
+checks, all preexisting physical IDs, exact interceptor binding and downloaded
+Lambda ZIP digest plus index.py bytes against the reviewed template.
+
+The bounded probe was corrected to remove the old quarantined-valid case:
+unknown model, malformed JSON, stream=true, excessive max_tokens only. Four
+maximum attempts, each persisted before transport; no automatic retry. Safe
+request-ID log correlation is reported, never inferred from 403 or token usage.
+Timeout/throttle/malformed-service experiments remain pending and unauthorized
+for mutation in this slice. No UI/runtime fixtures or existing Studio resources
+are edited. Existing Well-Architected caveats above remain in force.
+
+Validation: 64 focused tests passed; full suite run once, 751 passed with
+3 baseline deprecation warnings. Final preparation-receipt cleanup rechecked
+with the 64 focused tests. Cloud execution still pending at this source commit.

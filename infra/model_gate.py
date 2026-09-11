@@ -45,7 +45,13 @@ def overlay(live):
     return result
 
 
-def inspect_change_set(change):
+DEPENDENCIES = {
+    'FoundationRole': ('Policies', 'ModelGateway.GatewayArn', 'AWS::IAM::Role'),
+    'ToolPolicy': ('Definition', 'FoundationRole.Arn', 'AWS::BedrockAgentCore::Policy'),
+}
+
+
+def inspect_change_set(change, live=None, desired=None, resolved_review=None):
     if change.get('Status') != 'CREATE_COMPLETE' or change.get('ExecutionStatus') != 'AVAILABLE' or change.get('NextToken'):
         raise ValueError('CHANGESET_NOT_READY')
     seen = set()
@@ -66,9 +72,20 @@ def inspect_change_set(change):
                 t = d['Target']
                 if t.get('Attribute') != 'Properties' or t.get('Name') not in allowed or t.get('RequiresRecreation') != 'Never':
                     raise ValueError('UNEXPECTED_PROPERTY')
+        elif name in DEPENDENCIES:
+            prop, cause, kind = DEPENDENCIES[name]
+            expected = {'Target': {'Attribute': 'Properties', 'Name': prop, 'RequiresRecreation': 'Never'},
+                        'Evaluation': 'Dynamic', 'ChangeSource': 'ResourceAttribute', 'CausingEntity': cause}
+            if (live is None or desired is None or not resolved_review
+                    or not resolved_review.get(name)
+                    or live['Resources'][name] != desired['Resources'][name]):
+                raise ValueError('DEPENDENCY_SEMANTICS_NOT_PROVEN')
+            if (c['Action'] != 'Modify' or c.get('Replacement') != 'False'
+                    or c.get('ResourceType') != kind or c.get('Details') != [expected]
+                    or c.get('Scope') not in (None, ['Properties'])):
+                raise ValueError('UNREVIEWED_DEPENDENCY')
         else:
-            # Even harmless dependencies outside this exact set need review.
             raise ValueError('UNREVIEWED_DEPENDENCY')
-    if seen != ADDED | MODIFIED:
+    if seen - DEPENDENCIES.keys() != ADDED | MODIFIED:
         raise ValueError('CHANGESET_SCOPE_MISMATCH')
     return 'EXACT_NONREPLACING_MODEL_GATE_DELTA'
