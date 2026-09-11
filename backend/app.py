@@ -25,7 +25,7 @@ from .harness import evaluate, run_case
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
 from .hosted_auth import HostedAuth
-from .live_catalog import projection, visibility, has_grant, grant_scope
+from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED"}
@@ -104,11 +104,17 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
-    # No automatic SDK construction/discovery: operator must wire verified resources.
+    # Construct native discovery only after explicit server-owned source approval.
+    catalog_configuration_invalid = False
+    if catalog_mode == 'live' and catalog_provider is None:
+        try:
+            catalog_provider = configured_catalog()
+        except Exception:
+            catalog_configuration_invalid = True
     def catalog_records(db):
         if catalog_mode == "live":
             if catalog_provider is None:
-                raise HTTPException(503, "Live catalog integration is not configured; no fixture fallback")
+                raise HTTPException(503, "NotConnected: Live catalog configuration invalid; no fixture fallback" if catalog_configuration_invalid else "NotConnected: Live catalog integration is not configured; no fixture fallback")
             try:
                 return catalog_provider.records()
             except Exception:
@@ -566,6 +572,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
             return {"items": items, "count": len(items), "mode": catalog_mode,
                     "agent_listing_implemented": catalog_mode == "live",
+                    "connection_state": "connected" if catalog_mode == "live" else "fixture",
+                    "revision": digest(items),
                     "execution_ready": False if catalog_mode == "live" else None}
 
     @app.get("/api/catalog/{component_id}/versions/{version}")

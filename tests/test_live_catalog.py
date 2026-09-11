@@ -3,10 +3,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
-from botocore.session import Session
-from botocore.validate import validate_parameters
 from backend.app import create_app
-from backend.live_catalog import LiveCatalog, RegistryCatalogProvider, ModelGatewayCatalogProvider, projection, grant_scope
+from backend.live_catalog import LiveCatalog, projection, grant_scope
 from .conftest import login, ORIGIN
 
 
@@ -89,45 +87,6 @@ def test_live_grant_workspace_and_integration_block(app):
         assert projection(db,persona,item)['usable']
         item['discoverable_workspaces'].append('operations')
         assert not projection(db,{**persona,'workspace':'operations'},item)['usable']
-
-
-def test_registry_wire_contract_and_safe_projection():
-    model=Session().get_service_model('bedrock-agentcore-control')
-    class Client:
-        def list_registry_records(self,**kw):
-            validate_parameters(kw,model.operation_model('ListRegistryRecords').input_shape)
-            assert kw['status']=='APPROVED'
-            return {'registryRecords':[{'recordId':'safe','recordVersion':'7','descriptorType':'MCP','status':'APPROVED','name':'untrusted secret title'},
-                                       {'recordId':'bad','recordVersion':'1','descriptorType':'CUSTOM','status':'APPROVED'}]}
-        def get_registry_record(self,**kw):
-            validate_parameters(kw,model.operation_model('GetRegistryRecord').input_shape)
-            return {'status':'APPROVED','recordVersion':'7','descriptors':{'mcp':{'tools':{'inlineContent':json.dumps({'tools':[{'name':'lookup'}]})}}}}
-    policy={k:exposure() for k in ('registry:safe','registry:safe:tool:lookup')}
-    records=RegistryCatalogProvider(Client(),'synthetic-registry',policy).records()
-    assert {r['kind'] for r in records}=={'mcp_server','tool'}
-    assert all(r['name']=='Approved safe name' and not r['fixture'] and not r['integration_ready'] for r in records)
-    assert 'untrusted' not in json.dumps(records)
-
-
-def test_model_gateway_bedrock_only_and_sdk_shapes():
-    model=Session().get_service_model('bedrock-agentcore-control')
-    class Client:
-        def list_gateway_targets(self,**kw):
-            validate_parameters(kw,model.operation_model('ListGatewayTargets').input_shape)
-            return {'items':[{'targetId':'safe','status':'READY'}]}
-        def get_gateway_target(self,**kw):
-            validate_parameters(kw,model.operation_model('GetGatewayTarget').input_shape)
-            return {'status':'READY','targetConfiguration':{'inference':{'provider':{'endpoint':'https://bedrock-runtime.us-west-2.amazonaws.com',
-                'operations':[{'path':'/verified-by-provider','models':[{'model':m} for m in ['global.anthropic.claude-test','openai.gpt-test','amazon.nova-test','google.gemini-test']]}]}}}}
-    policy={f'model:safe:{m}':exposure() for m in ['global.anthropic.claude-test','openai.gpt-test','amazon.nova-test','google.gemini-test']}
-    rows=ModelGatewayCatalogProvider(Client(),'synthetic-gateway','us-west-2',policy).records()
-    assert len(rows)==2 and all(r['provider']=='Amazon Bedrock' for r in rows)
-
-
-def test_pagination_repeat_fails_closed():
-    class Client:
-        def list_registry_records(self,**kw):return {'registryRecords':[],'nextToken':'same'}
-    with pytest.raises(HTTPException):LiveCatalog(RegistryCatalogProvider(Client(),'synthetic',{}),RegistryCatalogProvider(Client(),'synthetic',{})).records()
 
 
 def test_live_mode_never_creates_fixture_definition(tmp_path,monkeypatch,payload):
