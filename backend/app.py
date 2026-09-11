@@ -25,7 +25,7 @@ from .hosted_auth import HostedAuth
 from .live_catalog import projection, visibility, has_grant, grant_scope
 
 ROOT = Path(__file__).resolve().parent.parent
-TERMINAL = {"PASS", "NEEDS_CHANGES"}
+TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED"}
 ACTIVE = ("VALIDATING", "PREPARING", "LOCAL_RUNTIME_READY", "TESTING", "EVALUATING")
 
 
@@ -97,7 +97,7 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None):
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
@@ -176,7 +176,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             with store.tx() as db:
                 # A single supported worker owns this local database. Active jobs restart
                 # safely because fixture execution has no external side effects.
-                for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchall():
+                for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchall():
+                    from .foundation_runs import get as get_run
+                    if get_run(db, 'foundation-run:' + job['id']):
+                        continue
                     db.update('jobs', {'stage': 'VALIDATING', 'updated': time.time()}, where=[('id', '=', job['id'])])
                     event(db, job["id"], "RECOVERED", {"message": "Resumed durable local job after process restart"})
             task = asyncio.create_task(worker_loop())
@@ -446,20 +449,27 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "Only the current definition can be tested")
             definition = get_version(db, agent_id, data.version)
             validate_current(db, persona, definition)
+            if data.execution_mode == 'live' and (foundation_jobs is None or worker_enabled):
+                raise HTTPException(503, 'LIVE_DISABLED: no fixture fallback')
             existing = db.select('jobs', where=[('agent', '=', agent_id), ('requester', '=', persona['id']), ('idem', '=', data.idempotency_key)]).fetchone()
             if existing:
-                if existing["version"] != data.version:
+                from .foundation_runs import get as get_run
+                is_live = get_run(db, 'foundation-run:' + existing['id']) is not None
+                if existing["version"] != data.version or is_live != (data.execution_mode == 'live'):
                     raise HTTPException(409, "Idempotency key already binds a different version")
                 return {"job_id": existing["id"], "stage": existing["stage"], "reused": True}
-            if db.select('jobs', where=[('agent', '=', agent_id), ('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchone():
+            if db.select('jobs', where=[('agent', '=', agent_id), ('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchone():
                 raise HTTPException(409, "A job already owns this agent; wait for completion")
-            if db.select('jobs', count=True, where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchone()[0] >= 8:
+            if db.select('jobs', count=True, where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchone()[0] >= 8:
                 raise HTTPException(429, "Local queue cap reached (8)")
             if db.select('jobs', count=True, where=[('requester', '=', persona['id']), ('created', '>', time.time() - 3600)]).fetchone()[0] >= 30:
                 raise HTTPException(429, "Local budget cap: 30 jobs per identity per hour")
             job_id, now = uid(), time.time()
             db.insert('jobs', {'id': job_id, 'agent': agent_id, 'version': data.version, 'requester': persona['id'], 'idem': data.idempotency_key, 'stage': 'VALIDATING', 'created': now, 'updated': now, 'deadline': now + (900 if repository is not None else 60)})
-            event(db, job_id, "VALIDATING", {"message": "Local deploy/test accepted", "digest": definition["digest"], "mode": mode_label})
+            if data.execution_mode == 'live':
+                foundation_jobs.enqueue(db, job_id, definition, persona, now + 900)
+                db.update('jobs', {'deadline': now + 900}, where=[('id', '=', job_id)])
+            event(db, job_id, "VALIDATING", {"message": "Live deployment reserved" if data.execution_mode == "live" else "Local deploy/test accepted", "digest": definition["digest"], "mode": "live" if data.execution_mode == "live" else mode_label})
             audit(db, persona["id"], "deploy_test", agent_id, job_id)
             if repository is not None and hosted:
                 from .hosted_auth import SESSION_COOKIE, sha
@@ -603,6 +613,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             else:
                 db.delete('grants', where=[('persona', '=', data.persona_id), ('component', '=', data.component_id)])
                 db.delete('settings', where=[('key', '=', grant_scope(subject, data.component_id))])
+            from .foundation_runs import get as epoch_get, put as epoch_put
+            epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
             audit(db, persona["id"], "grant" if data.enabled else "revoke", data.persona_id, json.dumps({"component": data.component_id, "reason": data.reason}))
         return {"ok": True}
 
@@ -632,6 +644,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 db.insert('grants', {'persona': row['requester'], 'component': row['component']}, ignore=True)
                 db.insert('settings', {'key': grant_scope(subject, row['component']), 'body': 'true'}, upsert=True)
             db.update('requests', {'status': 'APPROVED' if data.approve else 'REJECTED', 'decision': data.reason}, where=[('id', '=', request_id)])
+            from .foundation_runs import get as epoch_get, put as epoch_put
+            epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
             audit(db, persona["id"], "request_decided", request_id, json.dumps({"decision": "approved" if data.approve else "rejected", "reason": data.reason, "workspace": row["workspace"]}))
         return {"ok": True, "notice": "Existing capability grant updated; no connector was created"}
 
@@ -648,6 +662,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             item["approved"] = data.approved
             item["version"] = str(int(item["version"]) + 1) if authority == "components" else f"1.0.{int(item['version'].split('.')[-1]) + 1}"
             db.update(authority, {'body': json.dumps(item)}, where=[('id', '=', resource_id)])
+            from .foundation_runs import get as epoch_get, put as epoch_put
+            epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
             audit(db, persona["id"], "catalog_revision", resource_id, item["version"])
         return item
 
@@ -659,6 +675,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             current = {**data.model_dump(), "version": previous["version"] + 1}
             db.insert('catalog_history', {'resource': 'policy', 'body': json.dumps(previous), 'created': time.time()})
             db.update('settings', {'body': json.dumps(current)}, where=[('key', '=', 'policy')])
+            from .foundation_runs import get as epoch_get, put as epoch_put
+            epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
             audit(db, persona["id"], "policy_revision", "mandatory-gates", str(current["version"]))
         return current
 
@@ -669,6 +687,28 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             return [dict(r) for r in db.select('audit', order='id', descending=True, limit=300)]
 
     def step_job(job_id):
+        from .foundation_runs import get as get_run
+        with store.tx() as db:
+            live_run = get_run(db, 'foundation-run:' + job_id)
+        if live_run:
+            try:
+                if foundation_jobs is None:
+                    raise HTTPException(503, 'LIVE_DISABLED')
+                with store.tx() as db:
+                    persona = principal(db, live_run['owner'])
+                    definition = get_version(db, live_run['agent'], live_run['version'])
+                    validate_current(db, persona, definition)
+                foundation_jobs.step(store, job_id)
+            except Exception as exc:
+                from foundation_harness.context import Denied
+                code = str(exc) if isinstance(exc, Denied) else 'LIVE_STEP_FAILED'
+                with store.tx() as db:
+                    db.update('jobs', {'stage': 'BLOCKED', 'updated': time.time(),
+                              'result': json.dumps({'passed': False, 'mode': 'live',
+                                  'gate': code, 'failure': {'code': code, 'stage': 'LIVE_JOB'},
+                                  'production_ready': False})}, where=[('id', '=', job_id)])
+                    event(db, job_id, 'BLOCKED', {'code': code})
+            return
         with store.tx() as db:
             job = dict(db.select('jobs', where=[('id', '=', job_id)]).fetchone())
             if job["stage"] in TERMINAL:
@@ -726,7 +766,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         running = set()
         while True:
             with store.tx() as db:
-                jobs = [r["id"] for r in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])], order='created') if r["id"] not in running][:2 - len(running)]
+                jobs = [r["id"] for r in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])], order='created') if r["id"] not in running][:2 - len(running)]
                 for job_id in jobs:
                     db.update('jobs', {}, where=[('id', '=', job_id)], increments={'attempts': 1})
             if jobs:
@@ -739,7 +779,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             app.state.wake.clear()
             # Close enqueue/clear race before sleeping.
             with store.tx() as db:
-                pending = db.select('jobs', where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])], limit=1).fetchone()
+                pending = db.select('jobs', where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])], limit=1).fetchone()
             if pending:
                 continue
             await app.state.wake.wait()

@@ -12,6 +12,7 @@ class Engine:
         self.model, self.tools, self.telemetry = model, tools, telemetry
 
     def run(self, run_ref, authenticated_entry, user_input, budget):
+        started = time.monotonic()
         # Admission errors propagate before any service can be dispatched.
         binding = admit(self.authority, run_ref, authenticated_entry, self.config)
         budget.deadline = min(budget.deadline, time.monotonic() + max(0, binding.expires_at - time.time()))
@@ -52,13 +53,24 @@ class Engine:
             finally:
                 self.authority.finish(binding)
                 self.telemetry.attributes(span, {'status': status})
-        exported = self.telemetry.flush()
-        return {'status': status, 'output': output if status == 'SUCCEEDED' else [],
+        try:
+            exported = self.telemetry.flush()
+        except Exception:
+            exported = False
+        if budget.reservation:
+            budget.reservation.settle({'input_tokens': budget.input_tokens,
+                                       'output_tokens': budget.output_tokens}
+                                      if budget.usage_known else None)
+        return {'status': status,
+                'execution_status': 'EXECUTION_SUCCEEDED' if status == 'SUCCEEDED' else status,
+                'release_status': 'BLOCKED', 'release_code': 'EVIDENCE_INCOMPLETE', 'output': output if status == 'SUCCEEDED' else [],
                 'usage': {'input_tokens': budget.input_tokens, 'output_tokens': budget.output_tokens}
                          if budget.usage_known else None,
                 'model_calls': budget.model_calls, 'tool_calls': budget.tool_calls,
                 'gateway_calls': budget.gateway_calls,
                 'reservation_usd': str(budget.reservation_usd) if budget.reservation_usd is not None else None,
-                'actual_cost_usd': None, 'trace_id': self.telemetry.trace_id,
+                'model_route': self.config.model.route,
+                'latency_ms': round((time.monotonic() - started) * 1000, 2),
+                'billing_estimate_usd': None, 'actual_cost_usd': None, 'trace_id': self.telemetry.trace_id,
                 'otel_exported': exported, 'live_evidence': False,
                 'production_ready': False}

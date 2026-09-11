@@ -26,7 +26,11 @@ def store():
 
 @lru_cache
 def application():
-    return create_app(repository=store(), worker_enabled=False)
+    jobs = None
+    if os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1':
+        from .foundation_jobs import configured_jobs
+        jobs = configured_jobs(store())
+    return create_app(repository=store(), worker_enabled=False, foundation_jobs=jobs)
 
 
 @lru_cache
@@ -111,6 +115,40 @@ def worker_handler(event, context):
                     job = db.select("jobs", where=[("id", "=", job_id)]).fetchone()
                 if not job or job["stage"] in TERMINAL: break
                 app.state.step_job(job_id)
+                with app.state.store.tx() as db:
+                    latest = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
+                    from .foundation_runs import get
+                    live = get(db, 'foundation-run:' + job_id)
+                if live:
+                    if latest['stage'] not in TERMINAL:
+                        boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
+                            MessageBody=json.dumps({'job_id': job_id}), DelaySeconds=10)
+                    break
         except Exception:
             failures.append({"itemIdentifier": record["messageId"]})
     return {"batchItemFailures": failures}
+
+
+def foundation_exchange_handler(event, context):
+    """Dedicated AWS_IAM route only. Do not attach to Cognito/browser routes.
+
+    Deployment is intentionally not enabled by this code increment: exact route
+    Lambda resource policy and per-Runtime execution roles need independent review.
+    """
+    from foundation_harness.context import Denied
+    from .foundation_runs import exchange
+    if (os.getenv('FOUNDATION_LIVE_ENABLED', '0') != '1'
+            or event.get('routeKey') != 'POST /internal/foundation/exchange'):
+        return {'statusCode': 403, 'body': '{"code":"LIVE_DISABLED"}'}
+    try:
+        iam = event.get('requestContext', {}).get('authorizer', {}).get('iam', {})
+        if not isinstance(iam, dict) or not isinstance(iam.get('userArn'), str):
+            raise Denied('VERIFIED_IAM_PRINCIPAL_REQUIRED')
+        raw = event.get('body', '')
+        if not isinstance(raw, str) or len(raw) > 8192 or event.get('isBase64Encoded'):
+            raise Denied('EXCHANGE_SHAPE_DENIED')
+        with store().tx() as db:
+            result = exchange(db, principal_arn=iam.get('userArn'), body=json.loads(raw))
+        return {'statusCode': 200, 'headers': {'content-type': 'application/json'}, 'body': json.dumps(result)}
+    except Exception:
+        return {'statusCode': 403, 'body': '{"code":"ADMISSION_DENIED"}'}

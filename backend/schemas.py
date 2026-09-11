@@ -74,6 +74,7 @@ class Login(Strict):
     persona_id: Literal["alex", "sam", "admin"]
 
 class Deploy(Strict):
+    execution_mode: Literal["fixture", "live"] = "fixture"
     version: int = Field(ge=1)
     idempotency_key: str = Field(min_length=8, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
 

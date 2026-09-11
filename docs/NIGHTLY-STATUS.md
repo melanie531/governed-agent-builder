@@ -368,3 +368,75 @@ remained blocked throughout; no paid inference escaped.
   The 491-test result and cloud readback above apply to unchanged implementation
   code. No further cloud writes, inference, tool/Runtime calls, Browser traffic,
   evaluator calls or live UI enablement occurred during publication.
+
+## Milestone 11: saved Studio/Foundation wiring finalized (source only)
+
+Resumed the legitimate dirty increment at `7e5163690bc8b46c067cb21c887f4816352534ba`. No prior worker was
+running. `/tmp/gab-wiring-tests-final.log` already reported 510 passed in 23.05s;
+the earlier orchestration timeout was not a demonstrated pytest hang.
+
+Implemented opt-in Studio API -> FoundationJobs -> create-only deployment,
+READY continuation, pinned Runtime version/session dispatch, and persistent
+run/reservation/call claims. Public UI submission remains fixture-only; it now
+renders live-job terminal/progress states without unlocking fixture invocation.
+Live is disabled by default, never silently replaced with fixture success.
+
+Self-review (not independent review) checked the serializable DynamoDB fence,
+current owner/workspace/version/grant/policy/session revalidation, immutable
+manifest/role/runtime binding, and irreversible invocation claim before I/O.
+Tightened RuntimeHandler to require the reservation handle to equal its run,
+and made malformed API Gateway IAM principal structures fail closed. Exchange
+identity comes only from the dedicated integration's
+`requestContext.authorizer.iam.userArn` string, never body or payload headers.
+The assumed-role ARN is matched against the current server-owned run role.
+This is an offline HTTP API AWS_IAM integration contract, not proof that a caller
+cannot forge an event through an improperly granted direct Lambda invoke.
+
+Execution success is not release PASS: current-version trace readback, matching
+trace ID, dataset/rubric/policy/manifest/runtime bindings and completed evaluation
+IDs are mandatory. Unknown outcomes retain reservations; token reporting is not
+an all-service cost or invoice. No paid-call retry or budget release was added.
+
+Verification of final source:
+- `uv run --locked --extra foundation-runtime pytest -vv --durations=10`:
+  **519 passed**, three existing dependency deprecation warnings, **24.59s**.
+  Wrapper timeout 150s, verbose output identifies the current test if interrupted.
+- `cd frontend && npm run build`: **PASS** (includes TypeScript noEmit);
+  existing >500 kB bundle warning remains.
+- Existing Playwright hosted entry and current-user menu regressions: **2 passed**
+  in 4.6s, local intercepted API contracts only, not hosted/cloud acceptance.
+- Regressions cover malicious/malformed principal, forged headers, stale grants,
+  cross-workspace/version/session, atomic reservation conflict, duplicate jobs,
+  call replay, uncertain Runtime outcome, missing/cross-run reservation, and
+  missing or mismatched version/trace/evaluation evidence.
+- `git diff --check` and changed-source account/credential-literal scan: **PASS**.
+
+Remaining release blockers: dedicated AWS_IAM route and exact Lambda resource
+policy, reviewed per-package role and backend-only Runtime invoke permissions,
+Linux locked-dependency runtime artifact build/readback, cloud trace/evaluation
+reader, evaluated catalog-to-manifest factory and approved pricing envelope.
+`configured_jobs` deliberately has no production evidence reader, so it cannot
+produce LIVE_PASS. The package helper remains source-only; artifact admission
+requires actual runtime dependencies. No Runtime created, IAM/model-role Deny
+relaxed, cloud write, live enablement, PR, merge or force push in this increment.
+
+Well-Architected self-review: security is fail-closed with cloud IAM unproven;
+reliability has durable claims/unknown-outcome holds but no live recovery proof;
+performance is bounded (one inference, finite time/calls); cost holds a reviewed
+all-service reservation without claiming measured billing; operations expose
+stages/evidence but still lack production reader; sustainability avoids retry
+loops and new resources, with no measured environmental claim.
+
+Peer reproduction (no AWS calls required):
+```sh
+git fetch origin feat/live-capabilities
+git show --stat origin/feat/live-capabilities
+uv run --locked --extra foundation-runtime pytest -vv --durations=10
+uv run --locked --extra foundation-runtime pytest -q tests/test_foundation_wiring.py
+(cd frontend && npm run build)
+(cd frontend && npm run test:e2e -- hosted-entry.spec.ts --grep 'hosted Agent Studio entry|hosted current-user menu' --global-timeout=60000)
+git diff --check HEAD^ HEAD
+```
+`origin/main` is absent in this clone; publication checks use the exact saved
+base and `origin/feat/live-capabilities..HEAD`. Only the requested source increment
+and this appended status are intended for publication on that feature branch.

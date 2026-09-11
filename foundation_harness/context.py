@@ -37,3 +37,12 @@ class MissingAuthority:
 
     def finish(self, binding):
         raise Denied('AUTHENTICATED_BACKEND_REDEMPTION_NOT_CONNECTED')
+
+
+@dataclass(frozen=True)
+class ResolvedEntry:
+    """Server-redeemed input and persistent budget handle, never payload fields."""
+    binding: Binding
+    stored_input: str
+    limits: object
+    reservation: object

@@ -11,7 +11,7 @@ from foundation_harness.config import canonical, digest, load_config
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = tuple('foundation_harness/' + name + '.py' for name in (
     '__init__', 'config', 'context', 'admission', 'skills', 'budget', 'transport',
-    'model_client', 'tool_client', 'telemetry', 'engine')) + (
+    'model_client', 'tool_client', 'telemetry', 'engine', 'backend_exchange')) + (
     'runtime/__init__.py', 'runtime/custom_foundation/__init__.py',
     'runtime/custom_foundation/main.py', 'runtime/custom_foundation/requirements.lock')
 
@@ -47,7 +47,7 @@ def save_config(raw, directory):
     return path
 
 
-def package(saved, destination):
+def package(saved, destination, *, admission=None):
     path = Path(saved)
     raw = json.loads(path.read_bytes())
     load_config(raw, path.stem)
@@ -55,6 +55,12 @@ def package(saved, destination):
     if raw['foundation']['digest'] != source:
         raise ValueError('FOUNDATION_SOURCE_DIGEST_MISMATCH')
     files = {name: (ROOT / name).read_bytes() for name in SOURCES}
+    if admission is not None:
+        from foundation_harness.backend_exchange import BackendExchange
+        if set(admission) != {'endpoint', 'manifest_digest'} or admission['manifest_digest'] != path.stem:
+            raise ValueError('IMMUTABLE_ADMISSION_BINDING_REQUIRED')
+        BackendExchange(None, admission['endpoint'], admission['manifest_digest'])
+        files['runtime/custom_foundation/admission.json'] = canonical(admission)
     files['main.py'] = b'from runtime.custom_foundation.main import create_app\ncreate_app().run()\n'
     files['runtime/custom_foundation/harness.json'] = canonical(raw)
     fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

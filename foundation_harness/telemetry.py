@@ -22,15 +22,19 @@ class CloudWatchExporter(SpanExporter):
         self.budget = budget
         self.exported = self.failed = 0
         self.bytes_sent = 0
+        self.attempts = 0
 
     def export(self, spans):
         try:
             self.budget.require_reservation(self.transport)
-            if self.exported + self.failed >= 5:
+            if self.attempts >= 5:
                 raise ValueError('TRACE_EXPORT_COUNT_CAP')
             body = encode_spans(spans).SerializeToString()
             if len(body) > 65536 or self.bytes_sent + len(body) > 262144:
                 raise ValueError('TRACE_BYTE_CAP')
+            if self.budget.reservation:
+                self.budget.reservation.claim('export', f'export-{self.attempts + 1}')
+            self.attempts += 1
             self.bytes_sent += len(body)
             result, _ = self.transport.send('https://xray.us-west-2.amazonaws.com/v1/traces', body,
                                            {'Content-Type': 'application/x-protobuf', 'Accept': 'application/json',
@@ -90,5 +94,9 @@ class Telemetry:
         return {'traceparent': f'00-{context.trace_id:032x}-{context.span_id:016x}-01'}
 
     def flush(self):
-        self.provider.force_flush(timeout_millis=5000)
-        return bool(self.exporter and self.exporter.exported and not self.exporter.failed)
+        try:
+            flushed = self.provider.force_flush(timeout_millis=5000)
+            return bool(flushed and self.exporter and getattr(self.exporter, 'exported', 0)
+                        and not getattr(self.exporter, 'failed', 0))
+        except Exception:
+            return False

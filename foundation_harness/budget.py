@@ -11,7 +11,8 @@ class LimitReached(RuntimeError):
 
 
 class Budget:
-    def __init__(self, limits, *, reservation_usd=None):
+    def __init__(self, limits, *, reservation_usd=None, reservation=None):
+        self.reservation = reservation
         self.limits = limits
         self.deadline = time.monotonic() + limits.timeoutSeconds
         self.cancelled = threading.Event()
@@ -48,6 +49,8 @@ class Budget:
                 or upper + self.input_tokens > self.limits.maxInputTokens
                 or body['max_tokens'] + self.output_tokens > self.limits.maxOutputTokens):
             raise LimitReached('BUDGET_EXHAUSTED')
+        if self.reservation:
+            self.reservation.claim('model', f'model-{self.model_calls + 1}')
         self.model_calls += 1
         self.usage_known = False
 
@@ -67,10 +70,14 @@ class Budget:
         self.check()
         if self.tool_calls >= self.limits.maxToolCalls:
             raise LimitReached('BUDGET_EXHAUSTED')
+        if self.reservation:
+            self.reservation.claim('tool', f'tool-{self.tool_calls + 1}')
         self.tool_calls += 1
 
     def gateway(self):
         self.check()
         if self.gateway_calls >= 8:
             raise LimitReached('GATEWAY_CALL_CAP')
+        if self.reservation:
+            self.reservation.claim('gateway', f'gateway-{self.gateway_calls + 1}')
         self.gateway_calls += 1
