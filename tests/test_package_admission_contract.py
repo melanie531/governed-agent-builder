@@ -62,3 +62,60 @@ def test_explicit_base_is_labeled_and_exports_no_credentials(tmp_path, monkeypat
         assert all(marker.encode() not in archive.read(n) for n in archive.namelist())
     with pytest.raises(ValueError, match='BASE_MUST_NOT'):
         package(saved, tmp_path/'mixed.zip', mode='base', admission=settings)
+
+
+def test_live_package_export_has_exact_configs_no_env_credentials(tmp_path, monkeypatch):
+    raw, saved, settings = values(tmp_path)
+    marker = 'synthetic-not-a-real-credential'
+    monkeypatch.setenv('AWS_SESSION_TOKEN', marker)
+    monkeypatch.setattr('scripts.verify_package_admission.verify_package_admission', lambda *a, **k: settings)
+    monkeypatch.setattr('scripts.package_foundation.dependency_files', lambda _: {})
+    proof = package(saved, tmp_path/'live.zip', admission=settings, dependencies=tmp_path)
+    with zipfile.ZipFile(tmp_path/'live.zip') as archive:
+        assert json.loads(archive.read('runtime/custom_foundation/admission.json')) == settings
+        assert json.loads(archive.read('runtime/custom_foundation/harness.json')) == raw
+        assert all(marker.encode() not in archive.read(n) for n in archive.namelist())
+    assert proof['admission_config_present'] and not proof['deploy_ready']
+
+
+def test_other_platform_endpoint_is_rejected_even_with_rehashed_reference(tmp_path, monkeypatch):
+    import time
+    from types import SimpleNamespace
+    raw, _, settings = values(tmp_path)
+    approved = {'config':raw,'manifest_digest':settings['manifest_digest'],
+        'definition_digest':'a'*64,'runtime_admission_reviewed':True,
+        'expires_at':time.time()+60,'role':settings['runtime_role'],'admission':settings}
+    monkeypatch.setattr('scripts.verify_package_admission.read_platform_approval', lambda *a, **k: approved)
+    role = {'Arn':settings['runtime_role'],'AssumeRolePolicyDocument':{'Statement':[
+        {'Effect':'Allow','Principal':{'Service':'bedrock-agentcore.amazonaws.com'},
+         'Action':'sts:AssumeRole','Condition':{'StringEquals':{'synthetic':'bound'}}}]}}
+    clients = {
+        'cloudformation':SimpleNamespace(describe_stacks=lambda **k:{'Stacks':[{'Outputs':[
+            {'OutputKey':'ApiEndpoint','OutputValue':'https://different.execute-api.us-west-2.amazonaws.com'}]}]},
+            list_stack_resources=lambda **k:{'StackResourceSummaries':[{'LogicalResourceId':'FoundationRole','PhysicalResourceId':'synthetic'}]}),
+        'apigatewayv2':SimpleNamespace(get_routes=lambda **k:{'Items':[{'RouteKey':'POST /internal/foundation/exchange','AuthorizationType':'AWS_IAM'}]}),
+        'iam':SimpleNamespace(get_role=lambda **k:{'Role':role})}
+    target=SimpleNamespace(verify=lambda:None,account='9988'+'77665544',client=clients.__getitem__)
+    with pytest.raises(ValueError,match='PLATFORM_ENDPOINT_BINDING_MISMATCH'):
+        verify_package_admission(raw,approved=approved,target=target)
+    # Equal protected metadata yields only data references, not an invocation grant.
+    approved['admission']=admission_config(raw,settings['endpoint'].replace('synthetic.','different.'),settings['runtime_role'])
+    assert verify_package_admission(raw,approved=approved,target=target)==approved['admission']
+    copied=deepcopy(approved);copied['definition_digest']='b'*64
+    with pytest.raises(ValueError,match='PROTECTED_APPROVAL_READBACK'):
+        verify_package_admission(raw,approved=copied,target=target)
+
+
+def test_runtime_missing_invalid_cross_manifest_config_never_creates_sdk_session(tmp_path, monkeypatch):
+    import boto3
+    from runtime.custom_foundation import main
+    raw, _, settings = values(tmp_path)
+    monkeypatch.setattr(main, '__file__', str(tmp_path/'main.py'))
+    calls=[]
+    monkeypatch.setattr(boto3, 'Session', lambda **kw: calls.append(kw))
+    assert main.invoke({'run_ref':'synthetic-run'})['code']=='AUTHENTICATED_BACKEND_REDEMPTION_NOT_CONNECTED'
+    (tmp_path/'harness.json').write_text(json.dumps(raw))
+    for settings in [{}, {**settings,'manifest_digest':'f'*64}, {**settings,'endpoint':'https://evil.invalid'}]:
+        (tmp_path/'admission.json').write_text(json.dumps(settings))
+        assert main.invoke({'run_ref':'synthetic-run'})['code']=='AUTHENTICATED_BACKEND_ADMISSION_FAILED'
+    assert calls==[]

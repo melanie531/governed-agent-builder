@@ -1,3 +1,27 @@
+# Current continuation: Milestone 15 supersedes older status below
+
+Implementation `63e6ce366494435864f8f9ab4765df53ece2b2bf` is pushed. Narrow IAM
+update is DEPLOYED / VERIFIED_POLICY_ONLY, NOT workload acceptance. See
+[NIGHTLY-STATUS milestone 15](NIGHTLY-STATUS.md) for exact guard and receipts.
+Old `runtime-final.zip` hash `3821b5ca17b76b1801c225723b45f14b691dacb55bd4c6c572a5e404b1a2ae82`
+is BASE ONLY: no admission.json, synthetic manifest, NOT deploy-ready.
+New `artifacts/foundation-admission/runtime-base-m15.zip` hash
+`0fcae9df5f38cb3aa4b57dfd9ca6320e6fbe892b97f7a919e20a3524b6951e82`
+is also explicitly BASE ONLY. Fresh static checks are separate from old peer QA.
+
+Live packaging now rejects missing/invalid/cross-manifest or unverified admission;
+exact protected definition approval selector is required. No verified selector
+or non-placeholder approved manifest was identified, so **no final live ZIP or
+expected final job hash was fabricated**. Next: establish the real platform-owned
+manifest/role/endpoint/approval binding, build live ZIP, pin its new SHA in the
+protected artifact approval, then validate exact bytes on Linux ARM64. The
+isolated no-model Runtime probe still needs its previously authorized two-phase
+binding and actual execution; full engine ZIP is not that deterministic probe.
+Docker denial remains respected. No full journey ready claim.
+
+---
+Historical handoff follows; statements that IAM is not deployed are superseded.
+
 # Admission handoff, 2026-09-12
 
 Code: `28c53db6e545f82931fe3fb3b5fe577da6390358` on private

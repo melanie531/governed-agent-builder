@@ -646,3 +646,124 @@ Performance no Runtime timing evidence; Cost no workload execution and unknown
 control-plane charges; Operations published source, test and ChangeSet receipts;
 Sustainability no new running/always-on workload. Full harness/evidence-reader,
 evaluation, custom-input digest acceptance and Browser remain NOT PROVEN.
+
+
+## Milestone 15: admission package contract fixed; narrow IAM deployed
+
+2026-09-12, bounded continuation. Starting tree clean at `ea5a504872c4de18cc856df378ad611921d15e4f`,
+a documentation-only descendant of requested `32a12d4`. Implementation and IAM
+execution source: `63e6ce366494435864f8f9ab4765df53ece2b2bf`, pushed to private
+`feat/live-capabilities`. No nested agents/CC, PR, merge, or force push.
+
+### Artifact correction, not a readiness claim
+
+**The old `runtime-final.zip` is BASE ONLY, NOT deployment-ready.** Its hash is
+`3821b5ca17b76b1801c225723b45f14b691dacb55bd4c6c572a5e404b1a2ae82`.
+It lacks `runtime/custom_foundation/admission.json`. The parent-reported peer
+CRC/size/version/eight AArch64 extensions/15 owned Python syntax checks apply
+ONLY to those old bytes. Actual Linux execution remains UNVERIFIED because
+Docker permission was denied; no permission change or workaround attempted.
+
+The entry previously required endpoint + manifest digest only. Identity derives
+from the Runtime execution role's SigV4 request, API Gateway AWS_IAM verification,
+and the backend protected run ledger. Headers/payload/context do not supply
+identity. Runtime ARN/version/session are bound by the backend AFTER Runtime
+creation, not fabricated into the ZIP. The new immutable admission schema pins
+endpoint, manifest_digest, foundation_digest, runtime_role, and binding_ref
+(a digest of the other four references). These are references, NOT credentials
+or authority. Entry validation additionally checks redeemed workload role and
+foundation digest before engine/network work.
+
+`package()` now defaults to live and fails before writing output if admission
+is missing, invalid, cross-manifest, unverified against platform approval, or
+locked dependencies are absent. Base requires explicit `mode='base'` / CLI
+`--mode base`, rejects admission, and embeds `package-status.json` with
+`deploy_ready:false`. No permissive fallback. Live CLI requires an exact
+`--definition-digest` selector and reads one protected platform settings record
+from the existing Studio State table via GetItem, not a user-provided approval
+file, credentials, session, or SSM. It compares protected approval, exact existing
+AWS_IAM exchange endpoint, AgentCore-only role, manifest and reference digest.
+That protected read path was unit-tested, NOT invoked against user data here.
+Job ArtifactReadback keeps the expected ZIP SHA/version and compares embedded
+config/admission to protected approval, now additionally validating binding/role
+and rejecting duplicate ZIP entries. No cloud job or approval was created.
+
+**Final LIVE artifact NOT BUILT.** The only available manifest has example
+Gateway endpoints and placeholder target/dataset/rubric digests, not a verified
+approved agent definition. There is no identified exact protected approval
+selector in this handoff. Do not manufacture one, relabel fixtures, or merely
+add the real exchange URL. Final package SHA and approved job reference remain
+unset until those bindings are actually verified. This is unfinished package
+acceptance, not a completed full journey.
+
+New reproducible source/dependency **BASE artifact** (private ignored local):
+- `artifacts/foundation-admission/runtime-base-m15.zip`
+- SHA-256 `0fcae9df5f38cb3aa4b57dfd9ca6320e6fbe892b97f7a919e20a3524b6951e82`
+- source `e4a8b11581124d34b4f041703f0c5f4585c3c5b959cbcadc34f84d6bce249446`
+- manifest `28d04ef7bebd98d47b8cedb66cde1c298aad82bc5fabbeb7d4f8e619183fe4ce`
+- receipt `artifacts/foundation-admission/package-proof-base-m15.json`
+- fresh CRC + owned-Python syntax PASS; Linux startup NOT EXECUTED.
+
+### Narrow IAM proof
+
+The normal CloudFormation DescribeChangeSet lists FoundationRole.Policies and
+the dynamic ToolPolicy.Definition dependency on FoundationRole.Arn. The detailed
+IncludePropertyValues view listed only the direct role change; it must NOT be
+used to pretend the dependency disappeared. Guard continues checking normal view.
+
+The reviewed guard permits exactly the second non-replacing Modify only when:
+full ToolPolicy resource is identical, the entire desired template differs only
+in FoundationRole.Policies, the role ARN is unchanged, and resolved Cedar bytes
+match live GetPolicy exactly. Every dependency detail must be Properties /
+Definition / RequiresRecreation Never / Dynamic / ResourceAttribute /
+FoundationRole.Arn. Remove, replacement, direct policy edits, other dependencies,
+principal/action/resource changes and unrelated template changes fail closed.
+This is the explicitly authorized project review mechanism revision, not a cloud
+policy bypass or an inference permission expansion.
+
+Existing ChangeSet `foundation-role-admission-1789144065` executed ONCE.
+Execute request `5457acbf-a794-494a-b1d4-072d4609a7dd`.
+Foundation stack UPDATE_COMPLETE; receipt **VERIFIED_POLICY_ONLY**:
+- exact existing exchange POST execute-api:Invoke Allow readback MATCH;
+- lambda:InvokeFunction wildcard explicit DENY readback MATCH;
+- AgentCore-only trust and role ARN unchanged;
+- live ToolPolicy resolved Cedar unchanged;
+- IAM simulations: exact exchange `allowed`, direct Lambda `explicitDeny`.
+These are simulations/readbacks, NOT successful workload admission or actual
+workload denial. No CreateInference allow, Runtime creation, or Runtime invoke.
+Target checks before/after privately matched STS to existing Studio CFN,
+CloudFront and Cognito with approved profile/region. No credentials or account
+literals committed. Proof `artifacts/foundation-admission/role-update-proof.json`;
+private detailed inspection `dependency-inspection-private.json` (contains
+resource identifiers, never publish). Logs `/tmp/gab-role-{review,execute}-m15.log`.
+
+Tests: 71 targeted passed before deployment; full suite ONCE 556 passed in 31.76s,
+three existing warnings. Subsequent protected-store lookup hardening and added
+endpoint/export/runtime-entry cases: 74 targeted passed in 7.71s. Full suite predates that final
+small hardening; do not imply a second full rerun. Initial entry edit syntax
+error was caught at collection and fixed before any successful test/deployment.
+
+Actual operations: one existing CFN ChangeSet execution, no new ChangeSet,
+metadata reads (STS/CFN/IAM/AgentCore GetPolicy/Studio identity resources), two IAM
+simulations. Runtime create/session/invoke=0; model/tool/Browser/evaluation calls=0.
+No password/SSM reads, DDB writes, S3 uploads, Cognito/user changes, network
+relaxation or fixture UI updates. Infrastructure/read charges unknown, NOT $0.
+No background worker/timer scheduled. Local package generation is not workload
+execution. Full Runtime/Gateway/evidence/evaluator/Browser journey NOT_READY.
+
+Well-Architected: Security strict admission references + verified least-privilege
+IAM delta, execution still gated; Reliability fail-closed and persisted write
+outcome; Performance unmeasured workload; Cost zero workload calls, actual charges
+unknown; Operations source/test/hash/cloud readback receipts; Sustainability no
+new running workload. Memory recall timed out; evidence is repository + readback.
+
+Post-deployment independent readback `post-readback-m15.json`: all foundation
+physical IDs and outputs unchanged; template exact desired; previous policies
+including inference deny unchanged; Evidence bucket all four BPA settings true.
+Existing Studio GET `/` 200, anonymous `/api/agents` 401. Ten SDK metadata reads
+and two HTTP requests in this final readback; no mutation. All stack stability
+and HTTP results are actual observations, not fixtures. Total earlier metadata
+call count was not instrumented; do not infer it from this final-readback count.
+
+New base package repeat build SHA matches exactly. Runtime-entry missing, invalid
+and cross-manifest configs reject before creating an SDK session (offline test).
