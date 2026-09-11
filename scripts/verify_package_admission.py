@@ -90,3 +90,22 @@ def read_platform_approval(definition_digest, *, target=None):
             or receipt != setting('foundation-review:'+receipt['request_id'])):
         raise ValueError('CURRENT_REVIEWED_APPROVAL_REQUIRED')
     return approved
+
+
+def consume_policy_approval(db, owner, definition, approved):
+    """Protected repository consumer for queue packaging, inside store.tx/CAS.
+
+    CLI M0 readback remains a separate legacy route, never fabricates admin fields.
+    """
+    from backend import foundation_runs as runs
+    from backend.self_service_admission import check_current
+    check_current(db, owner, definition, approved)
+    if (runs.get(db, 'foundation-approved:' + definition['digest']) != approved
+            or approved['manifest_digest'] != digest(approved['config'])
+            or approved['definition_digest'] != definition['digest']):
+        raise ValueError('PROTECTED_APPROVAL_READBACK_REQUIRED')
+    source = runs.get(db, 'foundation-source:' + definition['foundation_id'])
+    settings = admission_config(approved['config'], source['platform']['endpoint'], source['platform']['role'])
+    if approved['admission'] != settings or approved['role'] != source['platform']['role']:
+        raise ValueError('PLATFORM_ENDPOINT_BINDING_MISMATCH')
+    return settings

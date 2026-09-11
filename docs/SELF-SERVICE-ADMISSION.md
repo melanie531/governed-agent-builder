@@ -44,9 +44,10 @@ Each receipt records server-authenticated creator/workspace, agent/version/defin
 
 ## Remaining integration gaps, deliberately fail-closed
 
-- `scripts/verify_package_admission.py:read_platform_approval` still requires an admin-shaped per-definition receipt and `foundation-review` readback. Those producer scripts were outside this task's ownership. They must be updated to consume protected policy-admission receipts/current authority without fabricating admin provenance. Until that is done, the actual live package producer cannot complete the new product path.
-- The existing finalization HTTP API remains hosted-admin-only. Its backend verifier now recognizes policy receipts while retaining all static artifact/readback/Linux checks, but workload-authenticated mechanical finalization is not yet wired. Routine UI must not expose an Admin Finalize click as a workaround.
-- `WAIT_ARTIFACT` is a bounded async consumer, not a newly implemented package/build service. Missing producer delivery remains waiting until deadline, then BLOCKED. The cloud SQS wiring and producer IAM must be reviewed separately. No new authority, crypto system or gateway was introduced.
+- The product producer is now `serverless.worker_handler -> FoundationJobs.step -> FoundationProducer.produce -> consume_policy_approval -> compose -> conditional S3 upload/readback -> _finalize_artifact`. The CLI `read_platform_approval` and hosted-admin finalizer remain separate manual/M0 tools; ordinary business deployment does not call them.
+- `WAIT_ARTIFACT` has an actual config-only producer. It consumes the current protected owner/session/job authority, approved source and policy receipt, and an immutable approved prebuilt Foundation bundle. It never installs dependencies or needs `uv` in Lambda. See the current producer section in NIGHTLY-STATUS for exact protected settings and coverage.
+- Composition evidence permits staging the final config package for target execution, not LIVE_PASS. It preserves all base executable/dependency bytes, validates the final config/admission, and pins package/version/manifest/base evidence hashes. `foundation-linux` final-target execution evidence remains required at the final evidence gate. No independent Linux PASS is synthesized.
+- Production switches remain disabled by default. Optional worker IAM/source configuration is implemented; actual reviewed base bundle, protected deployment settings, role binding and cloud wiring still require deployment and independent verification.
 - The existing live executor still enforces one model call and one dataset case, dedicated-role constraints, and its reviewed budget envelope. Admission can authorize a larger policy-bounded dataset, but that does not claim the executor can run the full dataset today. This patch does not delete those execution limits to manufacture success.
 - The existing live catalog/execution integration switch still fails closed when not configured. No UI was changed; the current UI's fixture/live selection and production one-click wiring remain unverified.
 - Data-source labels are schema-restricted, not semantic DLP proof. Restricted data is not enabled by this patch. A semantic risk evaluator/approved data connector must be wired before claiming support beyond the existing bounded synthetic-source contract.
@@ -56,7 +57,7 @@ Each receipt records server-authenticated creator/workspace, agent/version/defin
 
 | Pillar | Status |
 |---|---|
-| Security | Current server identity/grants, readonly template policy, distinct provenance, exact hashes, CAS, expiry and artifact guards retained. Producer workload identity wiring remains incomplete. |
+| Security | Current server identity/grants, readonly template policy, distinct provenance, exact hashes, CAS, expiry and artifact guards retained. Producer compares STS worker identity to the exact protected deployment role; live IAM verification pending. |
 | Reliability | Persistent WAIT_ARTIFACT continuation, deadline, replay/version fencing; missing artifacts fail closed. No READY shortcut. |
 | Performance | Admission is local policy evaluation; no new per-revision human/cloud round trip. Producer latency remains unverified. |
 | Cost | Existing all-service reservation and persistent call caps retained; request/queue limits remain. No cloud resources created. |

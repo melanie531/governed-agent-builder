@@ -15,11 +15,12 @@ from . import foundation_runs as runs
 
 
 class FoundationJobs:
-    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None):
+    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None, producer=None):
         self.deployment, self.runtime_client, self.target = deployment, runtime_client, target
         self.enabled, self.evidence_reader = enabled, evidence_reader
         self.artifact_reader = artifact_reader
         self.policy_evaluator = policy_evaluator
+        self.producer = producer
 
     def approve_request(self, db, definition, persona):
         if not self.enabled:
@@ -94,7 +95,7 @@ class FoundationJobs:
         return {'name': name, 'runtime_arn': runtime['runtime_arn'],
                 'live_version': endpoint['liveVersion'], 'target_version': endpoint['targetVersion']}
 
-    def enqueue(self, db, job_id, definition, persona, deadline):
+    def enqueue(self, db, job_id, definition, persona, deadline, *, renew_authority=True):
         existing = runs.get(db, 'foundation-run:' + job_id)
         if existing:
             if (existing['definition_digest'], existing['owner'], existing['workspace']) != (
@@ -104,7 +105,12 @@ class FoundationJobs:
         from .self_service_admission import admit
         if not self.enabled:
             raise HTTPException(503, 'LIVE_DISABLED: no fixture fallback')
-        approved = admit(db, persona, definition['agent_id'], definition['version'], evaluator=self.policy_evaluator)
+        if renew_authority:
+            approved = admit(db, persona, definition['agent_id'], definition['version'], evaluator=self.policy_evaluator)
+        else:
+            approved = runs.get(db, 'foundation-approved:' + definition['digest'])
+            from .self_service_admission import check_current
+            check_current(db, persona, definition, approved)
         if not runs.get(db, 'foundation-artifact:' + definition['digest']):
             runs.put(db, 'foundation-pending:' + job_id, {
                 'definition': definition, 'owner': persona['id'], 'agent': definition['agent_id'],
@@ -119,6 +125,14 @@ class FoundationJobs:
         runs.put(db, 'foundation-run:' + job_id, row)
 
     def step(self, store, job_id):
+        if self.producer is not None:
+            with store.tx() as db:
+                job = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
+                produce = job and job['stage'] == 'WAIT_ARTIFACT'
+            if produce:
+                if not self.enabled:
+                    raise Denied('LIVE_DISABLED')
+                self.producer.produce(store, job_id)
         # Commit the dispatch claim separately from network I/O. A crash cannot
         # roll back the claim and accidentally repeat a paid Runtime invocation.
         with store.tx() as db:
@@ -145,7 +159,7 @@ class FoundationJobs:
                 check_current(db, persona, pending['definition'], approved)
                 if not runs.get(db, 'foundation-artifact:' + pending['definition']['digest']):
                     return  # Mechanical producer not yet delivered; no ready bypass.
-                self.enqueue(db, job_id, pending['definition'], persona, pending['deadline'])
+                self.enqueue(db, job_id, pending['definition'], persona, pending['deadline'], renew_authority=False)
                 self.transition(db, job_id, 'VALIDATING')
                 return
             if job['stage'] in ('LIVE_PASS', 'BLOCKED'):
@@ -245,7 +259,10 @@ class FoundationJobs:
                             'policy_version': approved['policy_version'], 'epoch': row['epoch'],
                             'dataset_digest': approved['config']['evaluation']['dataset']['digest'],
                             'rubric_digest': approved['config']['evaluation']['rubric']['digest']}
-                passed = (row['state'] == 'FINISHED' and row['settled'] is True
+                from .foundation_approval import linux_validation
+                artifact_binding = runs.get(db, 'foundation-artifact:' + row['definition_digest'])
+                target_executed = linux_validation(db, artifact_binding)['status'] == 'PASS'
+                passed = (target_executed and row['state'] == 'FINISHED' and row['settled'] is True
                           and result.get('execution_status') == 'EXECUTION_SUCCEEDED'
                           and all(evidence.get(k) == v for k, v in expected.items())
                           and evidence.get('trace_readback') is True
@@ -274,7 +291,7 @@ class FoundationJobs:
                             'detail': json.dumps({'mode': 'live', 'stage': stage}), 'created': time.time()})
 
 
-def configured_jobs(store):
+def configured_jobs(store, *, worker=False):
     """Explicit operator switch; no automatic discovery or fixture fallback."""
     import os
     if os.getenv('FOUNDATION_LIVE_ENABLED', '0') != '1':
@@ -292,9 +309,15 @@ def configured_jobs(store):
     sdk = Config(retries={'total_max_attempts': 1}, connect_timeout=5, read_timeout=65)
     policy = DeploymentPolicy(settings['region'], settings['account'],
                               frozenset(settings['roles']), settings['bucket'], allow_mutations=True)
+    producer = None
+    if worker and os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1':
+        from .foundation_producer import FoundationProducer
+        sts = session.client('sts', config=sdk)
+        producer = FoundationProducer(session.client('s3', config=sdk),
+            lambda: sts.get_caller_identity()['Arn'])
     return FoundationJobs(FoundationDeployment(session.client('bedrock-agentcore-control', config=sdk),
                           policy, settings['network']), session.client('bedrock-agentcore', config=sdk),
-                          StudioTarget(session), enabled=True,
+                          StudioTarget(session), enabled=True, producer=producer,
                           artifact_reader=ArtifactReadback(session.client('s3', config=sdk), settings['bucket']))
 
 

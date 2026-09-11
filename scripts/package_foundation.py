@@ -158,3 +158,21 @@ if __name__ == '__main__':
             subprocess.run(dependency_command(deps), check=True)
         print(json.dumps(package(saved, args.output, dependencies=deps if args.linux_dependencies else None,
                                  mode=args.mode, admission=admission, approved=approved)))
+
+
+def prebuilt_inventory(path):
+    """Trusted build output for platform approval; never mints Linux PASS.
+
+    Build once with package(..., mode='base', dependencies=<locked wheel dir>),
+    execute that exact base on the target, then review this inventory alongside
+    independently collected target evidence. Business worker never runs uv.
+    """
+    from backend.foundation_producer import bundle_files
+    blob = Path(path).read_bytes()
+    files = bundle_files(blob)
+    if any(files.get(n) != (ROOT / n).read_bytes() for n in SOURCES):
+        raise ValueError('CURRENT_EXECUTABLE_SOURCE_REQUIRED')
+    return {'package_digest': hashlib.sha256(blob).hexdigest(),
+            'artifact_source_digest': source_digest(), 'target': 'linux-arm64-python3.13',
+            'dependency_lock_digest': hashlib.sha256((ROOT / 'runtime/custom_foundation/requirements.lock').read_bytes()).hexdigest(),
+            'files_digest': digest({n: hashlib.sha256(b).hexdigest() for n, b in files.items()})}

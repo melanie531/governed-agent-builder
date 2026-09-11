@@ -25,7 +25,7 @@ def artifacts_template():
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Private retained serverless release artifacts only", "Resources": {"Releases": bucket(), "ReleaseTLS": tls_policy("Releases")}, "Outputs": {"Bucket": {"Value": ref("Releases")}}}
 
 
-def template(*, foundation_deployment=None):
+def template(*, foundation_deployment=None, foundation_producer=None):
     resources = {"Web": bucket(), "Exports": bucket(), "ExportTLS": tls_policy("Exports"),
         "State": {"Type": "AWS::DynamoDB::Table", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain", "Properties": {
             "BillingMode": "PAY_PER_REQUEST", "AttributeDefinitions": [{"AttributeName": k, "AttributeType": "S"} for k in ("pk", "sk")],
@@ -83,7 +83,7 @@ def template(*, foundation_deployment=None):
                 "Business": ["_revision", "components", "foundations", "catalog_history", "grants", "agents", "versions", "jobs", "events", "requests", "audit", "settings", "hosted_sessions", "principals", "job_authority"],
                 "Auth": ["_revision", "grants", "oidc_flows", "hosted_sessions", "principals"],
                 "Authorizer": ["_revision", "grants", "hosted_sessions", "principals"],
-                "Worker": ["_revision", "components", "foundations", "grants", "agents", "versions", "jobs", "events", "settings", "hosted_sessions", "principals", "job_authority"],
+                "Worker": ["_revision", "components", "foundations", "grants", "agents", "versions", "jobs", "events", "settings", "audit", "hosted_sessions", "principals", "job_authority"],
             }[name]
             for permission in (read, write):
                 scoped = copy.deepcopy(permission)
@@ -93,6 +93,8 @@ def template(*, foundation_deployment=None):
         if name == "Business": statements.append({"Effect": "Allow", "Action": ["s3:PutObject"], "Resource": sub("${Exports.Arn}/exports/*")})
         if name == "Worker" and foundation_deployment is not None:
             statements.extend(foundation_worker_statements(**foundation_deployment))
+        if name == "Worker" and foundation_producer is not None:
+            statements.extend(foundation_producer_statements(**foundation_producer))
         if name == "Worker": statements.append({"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:SendMessage"], "Resource": attr("Jobs")})
         if name == "Dispatcher": statements.extend([
             {"Effect": "Allow", "Action": ["dynamodb:DescribeStream", "dynamodb:GetRecords", "dynamodb:GetShardIterator"], "Resource": attr("State", "StreamArn")},
@@ -135,6 +137,11 @@ def template(*, foundation_deployment=None):
         "Principal": "apigateway.amazonaws.com", "SourceAccount": ref("AWS::AccountId"),
         "SourceArn": sub("arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/$default/POST/internal/foundation/exchange")}}
     resources["StreamMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("State", "StreamArn"), "FunctionName": ref("Dispatcher"), "StartingPosition": "TRIM_HORIZON", "BatchSize": 10, "MaximumBatchingWindowInSeconds": 1, "BisectBatchOnFunctionError": True, "FunctionResponseTypes": ["ReportBatchItemFailures"], "MaximumRetryAttempts": 10, "MaximumRecordAgeInSeconds": 86400, "DestinationConfig": {"OnFailure": {"Destination": attr("DispatchFailures")}}, "FilterCriteria": {"Filters": [{"Pattern": '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"pk":{"S":["jobs"]}}}}'}]}}}
+    # Opt-in source configuration only; neither live nor producer is enabled by
+    # default. Runtime IAM remains independently scoped by foundation_deployment.
+    if foundation_producer is not None:
+        resources["Worker"]["Properties"]["Environment"]["Variables"]["FOUNDATION_PRODUCER_ENABLED"] = "1"
+        resources["Worker"]["Properties"]["MemorySize"] = 1024
     resources["WorkerMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("Jobs"), "FunctionName": ref("Worker"), "BatchSize": 1, "FunctionResponseTypes": ["ReportBatchItemFailures"], "ScalingConfig": {"MaximumConcurrency": 2}}}
     resources["SessionAuthorizer"] = {"Type": "AWS::ApiGatewayV2::Authorizer", "Properties": {"ApiId": ref("Api"), "Name": "server-session", "AuthorizerType": "REQUEST", "AuthorizerPayloadFormatVersion": "2.0", "EnableSimpleResponses": True, "AuthorizerResultTtlInSeconds": 0, "IdentitySource": ["$request.header.Cookie"], "AuthorizerUri": sub("arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Authorizer.Arn}/invocations")}}
     for name in ("Business", "Auth"):
@@ -179,3 +186,26 @@ def foundation_worker_statements(*, role, artifact, runtime_name, subnets, group
         {"Effect": "Allow", "Action": ["iam:PassRole"], "Resource": role,
          "Condition": {"StringEquals": {"iam:PassedToService": "bedrock-agentcore.amazonaws.com"}}},
         {"Effect": "Allow", "Action": ["s3:GetObjectVersion"], "Resource": artifact}]
+
+
+def foundation_producer_statements(*, bucket, base_key, base_version, producer_role):
+    """Operator-only explicit storage/role binding, never business request fields.
+
+    The deployed WorkerRole ARN must equal producer_role in protected settings.
+    IAM permits only the approved base version and content-addressed releases.
+    """
+    import re
+    if (not re.fullmatch(r'[a-z0-9][a-z0-9.-]{2,62}', bucket)
+            or not re.fullmatch(r'approved/[A-Za-z0-9/_-]+\.zip', base_key)
+            or not base_version or base_version == 'null'
+            or not re.fullmatch(r'arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@-]+', producer_role)):
+        raise ValueError('EXACT_PRODUCER_STORAGE_ROLE_REQUIRED')
+    arn = 'arn:aws:s3:::' + bucket
+    return [
+        {'Effect': 'Allow', 'Action': ['s3:GetBucketVersioning', 's3:GetBucketPublicAccessBlock'], 'Resource': arn},
+        {'Effect': 'Allow', 'Action': ['s3:GetObjectVersion'], 'Resource': arn + '/' + base_key,
+         'Condition': {'StringEquals': {'s3:VersionId': base_version}}},
+        {'Effect': 'Allow', 'Action': ['s3:GetObject', 's3:GetObjectVersion'], 'Resource': arn + '/releases/*/foundation.zip'},
+        {'Effect': 'Allow', 'Action': ['s3:PutObject'], 'Resource': arn + '/releases/*/foundation.zip',
+         'Condition': {'StringEquals': {'s3:x-amz-server-side-encryption': 'AES256'},
+                       'Null': {'s3:if-none-match': 'false'}}}]

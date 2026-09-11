@@ -199,7 +199,8 @@ def finalized_artifact(db, approved):
         raise HTTPException(503, 'CURRENT_REGISTERED_ARTIFACT_SOURCE_REQUIRED')
     if binding.get('deployment_digest') != digest(runs.get(db, 'foundation-deployment')):
         raise HTTPException(503, 'CURRENT_ARTIFACT_DEPLOYMENT_REQUIRED')
-    if linux_validation(db, binding)['status'] != 'PASS':
+    from .foundation_producer import composition_valid
+    if linux_validation(db, binding)['status'] != 'PASS' and not composition_valid(db, binding):
         raise HTTPException(503, 'LINUX_EXECUTION_NOT_READY')
     deployment = runs.get(db, 'foundation-deployment') or {}
     return {**approved, **{k: deployment[k] for k in ('network', 'reservation_usd', 'cost_envelope')
@@ -261,6 +262,11 @@ def finalize_artifact(db, actor, data, owner, platform, *, verifier=verify_final
     Network effects are read-only, so a conflict/retry cannot duplicate uploads.
     """
     admin(actor)
+    return _finalize_artifact(db, actor, data, owner, platform, verifier=verifier)
+
+
+def _finalize_artifact(db, actor, data, owner, platform, *, verifier):
+    """Internal binding primitive; only admin wrapper or authenticated queue producer."""
     from .app import get_version, validate_definition, resource, digest as definition_hash, audit
     from scripts.package_foundation import source_digest
     definition = get_version(db, data.agent_id, data.version)

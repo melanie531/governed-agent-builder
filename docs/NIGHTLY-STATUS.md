@@ -935,3 +935,93 @@ Final verification (unchanged source after these runs):
 - `git diff --check` PASS. Frontend untouched; no fresh hosted UI acceptance.
 - Review/publication anchor: the commit containing this Milestone 17 section;
   exact SHA is reported in the delivery message (no self-referential SHA in file).
+
+## Current increment: policy-admission artifact producer (2026-09-12)
+
+This section supersedes earlier statements that routine domain packaging/finalizing
+needs a human admin or an installer in the HTTP Lambda. **Implemented locally,
+not deployed.** No frontend, source Runtime, endpoint qualifier or native Harness
+redesign. No AWS write/paid call, credentials, passwords or SSM reads.
+
+### Actual caller chain
+
+Business save + Deploy -> `FoundationJobs.enqueue` -> policy admission -> persisted
+`WAIT_ARTIFACT` -> existing SQS `worker_handler` -> `FoundationJobs.step` ->
+`FoundationProducer.produce` -> `pending_authority` / `consume_policy_approval` ->
+`validate_base` / deterministic `compose` -> conditional content-addressed S3
+PutObject -> exact VersionId/hash/byte readback -> internal `_finalize_artifact` ->
+immutable composition binding -> VALIDATING -> existing SDK Runtime create queue.
+The worker finalizer is an internal operation behind exact STS assumed-role
+comparison, not an admin UI endpoint. Only job ID is accepted; storage, role,
+endpoint, source, definition and owner all come from protected server state.
+Manual/M0 and explicit human-exception provenance remain separate.
+
+Admission checks run before packaging and upload, after readback and in finalizing
+CAS. Expired/revoked owner membership, session, grants, source, policy or current
+version cannot acquire a runtime binding. Worker continuation no longer calls
+`admit` to renew owner authority. Failed final CAS can leave an unreferenced object;
+it cannot release WAIT_ARTIFACT. Conditional PutObject prevents duplicate versions
+on retry; existing bytes/version must read back identically. Retry uses the same
+manifest-derived finalization request and immutable binding.
+
+### One-time build and exact coverage
+
+Use existing trusted `package(..., mode='base', dependencies=<hash-locked wheels>)`
+build outside Lambda, then `prebuilt_inventory(path)` to inventory the exact ZIP.
+The inventory helper never claims Linux execution. Platform approves the actual
+Linux ARM64 Python 3.13 base and independently collected startup evidence once.
+The worker requires protected `foundation-bundle:<foundation_id>` containing
+`provenance=platform-foundation-bundle`, approver, bucket/key/immutable version,
+package/source/lock/file-inventory hashes, source-record digest and target. It also
+requires `foundation-base-linux:<base package hash>` with exact package/version/
+source/lock/target bindings, actual execution, entrypoint success, validator identity
+and evidence digest. A PASS boolean alone fails. Neither record is supplied by the
+business API. Missing actual baseline approval is a genuine platform dependency,
+not something this source task invents.
+
+Per-click ZIP composition preserves every base byte except harness.json,
+admission.json and package-status.json. Source files also compare to current
+shipped executable source. Maximum compressed/uncompressed payload is 64 MiB;
+unsafe paths, symlinks and duplicate entries fail. No downloads/install/rebuild per
+business prompt. Composition receipt coverage is explicitly
+`UNCHANGED_CODE_DEPS_AND_VALIDATED_CONFIG`; final target execution is UNVERIFIED.
+This permits Runtime staging for actual execution, but **LIVE_PASS still requires
+exact final `foundation-linux` evidence**, in addition to existing trace/eval gates.
+Synthetic startup evidence in tests is not live evidence. Actual target validation
+and its protected evidence writer remain a live acceptance prerequisite.
+
+### Future deployment configuration, not enabled here
+
+- Protected `foundation-deployment` retains reviewed bucket, roles, VPC and cost
+  envelope; add exact `producer_role` equal to the deployed queue WorkerRole ARN.
+- `infra.serverless.template(foundation_producer={bucket, base_key, base_version,
+  producer_role})` adds bounded base-version read, private/versioned bucket checks,
+  conditional encrypted release writes/readback, worker audit permission and
+  1024 MiB memory. No new CodeBuild/CI service. Worker timeout remains 60 seconds;
+  measure real bundle compression/readback latency before enabling.
+- Optional producer switch attaches only to Worker, not Business HTTP Lambda.
+  `FOUNDATION_LIVE_ENABLED` remains independently disabled by default. Review the
+  existing exact per-runtime deployment/pass-role IAM separately. Runtime source
+  and numeric-version/endpoint-name checks are unchanged.
+- Ship backend + foundation_harness + scripts + runtime source files needed by
+  source hash verification. No claim that deployed Lambda includes uv.
+- Remaining live evidence: reviewed actual base ZIP/evidence and settings, worker
+  role/bucket readback, actual queue execution and latency, exact final Linux
+  execution, governed model/tools, trace delivery and required evaluation readback.
+  No mocks are reported as any of those live results.
+
+Well-Architected: Security exact workload/current-owner/CAS/hash checks; Reliability
+conditional retry + immutable bindings (orphan bytes possible, no authority leak);
+Performance config-only bounded ZIP (real latency pending); Cost no per-click
+installation/new service, existing budget caps; Operations explicit coverage,
+protected receipts and queue continuation; Sustainability reuses one built base.
+
+Verification logs: `/tmp/gab-producer-focused-final.log` (18 focused passed),
+`/tmp/gab-producer-full-final.log` (final full regression result recorded below).
+Frontend untouched; no new frontend build or live UI claim. Independent peer review
+should use the pushed commit SHA from the handoff, not the earlier baseline.
+
+Final source verification: **687 passed, 3 existing warnings, 46.04s** (full suite,
+including all original 669 tests); **18 focused passed, 2 existing warnings, 7.30s**.
+`git diff --check` passed. Initial remote fetch confirmed the supplied clean base
+`6a9c14847b3a316349d251d04a65a776325058eb` was also the remote feature-branch tip.

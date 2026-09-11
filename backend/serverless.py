@@ -25,11 +25,11 @@ def store():
 
 
 @lru_cache
-def application():
+def application(worker=False):
     jobs = None
     if os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1':
         from .foundation_jobs import configured_jobs
-        jobs = configured_jobs(store())
+        jobs = configured_jobs(store(), worker=worker)
     return create_app(repository=store(), worker_enabled=False, foundation_jobs=jobs)
 
 
@@ -104,7 +104,7 @@ def dispatch_handler(event, context):
 
 def worker_handler(event, context):
     failures = []
-    app = application()
+    app = application(worker=True) if os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' else application()
     for record in event.get("Records", []):
         try:
             job_id = json.loads(record["body"])["job_id"]
