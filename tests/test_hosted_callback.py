@@ -22,7 +22,7 @@ def test_pkce_callback_session_and_replay(hosted, monkeypatch, failure):
                  'aud': 'syntheticclient', 'token_use': 'id', 'nonce': flow['nonce'], 'email': 'member@example.test', 'email_verified': True}
     if failure == 'nonce': id_claims['nonce'] = 'wrong'
     if failure == 'subject': id_claims['sub'] = 'wrong'
-    if failure == 'email': id_claims['email_verified'] = False
+    if failure == 'email': id_claims['email'] = ''
     access = token(app, key, token_use='id') if failure == 'access-purpose' else token(app, key)
     identity = jwt.encode(id_claims, key, algorithm='RS256', headers={'kid': 'offline-key'})
     async def exchange(self, url, **kwargs):

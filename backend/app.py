@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import time
@@ -169,8 +170,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         if request.headers.get("host") not in hosts:
             return JSONResponse({"detail": "Unapproved host"}, status_code=400)
         callback_request = hosted and request.url.path == "/auth/callback" and request.method == "GET"
-        if request.headers.get("sec-fetch-site") == "cross-site" and not callback_request:
-            return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
+        verification_request = hosted and request.url.path.startswith("/auth/verification/")
         api_request = request.url.path == "/api" or request.url.path.startswith("/api/")
         if hosted and api_request:
             try:
@@ -181,6 +181,20 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 return JSONResponse({"detail": "Not found"}, status_code=404, headers={"Cache-Control": "no-store"})
             if request.method not in ("GET", "HEAD", "OPTIONS") and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), request.state.csrf):
                 return JSONResponse({"detail": "CSRF token required"}, status_code=403)
+        if verification_request:
+            try:
+                request.state.verification = await asyncio.to_thread(auth.pending, request)
+                if request.method == "GET":
+                    if request.headers.get("sec-fetch-site") != "same-origin" or request.headers.get("x-studio-verification") != "1":
+                        raise HTTPException(403, "Same-origin browser request required")
+                elif (request.headers.get("origin") not in origins
+                      or request.headers.get("sec-fetch-site") not in (None, "same-origin")
+                      or not secrets.compare_digest(request.headers.get("x-csrf-token", ""), request.state.verification["csrf"])):
+                    raise HTTPException(403, "Same-origin request and CSRF token required")
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers={"Cache-Control": "no-store"})
+        if request.headers.get("sec-fetch-site") == "cross-site" and not callback_request and not verification_request:
+            return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
         # Enforce while reading, rather than allocating an unbounded upload first.
         chunks, size = [], 0
         async for chunk in request.stream():
@@ -202,6 +216,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if mutating and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), row["csrf"]):
                 return JSONResponse({"detail": "CSRF token required"}, status_code=403)
         response = await call_next(request)
+        if callback_request and response.status_code >= 400:
+            from .hosted_auth import FLOW_COOKIE, PENDING_COOKIE, SESSION_COOKIE
+            for cookie in (FLOW_COOKIE, PENDING_COOKIE, SESSION_COOKIE):
+                response.delete_cookie(cookie, secure=True, httponly=True, samesite="lax" if cookie == FLOW_COOKIE else "strict")
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -213,12 +231,30 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     if hosted:
         @app.get("/auth/login")
-        def hosted_login():
-            return auth.start()
+        def hosted_login(request: Request):
+            return auth.start(request)
 
         @app.get("/auth/callback")
         async def hosted_callback(request: Request):
             return await auth.callback(request)
+
+        @app.get("/auth/verification/status")
+        def verification_status(request: Request):
+            return auth.verification_status(request.state.verification)
+
+        @app.post("/auth/verification/send")
+        def verification_send(request: Request):
+            return auth.verification_action(request.state.verification)
+
+        @app.post("/auth/verification/verify")
+        async def verification_verify(request: Request):
+            try:
+                body = await request.json()
+            except ValueError:
+                raise HTTPException(400, "Enter the email verification code") from None
+            if not isinstance(body, dict) or set(body) != {"code"} or not isinstance(body["code"], str) or not re.fullmatch(r"[0-9]{6}", body["code"]):
+                raise HTTPException(400, "Enter the six-digit email verification code")
+            return await asyncio.to_thread(auth.verification_action, request.state.verification, body["code"])
 
         @app.post("/api/auth/logout")
         def hosted_logout(request: Request):

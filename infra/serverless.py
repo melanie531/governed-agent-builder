@@ -65,6 +65,11 @@ def template():
             if value == "governed-agent-builder-studio": return "governed-agent-builder-serverless-studio"
         return value
     resources.update(replace(identity))
+    resources["Verification"] = {"Type": "AWS::DynamoDB::Table", "Properties": {
+        "BillingMode": "PAY_PER_REQUEST", "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}], "SSESpecification": {"SSEEnabled": True},
+        "TimeToLiveSpecification": {"AttributeName": "expires", "Enabled": True}}}
+    resources["Client"]["Properties"]["AllowedOAuthScopes"].append("aws.cognito.signin.user.admin")
     resources["Domain"]["Properties"]["Domain"] = {"Fn::Join": ["-", ["gab-serverless", {"Fn::Select": [2, {"Fn::Split": ["/", ref("AWS::StackId")]}]}]]}
     env = {"HOSTED_PREVIEW": "1", "EXECUTION_MODE": "local", "PUBLIC_URL": sub("https://${Distribution.DomainName}"), "STATE_TABLE": ref("State"), "EXPORT_BUCKET": ref("Exports"), "COGNITO_REGION": ref("AWS::Region"), "COGNITO_USER_POOL_ID": ref("Pool"), "COGNITO_CLIENT_ID": ref("Client"), "COGNITO_DOMAIN": sub("https://${Domain}.auth.${AWS::Region}.amazoncognito.com"), "JOB_QUEUE_URL": ref("Jobs")}
     read = {"Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"], "Resource": attr("State")}
@@ -84,6 +89,7 @@ def template():
                 scoped = copy.deepcopy(permission)
                 scoped["Condition"] = {"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": entity_keys}}
                 statements.append(scoped)
+        if name == "Auth": statements.append({"Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"], "Resource": attr("Verification")})
         if name == "Business": statements.append({"Effect": "Allow", "Action": ["s3:PutObject"], "Resource": sub("${Exports.Arn}/exports/*")})
         if name == "Worker": statements.append({"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], "Resource": attr("Jobs")})
         if name == "Dispatcher": statements.extend([
@@ -91,17 +97,17 @@ def template():
             {"Effect": "Allow", "Action": "dynamodb:ListStreams", "Resource": attr("State", "StreamArn")},
             {"Effect": "Allow", "Action": "sqs:SendMessage", "Resource": [attr("Jobs"), attr("DispatchFailures")]}])
         resources[name+"Role"] = {"Type": "AWS::IAM::Role", "Properties": {"AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}, "Policies": [{"PolicyName": "ScopedRuntime", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
-        resources[name] = {"Type": "AWS::Lambda::Function", "Properties": {"Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless."+handler, "Role": attr(name+"Role"), "MemorySize": 512, "Timeout": timeout, "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")}, "Environment": {"Variables": env if name != "Dispatcher" else {"JOB_QUEUE_URL": ref("Jobs")}}, "LoggingConfig": {"LogGroup": ref(logs)}}}
+        resources[name] = {"Type": "AWS::Lambda::Function", "Properties": {"Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless."+handler, "Role": attr(name+"Role"), "MemorySize": 512, "Timeout": timeout, "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")}, "Environment": {"Variables": {**env, **({"VERIFICATION_TABLE": ref("Verification")} if name == "Auth" else {})} if name != "Dispatcher" else {"JOB_QUEUE_URL": ref("Jobs")}}, "LoggingConfig": {"LogGroup": ref(logs)}}}
     resources["StreamMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("State", "StreamArn"), "FunctionName": ref("Dispatcher"), "StartingPosition": "TRIM_HORIZON", "BatchSize": 10, "MaximumBatchingWindowInSeconds": 1, "BisectBatchOnFunctionError": True, "FunctionResponseTypes": ["ReportBatchItemFailures"], "MaximumRetryAttempts": 10, "MaximumRecordAgeInSeconds": 86400, "DestinationConfig": {"OnFailure": {"Destination": attr("DispatchFailures")}}, "FilterCriteria": {"Filters": [{"Pattern": '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"pk":{"S":["jobs"]}}}}'}]}}}
     resources["WorkerMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("Jobs"), "FunctionName": ref("Worker"), "BatchSize": 1, "FunctionResponseTypes": ["ReportBatchItemFailures"], "ScalingConfig": {"MaximumConcurrency": 2}}}
     resources["SessionAuthorizer"] = {"Type": "AWS::ApiGatewayV2::Authorizer", "Properties": {"ApiId": ref("Api"), "Name": "server-session", "AuthorizerType": "REQUEST", "AuthorizerPayloadFormatVersion": "2.0", "EnableSimpleResponses": True, "AuthorizerResultTtlInSeconds": 0, "IdentitySource": ["$request.header.Cookie"], "AuthorizerUri": sub("arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Authorizer.Arn}/invocations")}}
     for name in ("Business", "Auth"):
         resources[name+"Integration"] = {"Type": "AWS::ApiGatewayV2::Integration", "Properties": {"ApiId": ref("Api"), "IntegrationType": "AWS_PROXY", "IntegrationMethod": "POST", "IntegrationUri": attr(name), "PayloadFormatVersion": "2.0", "TimeoutInMillis": 29000}}
-    for index, route in enumerate(("ANY /api", "ANY /api/{proxy+}", "GET /auth/login", "GET /auth/callback", "GET /studio-config.json")):
+    for index, route in enumerate(("ANY /api", "ANY /api/{proxy+}", "GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify")):
         protected = index < 2
         resources["Route"+str(index)] = {"Type": "AWS::ApiGatewayV2::Route", "Properties": {"ApiId": ref("Api"), "RouteKey": route, "AuthorizationType": "CUSTOM" if protected else "NONE", "Target": {"Fn::Join": ["/", ["integrations", ref("BusinessIntegration" if protected else "AuthIntegration")]]}, **({"AuthorizerId": ref("SessionAuthorizer")} if protected else {})}}
     for name in ("Business", "Auth", "Authorizer"):
-        paths = ["authorizers/*"] if name == "Authorizer" else ["*/*/api", "*/*/api/*"] if name == "Business" else ["*/GET/auth/login", "*/GET/auth/callback", "*/GET/studio-config.json"]
+        paths = ["authorizers/*"] if name == "Authorizer" else ["*/*/api", "*/*/api/*"] if name == "Business" else ["*/GET/auth/login", "*/GET/auth/callback", "*/GET/studio-config.json", "*/GET/auth/verification/status", "*/POST/auth/verification/send", "*/POST/auth/verification/verify"]
         for index, path in enumerate(paths):
             resources[name+"Permission"+str(index)] = {"Type": "AWS::Lambda::Permission", "Properties": {"FunctionName": ref(name), "Action": "lambda:InvokeFunction", "Principal": "apigateway.amazonaws.com", "SourceAccount": ref("AWS::AccountId"), "SourceArn": sub("arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/"+path)}}
     resources["ApiLogs"] = {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain", "Properties": {"LogGroupName": "/governed-agent-builder-serverless/http-api", "RetentionInDays": 14}}

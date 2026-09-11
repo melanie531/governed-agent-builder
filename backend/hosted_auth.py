@@ -12,12 +12,18 @@ import secrets
 import time
 from urllib.parse import urlencode, urlparse
 
+import boto3
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
+from functools import cached_property
+
 import httpx
 import jwt
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 
 SESSION_COOKIE = "__Host-gab_session"
+PENDING_COOKIE = "__Host-gab_pending"
 FLOW_COOKIE = "__Host-gab_flow"
 GROUP_POLICY = {
     "studio-research": {"role": "business", "workspace": "research", "workspace_name": "Research studio", "external_allowed": False,
@@ -75,7 +81,7 @@ class HostedAuth:
         except (jwt.PyJWTError, ValueError, TypeError, KeyError):
             raise HTTPException(401, "Invalid or expired authentication") from None
 
-    def resolve(self, claims, name=None):
+    def membership(self, claims):
         groups = claims.get("cognito:groups", [])
         if not isinstance(groups, list) or any(not isinstance(x, str) for x in groups):
             raise HTTPException(403, "No approved Studio membership")
@@ -84,7 +90,10 @@ class HostedAuth:
         # explicit per-workspace authorization, not a browser-selected role.
         if len(approved) != 1:
             raise HTTPException(403, "Exactly one approved Studio membership is required")
-        policy = GROUP_POLICY[approved[0]]
+        return GROUP_POLICY[approved[0]]
+
+    def resolve(self, claims, name=None):
+        policy = self.membership(claims)
         subject = claims["sub"]
         with self.store.tx() as db:
             old = db.select('principals', columns=['body'], where=[('id', '=', subject)]).fetchone()
@@ -100,6 +109,8 @@ class HostedAuth:
         return principal
 
     def authenticate(self, request):
+        if PENDING_COOKIE in request.cookies:
+            raise HTTPException(401, "Verify your email before entering Studio")
         cookie = request.cookies.get(SESSION_COOKIE, "")
         if not cookie:
             raise HTTPException(401, "Sign in to Agent Studio")
@@ -112,7 +123,11 @@ class HostedAuth:
             raise HTTPException(401, "Invalid authentication")
         return self.resolve(claims), row["csrf"]
 
-    def start(self):
+    def start(self, request=None):
+        # Strict cookies may be absent on the cross-site callback. Revoke them
+        # on the same-origin login start, as well as on callback.
+        if request is not None:
+            self.revoke_previous(request)
         state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         with self.store.tx() as db:
@@ -122,12 +137,15 @@ class HostedAuth:
                 raise HTTPException(429, "Sign-in capacity reached; retry shortly")
             db.insert('oidc_flows', {'state_hash': sha(state), 'verifier': verifier, 'nonce': nonce, 'expires': time.time() + 600})
         response = RedirectResponse(self.domain + "/oauth2/authorize?" + urlencode({"response_type": "code", "client_id": self.client_id,
-            "redirect_uri": self.public_url + "/auth/callback", "scope": "openid email profile", "state": state, "nonce": nonce,
+            "redirect_uri": self.public_url + "/auth/callback", "scope": "openid email profile aws.cognito.signin.user.admin", "state": state, "nonce": nonce,
             "code_challenge": challenge, "code_challenge_method": "S256"}), status_code=302)
+        response.delete_cookie(SESSION_COOKIE, secure=True, httponly=True, samesite="strict")
+        response.delete_cookie(PENDING_COOKIE, secure=True, httponly=True, samesite="strict")
         response.set_cookie(FLOW_COOKIE, state, secure=True, httponly=True, samesite="lax", max_age=600)
         return response
 
     async def callback(self, request):
+        self.revoke_previous(request)
         state = request.query_params.get("state", "")
         code = request.query_params.get("code", "")
         if not state or len(state) > 256 or not code or len(code) > 4096 or not secrets.compare_digest(state, request.cookies.get(FLOW_COOKIE, "")):
@@ -146,18 +164,106 @@ class HostedAuth:
                 tokens = response.json()
             access = self.verify(tokens["access_token"], "access")
             identity = self.verify(tokens["id_token"], "id")
-            if identity.get("nonce") != flow["nonce"] or identity["sub"] != access["sub"] or not identity.get("email_verified"):
+            if identity.get("nonce") != flow["nonce"] or identity["sub"] != access["sub"]:
                 raise ValueError("identity binding")
         except (httpx.HTTPError, ValueError, KeyError):
             raise HTTPException(401, "Sign-in could not be verified; start again") from None
-        self.resolve(access, identity.get("email", "Studio member"))
-        cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        with self.store.tx() as db:
-            db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
-            db.insert('hosted_sessions', {'id_hash': sha(cookie), 'subject': access['sub'], 'access_token': tokens['access_token'], 'csrf': csrf, 'expires': min(access['exp'], time.time() + 3600)})
+        email = identity.get("email")
+        if not isinstance(email, str) or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or len(email) > 254:
+            raise HTTPException(401, "Invalid authentication")
+        self.membership(access)
         result = RedirectResponse(self.public_url + "/", status_code=303)
         result.delete_cookie(FLOW_COOKIE, secure=True, httponly=True, samesite="lax")
+        result.delete_cookie(PENDING_COOKIE, secure=True, httponly=True, samesite="strict")
+        if identity.get("email_verified") is True:
+            self.mint(result, access, tokens["access_token"], email)
+        else:
+            if "aws.cognito.signin.user.admin" not in access.get("scope", "").split():
+                raise HTTPException(401, "Restart sign-in to verify email")
+            cookie = secrets.token_urlsafe(32)
+            expires = int(min(access["exp"], identity["exp"], time.time() + 600))
+            self.verifications.put({"id": sha(cookie), "subject": access["sub"], "issuer": self.issuer,
+                "client": self.client_id, "email": email, "access_token": tokens["access_token"],
+                "csrf": secrets.token_urlsafe(32), "expires": expires, "sends": 0, "attempts": 0, "next_send": 0})
+            result.delete_cookie(SESSION_COOKIE, secure=True, httponly=True, samesite="strict")
+            result.set_cookie(PENDING_COOKIE, cookie, secure=True, httponly=True, samesite="strict", max_age=max(0, expires-int(time.time())))
+        return result
+
+    @cached_property
+    def verifications(self):
+        from .verification_store import VerificationStore
+        if hasattr(self.store, "table"):
+            return VerificationStore(table_name=os.environ["VERIFICATION_TABLE"])
+        return VerificationStore(path=self.store.path + ".verification.sqlite")
+
+    def cognito(self):
+        return boto3.client("cognito-idp", region_name=os.environ["COGNITO_REGION"],
+            config=Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 1}))
+
+    def revoke_previous(self, request):
+        with self.store.tx() as db:
+            db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
+        if request.cookies.get(PENDING_COOKIE):
+            self.verifications.delete(sha(request.cookies[PENDING_COOKIE]))
+
+    def mint(self, result, access, token, email):
+        self.resolve(access, email)
+        cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        with self.store.tx() as db:
+            db.insert('hosted_sessions', {'id_hash': sha(cookie), 'subject': access['sub'], 'access_token': token, 'csrf': csrf, 'expires': min(access['exp'], time.time() + 3600)})
         result.set_cookie(SESSION_COOKIE, cookie, secure=True, httponly=True, samesite="strict", max_age=max(0, int(min(access["exp"] - time.time(), 3600))))
+
+    def pending(self, request):
+        cookie = request.cookies.get(PENDING_COOKIE, "")
+        if not cookie or len(cookie) > 256:
+            raise HTTPException(401, "Verification required; start sign-in again")
+        row = self.verifications.get(sha(cookie))
+        self.pending_claims(row)
+        return row
+
+    def pending_claims(self, row):
+        access = self.verify(row["access_token"], "access")
+        if (row["expires"] <= time.time() or row["issuer"] != self.issuer or row["client"] != self.client_id
+                or access["sub"] != row["subject"] or "aws.cognito.signin.user.admin" not in access.get("scope", "").split()):
+            raise HTTPException(401, "Invalid or expired verification")
+        self.membership(access)
+        return access
+
+    def verification_status(self, row):
+        return {"state": "PENDING_EMAIL_VERIFICATION", "csrf": row["csrf"], "expires": int(row["expires"]),
+            "next_send": int(row["next_send"]), "sends_remaining": max(0, 3-int(row["sends"]))}
+
+    def current_user(self, client, row):
+        attrs = client.get_user(AccessToken=row["access_token"]).get("UserAttributes", [])
+        values = {a["Name"]: a["Value"] for a in attrs}
+        if values.get("sub") != row["subject"] or values.get("email") != row["email"]:
+            raise HTTPException(401, "Verification identity changed; start sign-in again")
+        return values
+
+    def verification_action(self, row, code=None):
+        # Reserve atomically before any Cognito I/O, including GetUser.
+        row = self.verifications.reserve(row["id"], "sends" if code is None else "attempts")
+        self.pending_claims(row)
+        try:
+            client = self.cognito()
+            self.current_user(client, row)
+            if code is None:
+                delivery = client.get_user_attribute_verification_code(AccessToken=row["access_token"], AttributeName="email").get("CodeDeliveryDetails", {})
+                if delivery.get("AttributeName") != "email" or delivery.get("DeliveryMedium") != "EMAIL":
+                    raise HTTPException(400, "Email delivery could not be confirmed")
+                return JSONResponse({"sent": True, **self.verification_status(row)})
+            client.verify_user_attribute(AccessToken=row["access_token"], AttributeName="email", Code=code)
+            if self.current_user(client, row).get("email_verified") != "true":
+                raise HTTPException(401, "Email verification could not be confirmed")
+        except (ClientError, BotoCoreError) as exc:
+            safe = {"CodeDeliveryFailureException", "InvalidEmailRoleAccessPolicyException", "LimitExceededException", "TooManyRequestsException", "InvalidLambdaResponseException", "UserLambdaValidationException", "UnexpectedLambdaException"}
+            name = exc.response.get("Error", {}).get("Code") if isinstance(exc, ClientError) else None
+            raise HTTPException(400, "Verification could not be completed" + (": " + name if name in safe else "")) from None
+        self.verifications.consume(row["id"])
+        access = self.pending_claims(row)
+        result = JSONResponse({"verified": True})
+        self.mint(result, access, row["access_token"], row["email"])
+        result.delete_cookie(PENDING_COOKIE, secure=True, httponly=True, samesite="strict")
         return result
 
     def logout(self, request):

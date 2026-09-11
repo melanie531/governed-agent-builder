@@ -24,7 +24,7 @@ def test_business_authorizer_and_separate_auth_routes():
         if "/api" in route["RouteKey"]:
             assert route["AuthorizationType"] == "CUSTOM"
         else:
-            assert route["RouteKey"] in ("GET /auth/login", "GET /auth/callback", "GET /studio-config.json")
+            assert route["RouteKey"] in ("GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify")
             assert "AuthIntegration" in str(route["Target"])
     assert r["Pool"]["Properties"]["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"]
     assert not r["Client"]["Properties"]["GenerateSecret"]
@@ -43,3 +43,39 @@ def test_scoped_roles_and_durable_queue():
     assert r["StreamMapping"]["Properties"]["DestinationConfig"]["OnFailure"]
     assert r["DeadLettersAlarm"] and r["DispatchFailuresAlarm"]
     assert artifacts_template()["Resources"]["Releases"]["DeletionPolicy"] == "Retain"
+
+
+def test_verification_table_isolated_and_scope_only_new_stack():
+    from infra.identity import template as old_template
+    r = template()["Resources"]
+    v = r["Verification"]["Properties"]
+    assert v["SSESpecification"]["SSEEnabled"]
+    assert v["TimeToLiveSpecification"] == {"AttributeName": "expires", "Enabled": True}
+    assert "StreamSpecification" not in v and "PointInTimeRecoverySpecification" not in v
+    for name in ("Business", "Authorizer", "Worker", "Dispatcher"):
+        assert "Verification" not in json.dumps(r[name+"Role"])
+        assert "VERIFICATION_TABLE" not in r[name]["Properties"]["Environment"]["Variables"]
+    assert "Verification" in json.dumps(r["AuthRole"])
+    assert "cognito-idp:" not in json.dumps(r["AuthRole"])
+    assert "aws.cognito.signin.user.admin" in r["Client"]["Properties"]["AllowedOAuthScopes"]
+    assert "aws.cognito.signin.user.admin" not in old_template("https://example.test")["Resources"]["Client"]["Properties"]["AllowedOAuthScopes"]
+
+
+def test_changeset_review_rejects_pool_changes_and_replacement():
+    import pytest
+    from scripts.serverless_deploy import review_verification_changes
+    for change in ({"LogicalResourceId":"Pool","Action":"Modify","Replacement":"False"},
+                   {"LogicalResourceId":"Auth","Action":"Modify","Replacement":"True"},
+                   {"LogicalResourceId":"Client","Action":"Remove"}):
+        with pytest.raises(RuntimeError): review_verification_changes([{"ResourceChange":change}], {"Pool","Auth","Client"})
+    review_verification_changes([{"ResourceChange":{"LogicalResourceId":"Auth","Action":"Modify","Replacement":"False"}}], {"Auth"})
+
+
+def test_changeset_allows_only_unchanged_lambda_reference_dependencies():
+    import pytest
+    from scripts.serverless_deploy import review_verification_changes
+    resource = {"LogicalResourceId":"AuthIntegration","Action":"Modify","Replacement":"False", "Details":[{
+        "ChangeSource":"ResourceAttribute","CausingEntity":"Auth.Arn","Target":{"Name":"IntegrationUri","RequiresRecreation":"Never"}}]}
+    review_verification_changes([{"ResourceChange":resource}], {"AuthIntegration"})
+    resource["Details"][0]["ChangeSource"] = "DirectModification"
+    with pytest.raises(RuntimeError): review_verification_changes([{"ResourceChange":resource}], {"AuthIntegration"})

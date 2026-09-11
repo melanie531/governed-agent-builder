@@ -16,7 +16,7 @@ from mangum import Mangum
 
 from .app import ACTIVE, TERMINAL, create_app
 from .dynamo_store import DynamoStore
-from .hosted_auth import HostedAuth
+from .hosted_auth import HostedAuth, PENDING_COOKIE
 
 
 @lru_cache
@@ -45,6 +45,8 @@ def request_cookies(event):
 
 
 def authorizer(event, context):
+    if PENDING_COOKIE in request_cookies(event):
+        return {"isAuthorized": True, "context": {"pendingVerification": "deny"}}
     try:
         principal, _ = auth().authenticate(SimpleNamespace(cookies=request_cookies(event)))
         return {"isAuthorized": True, "context": {"subject": principal["id"]}}
@@ -64,7 +66,10 @@ def api_handler(event, context):
     path = event.get("rawPath", "")
     if path != "/api" and not path.startswith("/api/"):
         return {"statusCode": 404, "body": "Not found"}
-    if not event.get("requestContext", {}).get("authorizer", {}).get("lambda", {}).get("subject"):
+    authority = event.get("requestContext", {}).get("authorizer", {}).get("lambda", {})
+    if authority.get("pendingVerification") == "deny":
+        return {"statusCode": 401, "headers": {"cache-control": "no-store"}, "body": "Unauthorized"}
+    if not authority.get("subject"):
         return {"statusCode": 401, "body": "Unauthorized"}
     return proxy(event, context)
 
@@ -72,7 +77,8 @@ def api_handler(event, context):
 def auth_handler(event, context):
     path = event.get("rawPath", "")
     method = event.get("requestContext", {}).get("http", {}).get("method")
-    if method != "GET" or path not in ("/auth/login", "/auth/callback", "/studio-config.json"):
+    allowed = {("GET", p) for p in ("/auth/login", "/auth/callback", "/studio-config.json", "/auth/verification/status")} | {("POST", "/auth/verification/" + p) for p in ("send", "verify")}
+    if (method, path) not in allowed:
         return {"statusCode": 404, "body": "Not found"}
     return proxy(event, context)
 

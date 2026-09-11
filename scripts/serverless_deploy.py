@@ -91,8 +91,109 @@ def deploy(name, body, parameters=None):
     return {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
 
 
+def review_verification_template(previous, proposed):
+    """Constrain both direct template changes and subsequent CF evaluated changes."""
+    old, new = previous["Resources"], proposed["Resources"]
+    additions = {"Verification", "Route5", "Route6", "Route7", "AuthPermission3", "AuthPermission4", "AuthPermission5"}
+    if set(old)-set(new) or set(new)-set(old) != additions:
+        raise RuntimeError("Unexpected resource addition/removal")
+    for name, original in old.items():
+        expected = json.loads(json.dumps(original))
+        if name == "Client":
+            expected["Properties"]["AllowedOAuthScopes"].append("aws.cognito.signin.user.admin")
+        elif name == "Auth":
+            expected["Properties"]["Environment"]["Variables"]["VERIFICATION_TABLE"] = {"Ref": "Verification"}
+        elif name == "AuthRole":
+            expected["Properties"]["Policies"][0]["PolicyDocument"]["Statement"].append({
+                "Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"],
+                "Resource": {"Fn::GetAtt": ["Verification", "Arn"]}})
+        if expected != new[name]:
+            raise RuntimeError("Unexpected template change: " + name)
+    for field in set(previous) | set(proposed):
+        if field != "Resources" and previous.get(field) != proposed.get(field):
+            raise RuntimeError("Unexpected template section change: " + field)
+
+
+def review_verification_changes(changes, existing):
+    allowed = {"AuthRole", "Client", "Business", "Auth", "Authorizer", "Worker", "Dispatcher",
+        "Verification", "Route5", "Route6", "Route7", "AuthPermission3", "AuthPermission4", "AuthPermission5"}
+    dependencies = {"AuthIntegration": ("Auth.Arn", "IntegrationUri"),
+        "BusinessIntegration": ("Business.Arn", "IntegrationUri"),
+        "SessionAuthorizer": ("Authorizer.Arn", "AuthorizerUri")}
+    if not changes: raise RuntimeError("Empty change set")
+    for change in changes:
+        r = change["ResourceChange"]
+        name = r["LogicalResourceId"]
+        if name in dependencies:
+            cause, field = dependencies[name]
+            if not r.get("Details") or any(d.get("ChangeSource") != "ResourceAttribute" or d.get("CausingEntity") != cause
+                    or d["Target"].get("Name") != field or d["Target"].get("RequiresRecreation") != "Never" for d in r["Details"]):
+                raise RuntimeError("Unexpected integration/authorizer change")
+        if name not in allowed | dependencies.keys() or r["Action"] not in ("Add", "Modify"):
+            raise RuntimeError("Unexpected change set resource/action")
+        if r["LogicalResourceId"] in existing and (r["Action"] != "Modify" or r.get("Replacement") != "False"):
+            raise RuntimeError("Existing resource replacement prohibited")
+
+
+def verification_deploy():
+    """Update only the owned serverless app through a fully evaluated change set."""
+    stack_name = PREFIX + "-app"
+    stack = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
+    approved = CF.describe_stacks(StackName="governed-agent-builder-network")["Stacks"][0]
+    account = SESSION.client("sts").get_caller_identity()["Account"]
+    if account != approved["StackId"].split(":")[4] or account != stack["StackId"].split(":")[4]:
+        raise RuntimeError("Account ownership mismatch")
+    tags = {t["Key"]: t["Value"] for t in stack.get("Tags", [])}
+    if tags.get("project") != "governed-agent-builder" or tags.get("architecture") != "managed-serverless":
+        raise RuntimeError("Unowned app stack")
+    if stack["StackStatus"] not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
+        raise RuntimeError("App stack is not ready for an update")
+    state = json.loads(STATE.read_text())
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
+    if outputs["ApplicationOrigin"] != "https://de32ssfw7gsad.cloudfront.net" or outputs["UserPoolId"] != state["app"]["outputs"]["UserPoolId"]:
+        raise RuntimeError("Unexpected app identity")
+    previous = CF.get_template(StackName=stack_name, TemplateStage="Original")["TemplateBody"]
+    if isinstance(previous, str): previous = json.loads(previous)
+    body = template(); safety(body); review_verification_template(previous, body)
+    CF.validate_template(TemplateBody=json.dumps(body))
+    parameters = {p["ParameterKey"]: p["ParameterValue"] for p in stack["Parameters"]}
+    if parameters["ArtifactBucket"] != state["artifacts"]["outputs"]["Bucket"]:
+        raise RuntimeError("Unexpected release bucket")
+    package = ROOT / "artifacts/serverless-release.zip"
+    sha = hashlib.sha256(package.read_bytes()).hexdigest()
+    artifact_key = "releases/" + sha + "/lambda.zip"
+    SESSION.client("s3").upload_file(str(package), parameters["ArtifactBucket"], artifact_key, ExtraArgs={"ServerSideEncryption": "AES256"})
+    name = "email-verification-" + str(time.time_ns())
+    CF.create_change_set(StackName=stack_name, ChangeSetName=name, ChangeSetType="UPDATE", TemplateBody=json.dumps(body),
+        Capabilities=["CAPABILITY_IAM"], Parameters=[{"ParameterKey": "ArtifactBucket", "UsePreviousValue": True}, {"ParameterKey": "ArtifactKey", "ParameterValue": artifact_key}])
+    while True:
+        change = CF.describe_change_set(StackName=stack_name, ChangeSetName=name)
+        if change["Status"] not in ("CREATE_PENDING", "CREATE_IN_PROGRESS"): break
+        time.sleep(3)
+    if change["Status"] != "CREATE_COMPLETE" or change.get("NextToken"):
+        raise RuntimeError("Change set unavailable or incomplete; not executed")
+    review_verification_changes(change["Changes"], previous["Resources"])
+    summary = [{k: c["ResourceChange"].get(k) for k in ("LogicalResourceId", "Action", "Replacement")} for c in change["Changes"]]
+    print("Reviewed changes: " + json.dumps(summary), flush=True)
+    Path("/tmp/gab-verification-changes.json").write_text(json.dumps(summary, indent=2))
+    CF.execute_change_set(StackName=stack_name, ChangeSetName=name)
+    print("Reviewed change set executed", flush=True)
+    while True:
+        stack = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
+        status = stack["StackStatus"]
+        print("App stack: " + status, flush=True)
+        if not status.endswith("IN_PROGRESS"): break
+        time.sleep(15)
+    if status != "UPDATE_COMPLETE": raise RuntimeError("App update did not complete")
+    after = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
+    if after != outputs: raise RuntimeError("Unexpected output identity change")
+    save("releaseSha256", sha)
+    save("app", {"status": status, "outputs": after})
+    print("Verification update complete; Pool and all output identities unchanged", flush=True)
+
 def main(action):
-    if action == "preflight": preflight()
+    if action == "verification-deploy": verification_deploy()
+    elif action == "preflight": preflight()
     elif action == "artifacts":
         preflight(); deploy("artifacts", artifacts_template())
     elif action == "deploy":
@@ -124,7 +225,7 @@ def main(action):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(); parser.add_argument("action", choices=["preflight", "artifacts", "deploy", "publish", "status"])
+    parser = argparse.ArgumentParser(); parser.add_argument("action", choices=["preflight", "artifacts", "deploy", "publish", "status", "verification-deploy"])
     try: main(parser.parse_args().action)
     except ClientError as exc:
         print("AWS operation failed: " + exc.response["Error"]["Code"], flush=True)

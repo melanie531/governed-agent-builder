@@ -151,3 +151,48 @@ def test_stream_dispatch_only_job_insert(cloud, monkeypatch):
     assert serverless.dispatch_handler({"Records": [record]}, None) == {"batchItemFailures": []}
     message = boto3.client("sqs").receive_message(QueueUrl=queue)["Messages"][0]
     assert json.loads(message["Body"]) == {"job_id": "synthetic-job"}
+
+
+def test_pending_gateway_marker_never_grants_business_access(cloud):
+    from backend.hosted_auth import PENDING_COOKIE
+    cookie = sign_in(cloud)
+    event = {"cookies": [SESSION_COOKIE + "=" + cookie, PENDING_COOKIE + "=synthetic"], "rawPath": "/api/me"}
+    marker = serverless.authorizer(event, None)
+    assert marker == {"isAuthorized": True, "context": {"pendingVerification": "deny"}}
+    event["requestContext"] = {"authorizer": {"lambda": marker["context"]}}
+    assert serverless.api_handler(event, None)["statusCode"] == 401
+    event["requestContext"]["authorizer"]["lambda"]["subject"] = "subject-a"
+    assert serverless.api_handler(event, None)["statusCode"] == 401
+    cloud[1].cookies.set(PENDING_COOKIE, "synthetic")
+    assert cloud[1].post('/api/agents', content=b'x'*70000).status_code == 401
+
+
+def test_dynamo_verification_atomic_budgets_and_consume(cloud):
+    from backend.verification_store import VerificationStore
+    from concurrent.futures import ThreadPoolExecutor
+    resource = boto3.resource("dynamodb", region_name="us-west-2")
+    resource.create_table(TableName="synthetic-verification", KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}], AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}], BillingMode="PAY_PER_REQUEST")
+    store = VerificationStore(table_name="synthetic-verification")
+    store.put({"id": "test", "expires": int(time.time())+600, "attempts": 0, "sends": 0, "next_send": 0})
+    def reserve(_):
+        try: store.reserve("test", "attempts"); return True
+        except HTTPException: return False
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert sum(pool.map(reserve, range(20))) == 5
+    assert store.reserve("test", "sends")["sends"] == 1
+    with pytest.raises(HTTPException): store.reserve("test", "sends")
+    store.consume("test")
+    with pytest.raises(HTTPException): store.consume("test")
+    with pytest.raises(HTTPException): store.get("test")
+
+
+def test_dynamo_pending_flow_uses_separate_table(cloud,monkeypatch):
+    from tests.test_email_verification import setup
+    resource = boto3.resource("dynamodb", region_name="us-west-2")
+    resource.create_table(TableName="synthetic-verification", KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}], AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}], BillingMode="PAY_PER_REQUEST")
+    monkeypatch.setenv("VERIFICATION_TABLE", "synthetic-verification")
+    app,c,provider = setup(cloud,monkeypatch)
+    assert c.post('/auth/verification/send',json={}).status_code == 200
+    assert c.post('/auth/verification/verify',json={'code':'123456'}).status_code == 200
+    assert c.get('/api/me').status_code == 200
+    assert resource.Table("synthetic-verification").scan()['Items'] == []
