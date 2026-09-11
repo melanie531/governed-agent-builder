@@ -88,3 +88,38 @@ was rejected. Existing package/admission/IAM regression tests: **40 passed**
 Publication ancestry check: this repository has no `origin/main` (confirmed by
 remote heads query). Before the smoke commit, HEAD exactly matched
 `origin/feat/live-capabilities`; no unpublished peer commits were present.
+
+
+## Explicitly authorized corrected retry: PASS, 2026-09-12
+
+Supersedes the earlier **not proven** startup result for this exact base only.
+Machine-readable evidence: [corrected receipt](FOUNDATION-IMPORT-SMOKE-CORRECTED-RECEIPT.json).
+
+- Tested source HEAD: `fd17e53c877274998a13fc6b78024a931aa90b44`. Package/source bytes unchanged.
+- Same ZIP SHA-256 and pinned S3 VersionId recorded above were downloaded and verified again; private artifact retained, no upload/BPA/IAM change.
+- STS matched current Studio stacks, CloudFront and Cognito internally. Existing FoundationRole policy fingerprint exactly matched the prior receipt; restricted trust, exchange-only grant, direct Lambda deny and model-role inference deny rechecked.
+- SDK service metadata and AWS [InvokeAgentRuntime docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_InvokeAgentRuntime.html) confirmed qualifier is an endpoint name.
+- Exactly **one new Runtime resource**: `gab_foundation_import_smoke-bLz4E35p1a`, version `1`, Python 3.13, root `main.py`, IAM-authenticated, explicitly authorized PUBLIC network.
+- GetAgentRuntime `READY` and GetAgentRuntimeEndpoint `DEFAULT` `READY`, liveVersion `1`, were observed before invocation.
+- Exactly one InvokeAgentRuntime using qualifier `DEFAULT` and payload `{"run_ref":"synthetic-smoke"}` returned **HTTP 200** with exactly:
+
+```json
+{"status":"BLOCKED","code":"AUTHENTICATED_BACKEND_REDEMPTION_NOT_CONNECTED","production_ready":false}
+```
+
+This is a successful Linux startup/import smoke, not successful workload admission.
+The real packaged SDK/root entry reached the missing-admission branch before constructing service clients or making application model/tool/exchange calls. Those calls are zero by verified code path, not independent billing telemetry.
+
+### Bounded execution and cleanup
+
+The committed tool's first CreateAgentRuntime request was rejected with `ConflictException` because it reused the deleted previous probe's idempotency token. **No resource was created by that request.** A temporary local execution wrapper used a fresh per-run idempotency token, pinned S3 version, verified unchanged IAM fingerprint, waited for DEFAULT and counted SDK calls. No committed tool or runtime source was changed. The second Create request created the only resource; there was no third Create request.
+
+The actual live smoke took **56.88 seconds**, including its gates and cleanup. SDK retries were disabled, metadata connect/read timeouts were 5/10 seconds, invocation read timeout 120 seconds. Wrapper bounded preflight to 85 seconds, runtime-ready wait to 150 seconds and DEFAULT wait to 40 seconds, within the outer 8-minute task budget.
+
+StopRuntimeSession with qualifier `DEFAULT`: **ACCEPTED**. DeleteAgentRuntime followed by GetAgentRuntime ResourceNotFoundException: **DELETED_VERIFIED**. Independent post-cleanup list: **NO_NAMED_PROBE_REMAINS**. All SDK operation counts, including the rejected create request and final verification, are in the corrected receipt. No error logs were fetched because this invocation succeeded; the rejected pre-create operation had no runtime logs.
+
+No source change, so the previously recorded **40 passing tests** were not repeated. No new artifact/hash was produced. The dedicated committed smoke tool still derives an artifact-stable idempotency token; future separately authorized attempts need a fresh operation token. This run does not authorize another attempt.
+
+Additional variable-cost engineering estimate **< USD 1**; previous attempt estimated < USD 1, combined estimate < USD 2 within the original USD 5 night budget. Actual billing is unknown, not a guaranteed invoice cap. Retained private S3 storage remains chargeable.
+
+Not proven: final approved package, workload admission, Gateway/model/tool/Browser/evaluation execution, UI behavior, private networking, full dependency coverage or production readiness. Only this exact base package's startup and exercised fail-closed import path are proven.

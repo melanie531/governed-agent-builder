@@ -1,0 +1,138 @@
+{
+  "artifact_sha256": "0fcae9df5f38cb3aa4b57dfd9ca6320e6fbe892b97f7a919e20a3524b6951e82",
+  "source_digest": "e4a8b11581124d34b4f041703f0c5f4585c3c5b959cbcadc34f84d6bce249446",
+  "source_sha": "fd17e53c877274998a13fc6b78024a931aa90b44",
+  "production_ready": false,
+  "network": "PUBLIC explicitly authorized isolated startup only",
+  "actual_usage": null,
+  "actual_cost_usd": null,
+  "variable_cost_estimate": "<1 USD engineering estimate, not invoice cap",
+  "not_proven": [
+    "admission",
+    "gateway",
+    "model",
+    "Browser",
+    "eval",
+    "UI"
+  ],
+  "cleanup": "DELETED_VERIFIED",
+  "invokes": 1,
+  "identity": {
+    "target_gate": "MATCH",
+    "profile": "agentic-platform-prod",
+    "region": "us-west-2",
+    "studio": "de32ssfw7gsad.cloudfront.net",
+    "identity_resources": "PRESERVED"
+  },
+  "role_policies_sha256": "e724214bde1d654d17bd58dc1f5bf4301bbcda1cada722e7839dbbfc7c0d4811",
+  "iam_changes": 0,
+  "s3": {
+    "bucket": "governed-agent-builder-serverless-artifac-releases-9cof97su8q8f",
+    "key": "foundation-import-smoke/0fcae9df5f38cb3aa4b57dfd9ca6320e6fbe892b97f7a919e20a3524b6951e82/runtime-base.zip",
+    "version_id": "pYJH.HyPexgKGeXwDQ0AYwgzfEBUYkfH",
+    "download_hash_verified": true
+  },
+  "duration_seconds": 56.88,
+  "runtime_id": "gab_foundation_import_smoke-bLz4E35p1a",
+  "runtime_version": "1",
+  "runtime_status": "READY",
+  "runtime_configuration": {
+    "network": {
+      "networkMode": "PUBLIC"
+    },
+    "artifact": {
+      "codeConfiguration": {
+        "code": {
+          "s3": {
+            "bucket": "governed-agent-builder-serverless-artifac-releases-9cof97su8q8f",
+            "prefix": "foundation-import-smoke/0fcae9df5f38cb3aa4b57dfd9ca6320e6fbe892b97f7a919e20a3524b6951e82/runtime-base.zip",
+            "versionId": "pYJH.HyPexgKGeXwDQ0AYwgzfEBUYkfH"
+          }
+        },
+        "runtime": "PYTHON_3_13",
+        "entryPoint": [
+          "main.py"
+        ]
+      }
+    }
+  },
+  "endpoint": {
+    "name": "DEFAULT",
+    "live_version": "1"
+  },
+  "http_status": 200,
+  "response_matches_expected": true,
+  "response": {
+    "status": "BLOCKED",
+    "code": "AUTHENTICATED_BACKEND_REDEMPTION_NOT_CONNECTED",
+    "production_ready": false
+  },
+  "result": "PASS_FIRST_TARGET_STARTUP_IMPORT_ONLY",
+  "model_tool_calls": "0 by verified missing-admission branch, not billing telemetry",
+  "session_stop": "ACCEPTED",
+  "client_api_request_counts": {
+    "bedrock-agentcore-control.CreateAgentRuntime": 1,
+    "bedrock-agentcore-control.DeleteAgentRuntime": 1,
+    "bedrock-agentcore-control.GetAgentRuntime": 5,
+    "bedrock-agentcore-control.GetAgentRuntimeEndpoint": 1,
+    "bedrock-agentcore-control.ListAgentRuntimes": 1,
+    "bedrock-agentcore.InvokeAgentRuntime": 1,
+    "bedrock-agentcore.StopRuntimeSession": 1,
+    "cloudformation.DescribeStacks": 14,
+    "cloudformation.ListStackResources": 6,
+    "cloudfront.GetDistribution": 6,
+    "cognito-idp.DescribeUserPool": 6,
+    "iam.GetRole": 1,
+    "iam.GetRolePolicy": 3,
+    "iam.ListRolePolicies": 2,
+    "s3.GetObject": 1,
+    "s3.GetPublicAccessBlock": 1,
+    "s3.HeadObject": 1,
+    "sts.AssumeRole": 2,
+    "sts.GetCallerIdentity": 6
+  },
+  "request_counts_scope": "SDK operation attempts including preflight and cleanup; not cloud billing or internal runtime telemetry",
+  "endpoint_metadata_verified": "AWS InvokeAgentRuntime docs and installed service model: qualifier is endpoint name; DEFAULT READY liveVersion 1 observed before invoke",
+  "s3_version_pinned": "pYJH.HyPexgKGeXwDQ0AYwgzfEBUYkfH",
+  "tests": "40 passed in prior receipt; source unchanged, not repeated",
+  "combined_night_cost": "Previous attempt estimated <1 USD, this additional attempt estimated <1 USD; combined estimated <2 USD within original $5 budget; actual billing unknown",
+  "post_cleanup_list": "NO_NAMED_PROBE_REMAINS",
+  "creation_attempts": 2,
+  "new_runtime_resources": 1,
+  "precreation_rejection": {
+    "code": "ConflictException",
+    "reason": "Committed tool reused deleted prior resource idempotency token; fresh per-run token used in temporary wrapper, no source/artifact changes",
+    "runtime_created": false
+  },
+  "whole_run_client_api_request_counts": {
+    "bedrock-agentcore-control.CreateAgentRuntime": 2,
+    "bedrock-agentcore-control.DeleteAgentRuntime": 1,
+    "bedrock-agentcore-control.GetAgentRuntime": 5,
+    "bedrock-agentcore-control.GetAgentRuntimeEndpoint": 1,
+    "bedrock-agentcore-control.ListAgentRuntimes": 3,
+    "bedrock-agentcore.InvokeAgentRuntime": 1,
+    "bedrock-agentcore.StopRuntimeSession": 1,
+    "cloudformation.DescribeStacks": 26,
+    "cloudformation.ListStackResources": 11,
+    "cloudfront.GetDistribution": 11,
+    "cognito-idp.DescribeUserPool": 11,
+    "iam.GetRole": 2,
+    "iam.GetRolePolicy": 6,
+    "iam.ListRolePolicies": 4,
+    "s3.GetObject": 2,
+    "s3.GetPublicAccessBlock": 2,
+    "s3.HeadObject": 2,
+    "sts.AssumeRole": 5,
+    "sts.GetCallerIdentity": 11
+  },
+  "invocation_route": "POST /runtimes/{ownedRuntimeArn}/invocations?qualifier=DEFAULT",
+  "application_route_counts": {
+    "runtime_invocations": 1,
+    "backend_exchange": 0,
+    "gateway": 0,
+    "model": 0,
+    "browser": 0,
+    "evaluation": 0
+  },
+  "application_route_counts_basis": "Observed single expected missing-admission return and exact verified source; not provider-side telemetry"
+}
