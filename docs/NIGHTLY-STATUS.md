@@ -34,9 +34,9 @@ supersedes historical plan-only notes within the requested scope.
   backend redemption, scoped CloudWatch delivery/export/readback. Model role
   allows metadata ListModels only; **Mantle CreateInference explicitly denied**.
   UI remains fixture; compiler remains `execution_ready=False`.
-- Private remote and approved baseline ownership verified. Commit/push receipt
-  will follow. No other changes, shared resources, identities or legacy Gateways
-  were modified.
+- Implementation commit `aa91601e72158a7eabc79d9fe7d02e23ab728c1d` **pushed**
+  to private `origin/feat/live-capabilities`. Approved baseline ownership verified.
+  No other changes, shared resources, identities or legacy Gateways were modified.
 
 Latest Well-Architected status: Security **gated** (owned IAM/ENFORCE provisioned;
 live authority/model policy/Browser proof missing); Reliability **offline limits/
@@ -351,3 +351,20 @@ remained blocked throughout; no paid inference escaped.
 - Remaining milestones and cleanup due **2026-09-19 Sydney** are documented in
   [CUSTOM-FOUNDATION-SLICE.md](CUSTOM-FOUNDATION-SLICE.md). Cleanup NOT_RUN; owned
   proof resources retained for review. No Browser/evaluator/judge/UI acceptance.
+
+## Milestone 10: publication receipt
+
+- Code/proof implementation commit:
+  `aa91601e72158a7eabc79d9fe7d02e23ab728c1d`.
+- Managed git authentication push **succeeded**:
+  `d0612a6..aa91601 HEAD -> feat/live-capabilities`.
+  GitHub API reconfirmed the existing repository is **private** before push.
+- Required `git log origin/main..HEAD --oneline` was attempted again; that ref
+  does not exist. The actual `origin/feat/local-first..HEAD` comparison and exact
+  `d0612a6..HEAD` check showed only the approved baseline history plus this one
+  implementation commit. Remote feature branch was still exactly the approved
+  baseline before push. No unexpected commits, rebase, force push, PR or merge.
+- This final documentation-only receipt follows the verified implementation.
+  The 491-test result and cloud readback above apply to unchanged implementation
+  code. No further cloud writes, inference, tool/Runtime calls, Browser traffic,
+  evaluator calls or live UI enablement occurred during publication.
