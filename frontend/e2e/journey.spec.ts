@@ -2,13 +2,15 @@ import {test,expect,Page} from '@playwright/test';
 import fs from 'node:fs';
 
 async function selectOption(page:Page,label:string,option:string){
- await page.getByRole('button',{name:label,exact:true}).click();
+ await page.getByRole('button',{name:new RegExp(label)}).click();
  await page.getByRole('option').filter({hasText:option}).first().click();
 }
 async function switchPersona(page:Page,name:string){
  await page.getByRole('button',{name:/DEV ONLY/}).click();
  await page.getByRole('menuitem',{name:new RegExp(name)}).click();
+ await expect(page.getByRole('button',{name:new RegExp(name+' .*DEV ONLY')})).toBeVisible();
 }
+async function nav(page:Page,name:string){const link=page.getByRole('link',{name,exact:true});const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await link.click();}
 async function next(page:Page){await page.getByRole('button',{name:'Next',exact:true}).click();}
 
 test('Cloudscape business journey: create, measured evidence, revise, retest, export and approval',async({page})=>{
@@ -22,17 +24,21 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await page.getByRole('radio',{name:'Select Research brief'}).click();
  await next(page);
  await selectOption(page,'Model route','Claude · Bedrock');
- await page.getByRole('button',{name:'Tools / MCP',exact:true}).click();
+ await page.getByRole('button',{name:/^Tools \/ MCP/}).click();
  await page.getByRole('option').filter({hasText:'Synthetic knowledge search'}).click();
  await page.keyboard.press('Escape');
- await page.getByRole('button',{name:'Skills',exact:true}).click();
+ await page.getByRole('button',{name:/^Skills/}).click();
  await page.getByRole('option').filter({hasText:'Evidence citations'}).click();
  await page.keyboard.press('Escape');
  await next(page);
- await page.getByRole('textbox',{name:'Agent name',exact:true}).fill('Aurora research companion');
- await page.getByRole('textbox',{name:'Your instructions',exact:true}).fill('Use only synthetic evidence. Cite sources. Refuse unknown questions. Uppercase.');
- await page.getByRole('textbox',{name:'Success criteria',exact:true}).fill('Cite synthetic evidence and refuse unknown data.');
- await expect(page.getByRole('textbox',{name:'Evaluation dataset',exact:true})).toHaveValue(/launch/);
+ await page.getByRole('textbox',{name:/^Agent name/}).fill('Aurora research companion');
+ await page.getByRole('textbox',{name:/^Your instructions/}).fill('Use only synthetic evidence. Cite sources. Refuse unknown questions. Uppercase.');
+ await page.getByRole('textbox',{name:/^Success criteria/}).fill('Cite synthetic evidence and refuse unknown data.');
+ await expect(page.getByRole('textbox',{name:/^Evaluation dataset/})).toHaveValue(/launch/);
+ const uploaded=JSON.parse(await page.getByRole('textbox',{name:/^Evaluation dataset/}).inputValue());
+ uploaded[0].id='uploaded-launch';
+ await page.locator('input[type=file]').setInputFiles({name:'synthetic-cases.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(uploaded))});
+ await expect(page.getByRole('textbox',{name:/^Evaluation dataset/})).toHaveValue(/uploaded-launch/);
  await page.screenshot({path:'../artifacts/cloudscape-wizard-evaluation.png',fullPage:true});
  await next(page);
  await expect(page.getByText('Aurora research companion',{exact:true})).toBeVisible();
@@ -40,7 +46,7 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await expect(page.getByRole('heading',{name:'Aurora research companion',exact:true})).toBeVisible();
  await expect(page.getByText('Local checks passed',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('100 / 100 measured.',{exact:false})).toBeVisible();
- await expect(page.getByText('AURORA LAUNCHES IN OCTOBER',{exact:false})).toBeVisible();
+ await expect(page.locator('pre').filter({hasText:'AURORA LAUNCHES IN OCTOBER'})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-results-pass.png',fullPage:true});
  await page.getByRole('tab',{name:'Run locally',exact:true}).click();
  await page.getByRole('button',{name:'Run current version'}).click();
@@ -66,9 +72,9 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await expect(page.getByRole('button',{name:'Run current version'})).toBeDisabled();
  // Repair via editable JSON and demonstrate missing required judge gate.
  await page.getByRole('button',{name:'Revise agent',exact:true}).click();await next(page);await next(page);
- const dataset=JSON.parse(await page.getByRole('textbox',{name:'Evaluation dataset',exact:true}).inputValue());
+ const dataset=JSON.parse(await page.getByRole('textbox',{name:/^Evaluation dataset/}).inputValue());
  dataset[0].required_terms=['Aurora','October'];
- await page.getByRole('textbox',{name:'Evaluation dataset',exact:true}).fill(JSON.stringify(dataset,null,2));
+ await page.getByRole('textbox',{name:/^Evaluation dataset/}).fill(JSON.stringify(dataset,null,2));
  await page.getByRole('button',{name:'Try a missing judge'}).click();
  await next(page);await page.getByRole('button',{name:'Deploy & test locally'}).click();
  await expect(page.getByText('Required judge evidence is missing.',{exact:false})).toBeVisible();
@@ -82,26 +88,38 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await page.getByRole('tab',{name:'Versions and source'}).click();
  await expect(page.getByRole('cell',{name:'v4',exact:true}).first()).toBeVisible();
  // Request existing capability; Admin must decide; business sees effective result.
- await page.getByRole('link',{name:'Capability requests',exact:true}).click();
+ await nav(page,'Capability requests');
  await selectOption(page,'Requested capability','Synthetic strategy insights');
- await page.getByRole('textbox',{name:'Business reason',exact:true}).fill('Need synthetic strategy evidence for research briefs.');
+ await page.getByRole('textbox',{name:/^Business reason/}).fill('Need synthetic strategy evidence for research briefs.');
  await page.getByRole('button',{name:'Send request'}).click();
  await expect(page.getByText('PENDING',{exact:true})).toBeVisible();
  await switchPersona(page,'Platform Admin');
- await page.getByRole('link',{name:'Policies & approvals',exact:true}).click();
- await page.getByRole('textbox',{name:'Decision reason for restricted-insights',exact:true}).fill('Approved for synthetic research use.');
+ await nav(page,'Policies & approvals');
+ await page.getByRole('textbox',{name:/Decision reason for restricted-insights/}).fill('Approved for synthetic research use.');
  await page.getByRole('button',{name:'Approve access',exact:true}).click();
  await expect(page.getByText('APPROVED',{exact:true})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-admin-approval.png',fullPage:true});
  await switchPersona(page,'Alex Morgan');
- await page.getByRole('link',{name:'Capability requests',exact:true}).click();
+ await nav(page,'Capability requests');
  await expect(page.getByText('APPROVED',{exact:true})).toBeVisible();
- await page.getByRole('link',{name:'Create agent',exact:true}).click();
+ await nav(page,'Create agent');
  await page.getByRole('radio',{name:'Select Research brief'}).click();await next(page);
  await selectOption(page,'Model route','Claude · Bedrock');
- await page.getByRole('button',{name:'Tools / MCP',exact:true}).click();
+ await page.getByRole('button',{name:/^Tools \/ MCP/}).click();
  await expect(page.getByRole('option').filter({hasText:'Synthetic strategy insights'})).toBeVisible();
  await page.keyboard.press('Escape');
+ // A passing old version must be blocked immediately after admin revocation.
+ await switchPersona(page,'Platform Admin');
+ await nav(page,'Tools & skills');
+ const grant=page.getByRole('checkbox',{name:'Alex Morgan access to Synthetic knowledge search',exact:true});
+ await expect(grant).toBeChecked();await grant.click();await expect(grant).not.toBeChecked();
+ await switchPersona(page,'Alex Morgan');
+ await page.getByRole('link',{name:'Aurora research companion',exact:true}).click();
+ await page.getByRole('tab',{name:'Run locally',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Run current version'})).toBeEnabled();
+ await page.getByRole('button',{name:'Run current version'}).click();
+ await expect(page.getByText('Component not authorized or compatible: synthetic-search',{exact:true})).toBeVisible();
+ await page.screenshot({path:'../artifacts/cloudscape-revocation-blocked.png',fullPage:true});
  expect(errors).toEqual([]);
 });
 
@@ -110,14 +128,14 @@ test('Cloudscape filtered persona, foundation reset, admin revoke and responsive
  await expect(page.getByText('No agents yet',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Create agent',exact:true}).click();
  await page.getByRole('radio',{name:'Select Research brief'}).click();await next(page);
- await page.getByRole('button',{name:'Model route',exact:true}).click();
+ await page.getByRole('button',{name:/^Model route/}).click();
  await expect(page.getByRole('option').filter({hasText:'Claude · Bedrock'})).toBeVisible();
  await expect(page.getByRole('option').filter({hasText:'OpenAI · Bedrock'})).toHaveCount(0);
  await expect(page.getByRole('option').filter({hasText:'Gemini'})).toHaveCount(0);
  await page.getByRole('option').filter({hasText:'Claude · Bedrock'}).click();
  await page.getByRole('button',{name:'Previous',exact:true}).click();
  await page.getByRole('radio',{name:'Select Knowledge Q&A'}).click();await next(page);
- await expect(page.getByRole('button',{name:'Model route',exact:true})).toContainText('Select an approved model');
+ await expect(page.getByRole('button',{name:/^Model route/})).toContainText('Select an approved model');
  await page.setViewportSize({width:390,height:844});
  await expect(page.getByRole('heading',{name:'Choose capabilities',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBeTruthy();

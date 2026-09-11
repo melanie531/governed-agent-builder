@@ -140,9 +140,14 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             return JSONResponse({"detail": "Unapproved local host"}, status_code=400)
         if request.headers.get("sec-fetch-site") == "cross-site":
             return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
-        body = await request.body()
-        if len(body) > 65536:
-            return JSONResponse({"detail": "Request exceeds 64 KiB limit"}, status_code=413)
+        # Enforce while reading, rather than allocating an unbounded upload first.
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 65536:
+                return JSONResponse({"detail": "Request exceeds 64 KiB limit"}, status_code=413)
+            chunks.append(chunk)
+        request._body = b"".join(chunks)
         mutating = request.method not in ("GET", "HEAD", "OPTIONS")
         if mutating and request.headers.get("origin") not in origins:
             return JSONResponse({"detail": "Same-origin request required"}, status_code=403)

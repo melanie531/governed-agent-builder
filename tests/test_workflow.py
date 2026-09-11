@@ -175,3 +175,44 @@ def test_fail_closed_startup(tmp_path,monkeypatch,variable,value):
 
 def test_nonlocal_public_url_refused(tmp_path):
     with pytest.raises(RuntimeError):create_app(str(tmp_path/'blocked.sqlite'),demo_mode=True,public_url='https://example.com')
+
+def test_foundation_revoke_prevents_deployment(client,payload):
+    login(client);d=create(client,payload)
+    login(client,'admin')
+    response=client.post('/api/admin/catalog/foundations/research',json={'approved':False})
+    assert response.status_code==200 and response.json()['version']=='1.0.1'
+    login(client)
+    assert 'research' not in {f['id'] for f in client.get('/api/build-options').json()['foundations']}
+    assert client.post(f"/api/agents/{d['agent_id']}/deploy-test",json={'version':1,'idempotency_key':'revoked-foundation'}).status_code==403
+
+def test_queue_cap_and_distinct_agents(client,payload):
+    login(client)
+    for i in range(8):
+        d=create(client,{**payload,'name':f'Queued agent {i}'})
+        enqueue(client,d,f'queue-budget-{i}')
+    d=create(client,payload)
+    assert client.post(f"/api/agents/{d['agent_id']}/deploy-test",json={'version':1,'idempotency_key':'queue-overflow-1'}).status_code==429
+
+def test_grants_do_not_reseed_on_restart(tmp_path):
+    path=str(tmp_path/'grants.sqlite')
+    with TestClient(create_app(path,demo_mode=True,worker_enabled=False),base_url=ORIGIN) as c:
+        login(c,'admin');c.post('/api/admin/grants',json={'persona_id':'alex','component_id':'synthetic-search','enabled':False})
+    with TestClient(create_app(path,demo_mode=True,worker_enabled=False),base_url=ORIGIN) as c:
+        login(c)
+        assert c.get('/api/build-options?foundation_id=research').json()['choices']['tools']==[]
+
+def test_two_async_agents_execute_and_remain_isolated(tmp_path,payload):
+    app=create_app(str(tmp_path/'two-agents.sqlite'),demo_mode=True,worker_enabled=True)
+    with TestClient(app,base_url=ORIGIN) as c:
+        login(c)
+        d1=create(c,payload);j1=enqueue(c,d1)
+        failed={**payload,'name':'Independent failing agent','prompt':payload['prompt']+' No citations.'}
+        d2=create(c,failed);j2=enqueue(c,d2)
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            jobs=[c.get('/api/jobs/'+j).json() for j in (j1,j2)]
+            if all(j['stage'] in ('PASS','NEEDS_CHANGES') for j in jobs):break
+            time.sleep(.02)
+        assert [j['stage'] for j in jobs]==['PASS','NEEDS_CHANGES']
+        assert jobs[0]['result']['definition_digest']==d1['digest']
+        assert jobs[1]['result']['definition_digest']==d2['digest']
