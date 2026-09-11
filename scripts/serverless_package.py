@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     output = ROOT / "artifacts/serverless-release.zip"
+    output.parent.mkdir(parents=True, exist_ok=True)
     requirements = ROOT / "artifacts/serverless-requirements.txt"
     subprocess.run(["uv", "export", "--frozen", "--no-dev", "--no-emit-project", "--format", "requirements-txt", "--output-file", str(requirements)], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="gab-serverless-package-") as temporary:

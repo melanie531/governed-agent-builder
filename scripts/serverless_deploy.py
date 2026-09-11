@@ -11,23 +11,22 @@ from pathlib import Path
 import sys
 import time
 
-import boto3
 from botocore.exceptions import ClientError
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from infra.serverless import artifacts_template, template
+from scripts.deployment_target import DeploymentTarget, target_arguments
 
 PREFIX = "governed-agent-builder-serverless"
-STATE = ROOT / "artifacts/serverless-deployment.json"
-SESSION = boto3.Session(profile_name="agentic-platform-prod", region_name="us-west-2")
-CF = SESSION.client("cloudformation")
+STATE = None
+SESSION = None
+CF = None
+TARGET = None
 
 
 def save(key, value):
-    state = json.loads(STATE.read_text()) if STATE.exists() else {}
-    state[key] = value
-    STATE.write_text(json.dumps(state, indent=2))
+    TARGET.save(key, value)
 
 
 def safety(body):
@@ -40,31 +39,30 @@ def safety(body):
 
 
 def preflight():
-    # Compare against the approved profile's existing project stack ownership,
-    # internally only. Never print account identifiers or full AWS exceptions.
-    identity = SESSION.client("sts").get_caller_identity()
-    prior = CF.describe_stacks(StackName="governed-agent-builder-network")["Stacks"][0]
-    if prior["StackId"].split(":")[4] != identity["Account"]: raise RuntimeError("Account ownership mismatch")
-    if not any(t["Key"] == "project" and t["Value"] == "governed-agent-builder" for t in prior.get("Tags", [])): raise RuntimeError("Project ownership mismatch")
-    bpa = SESSION.client("ec2").describe_vpc_block_public_access_options()["VpcBlockPublicAccessOptions"]
-    if bpa["InternetGatewayBlockMode"] != "block-ingress": raise RuntimeError("BPA changed; owner review required")
+    if TARGET is None:
+        raise RuntimeError("Explicit target initialization required")
+    TARGET.check_stacks()
     body = template(); safety(body)
     for name, current in (("artifacts", artifacts_template()), ("app", body)):
         CF.validate_template(TemplateBody=json.dumps(current))
-    save("preflight", {"accountMatch": True, "bpa": "block-ingress", "noVpcDependencies": True, "cloudFormationValidated": True, "time": time.time()})
-    print("Preflight PASS: approved account ownership, BPA unchanged, no VPC dependency, both templates AWS-validated", flush=True)
+    save("preflight", {"accountMatch": True, "noVpcDependencies": True, "cloudFormationValidated": True, "time": time.time()})
+    print("Preflight PASS: explicit STS account and bound stack identities, no VPC dependency, both templates AWS-validated", flush=True)
 
 
 def deploy(name, body, parameters=None):
+    if TARGET is None:
+        raise RuntimeError("Explicit target initialization required")
+    TARGET.check_stacks()
     safety(body)
     stack_name = PREFIX + "-" + name
     request = {"StackName": stack_name, "TemplateBody": json.dumps(body), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}
     try:
         prior = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
     except ClientError as exc:
-        if exc.response["Error"]["Code"] != "ValidationError": raise
+        if exc.response["Error"]["Code"] != "ValidationError" or "does not exist" not in exc.response["Error"].get("Message", ""): raise
         prior = None
     if prior:
+        TARGET.check_stack(prior)
         if not any(t["Key"] == "architecture" and t["Value"] == "managed-serverless" for t in prior.get("Tags", [])): raise RuntimeError("Refusing unowned stack")
         if prior["StackStatus"].endswith("IN_PROGRESS"):
             raise RuntimeError("Existing stack operation still running; inspect and wait, do not submit twice")
@@ -81,7 +79,8 @@ def deploy(name, body, parameters=None):
         status = stack["StackStatus"]
         if not status.endswith("IN_PROGRESS"): break
         time.sleep(20)
-    save(name, {"status": status, "outputs": {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}})
+    TARGET.check_stack(stack)
+    save(name, {"stackId": stack["StackId"], "status": status, "outputs": {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}})
     print(stack_name + ": " + status, flush=True)
     if status not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
         failures = [{"resource": e["LogicalResourceId"], "status": e["ResourceStatus"], "reason": e.get("ResourceStatusReason", "")} for e in CF.describe_stack_events(StackName=stack_name)["StackEvents"] if "FAILED" in e["ResourceStatus"]]
@@ -137,20 +136,20 @@ def review_verification_changes(changes, existing):
 
 def verification_deploy():
     """Update only the owned serverless app through a fully evaluated change set."""
+    if TARGET is None:
+        raise RuntimeError("Explicit target initialization required")
+    TARGET.check_stacks()
     stack_name = PREFIX + "-app"
     stack = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
-    approved = CF.describe_stacks(StackName="governed-agent-builder-network")["Stacks"][0]
-    account = SESSION.client("sts").get_caller_identity()["Account"]
-    if account != approved["StackId"].split(":")[4] or account != stack["StackId"].split(":")[4]:
-        raise RuntimeError("Account ownership mismatch")
+    TARGET.check_stack(stack)
     tags = {t["Key"]: t["Value"] for t in stack.get("Tags", [])}
     if tags.get("project") != "governed-agent-builder" or tags.get("architecture") != "managed-serverless":
         raise RuntimeError("Unowned app stack")
     if stack["StackStatus"] not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
         raise RuntimeError("App stack is not ready for an update")
-    state = json.loads(STATE.read_text())
+    state = TARGET.state
     outputs = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
-    if outputs["ApplicationOrigin"] != "https://de32ssfw7gsad.cloudfront.net" or outputs["UserPoolId"] != state["app"]["outputs"]["UserPoolId"]:
+    if outputs != state["app"]["outputs"]:
         raise RuntimeError("Unexpected app identity")
     previous = CF.get_template(StackName=stack_name, TemplateStage="Original")["TemplateBody"]
     if isinstance(previous, str): previous = json.loads(previous)
@@ -188,17 +187,20 @@ def verification_deploy():
     after = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
     if after != outputs: raise RuntimeError("Unexpected output identity change")
     save("releaseSha256", sha)
-    save("app", {"status": status, "outputs": after})
+    save("app", {"stackId": stack["StackId"], "status": status, "outputs": after})
     print("Verification update complete; Pool and all output identities unchanged", flush=True)
 
 def main(action):
+    if TARGET is None:
+        raise RuntimeError("Explicit target initialization required")
+    TARGET.check_stacks()
     if action == "verification-deploy": verification_deploy()
     elif action == "preflight": preflight()
     elif action == "artifacts":
         preflight(); deploy("artifacts", artifacts_template())
     elif action == "deploy":
         preflight()
-        state = json.loads(STATE.read_text())
+        state = TARGET.state
         bucket = state["artifacts"]["outputs"]["Bucket"]
         package = ROOT / "artifacts/serverless-release.zip"
         sha = hashlib.sha256(package.read_bytes()).hexdigest()
@@ -210,7 +212,7 @@ def main(action):
         DynamoStore(outputs["StateTable"], SESSION.resource("dynamodb")).initialize()
         print("DynamoDB catalog initialized without demo personas", flush=True)
     elif action == "publish":
-        outputs = json.loads(STATE.read_text())["app"]["outputs"]
+        outputs = TARGET.state["app"]["outputs"]
         for path in sorted((ROOT / "frontend/dist").rglob("*")):
             if path.is_file():
                 SESSION.client("s3").upload_file(str(path), outputs["FrontendBucket"], str(path.relative_to(ROOT / "frontend/dist")), ExtraArgs={"ServerSideEncryption": "AES256", "ContentType": mimetypes.guess_type(path.name)[0] or "application/octet-stream", "CacheControl": "no-cache" if path.name == "index.html" else "public,max-age=31536000,immutable"})
@@ -226,7 +228,12 @@ def main(action):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(); parser.add_argument("action", choices=["preflight", "artifacts", "deploy", "publish", "status", "verification-deploy"])
-    try: main(parser.parse_args().action)
+    target_arguments(parser)
+    args = parser.parse_args()
+    try:
+        TARGET = DeploymentTarget(args.expected_account, args.profile, args.region, args.state)
+        SESSION, CF, STATE = TARGET.session, TARGET.cf, TARGET.path
+        main(args.action)
     except ClientError as exc:
         print("AWS operation failed: " + exc.response["Error"]["Code"], flush=True)
         sys.exit(1)

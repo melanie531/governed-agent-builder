@@ -217,8 +217,22 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 return JSONResponse({"detail": "CSRF token required"}, status_code=403)
         response = await call_next(request)
         if callback_request and response.status_code >= 400:
+            from fastapi.responses import HTMLResponse
             from .hosted_auth import FLOW_COOKIE, PENDING_COOKIE, SESSION_COOKIE
-            for cookie in (FLOW_COOKIE, PENDING_COOKIE, SESSION_COOKIE):
+            # Never reflect provider error descriptions or callback parameters.
+            # An old/mismatched callback must not destroy a newer sign-in flow.
+            response = HTMLResponse('<!doctype html><html lang="en"><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                '<title>Sign-in needs restarting · Agent Studio</title><body><main>'
+                '<h1>Sign-in could not be completed</h1><p>This sign-in link may have expired '
+                'or been replaced by a newer attempt. This does not mean your password is wrong.</p>'
+                '<p>Return to Studio and start sign-in in one tab. Do not refresh this callback page.</p>'
+                '<p><a href="/">Return to Agent Studio</a></p></main></body></html>',
+                status_code=response.status_code)
+            cookies = [PENDING_COOKIE, SESSION_COOKIE]
+            if getattr(request.state, "matched_signin_flow", False):
+                cookies.append(FLOW_COOKIE)
+            for cookie in cookies:
                 response.delete_cookie(cookie, secure=True, httponly=True, samesite="lax" if cookie == FLOW_COOKIE else "strict")
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"

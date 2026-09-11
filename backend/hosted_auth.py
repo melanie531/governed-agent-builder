@@ -6,6 +6,7 @@ never chooses a user or role. No provider credentials are required by this modul
 import base64
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -148,8 +149,16 @@ class HostedAuth:
         self.revoke_previous(request)
         state = request.query_params.get("state", "")
         code = request.query_params.get("code", "")
-        if not state or len(state) > 256 or not code or len(code) > 4096 or not secrets.compare_digest(state, request.cookies.get(FLOW_COOKIE, "")):
+        cookie = request.cookies.get(FLOW_COOKIE, "")
+        # Only static categories are logged: never query values, cookies or tokens.
+        reason = ("missing_state" if not state else "invalid_state_length" if len(state) > 256
+                  else "missing_code" if not code else "invalid_code_length" if len(code) > 4096
+                  else "missing_flow_cookie" if not cookie else "state_cookie_mismatch"
+                  if not secrets.compare_digest(state, cookie) else None)
+        if reason:
+            logging.getLogger(__name__).warning("Sign-in callback rejected: %s", reason)
             raise HTTPException(400, "Invalid sign-in response; start again")
+        request.state.matched_signin_flow = True
         with self.store.tx() as db:
             flow = db.select('oidc_flows', where=[('state_hash', '=', sha(state)), ('expires', '>', time.time())]).fetchone()
             db.delete('oidc_flows', where=[('state_hash', '=', sha(state))])
