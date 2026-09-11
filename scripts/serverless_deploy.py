@@ -74,7 +74,7 @@ def deploy(name, body, parameters=None):
         except ClientError as exc:
             if "No updates are to be performed" not in exc.response["Error"]["Message"]: raise
     else:
-        CF.create_stack(**request, OnFailure="DO_NOTHING")
+        CF.create_stack(**request, DisableRollback=True)
     print(stack_name + ": submitted", flush=True)
     while True:
         stack = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
