@@ -1,0 +1,29 @@
+"""Three separate catalog authorities, seeded only with synthetic local aliases."""
+FOUNDATIONS = [
+    {"id": "research", "name": "Research brief", "version": "1.0.0", "description": "Turn synthetic source material into a concise, cited research brief.", "icon": "↗", "capabilities": ["text", "citations"], "models": ["bedrock-claude", "bedrock-openai", "external-gemini"], "tools": ["synthetic-search", "restricted-insights"], "skills": ["concise", "citations"], "config_schema": {"format": ["text", "json"], "source": ["synthetic-local-only"]}, "mandatory_defaults": ["record execution events", "current-policy authorization", "deterministic evaluation", "no network or code execution"], "builder": "backend.harness:run_case"},
+    {"id": "knowledge", "name": "Knowledge Q&A", "version": "1.0.0", "description": "Answer questions from a bounded synthetic knowledge collection, or refuse when evidence is missing.", "icon": "◈", "capabilities": ["text", "refusal"], "models": ["bedrock-claude", "bedrock-openai"], "tools": ["synthetic-search"], "skills": ["concise", "citations"], "config_schema": {"format": ["text", "json"], "source": ["synthetic-local-only"]}, "mandatory_defaults": ["record execution events", "current-policy authorization", "deterministic evaluation", "no network or code execution"], "builder": "backend.harness:run_case"},
+]
+COMPONENTS = [
+    {"id": "bedrock-claude", "name": "Claude · Bedrock", "kind": "model", "provider": "Amazon Bedrock", "description": "Demo route alias, not a configured real model ID.", "external": False, "protocol": "model-gateway", "version": "1", "approved": True},
+    {"id": "bedrock-openai", "name": "OpenAI · Bedrock", "kind": "model", "provider": "Amazon Bedrock", "description": "Demo route alias inside AWS. No first-party OpenAI API.", "external": False, "protocol": "model-gateway", "version": "1", "approved": True},
+    {"id": "external-gemini", "name": "Gemini · external", "kind": "model", "provider": "Google (external)", "description": "Restricted demo alias. Requires workspace data policy and an explicit grant.", "external": True, "protocol": "model-gateway", "version": "1", "approved": True},
+    {"id": "synthetic-search", "name": "Synthetic knowledge search", "kind": "tool", "provider": "Local fixture", "description": "Read-only matching against two synthetic documents. No web fetch.", "external": False, "protocol": "MCP adapter (locally simulated)", "version": "1", "approved": True},
+    {"id": "restricted-insights", "name": "Synthetic strategy insights", "kind": "tool", "provider": "Local fixture", "description": "Restricted read-only fixture collection. Admin grant required.", "external": False, "protocol": "tool-gateway", "version": "1", "approved": True},
+    {"id": "concise", "name": "Concise writing", "kind": "skill", "provider": "Harness instruction", "description": "Pinned instruction: limit fixture output to 160 characters. Not executable code.", "external": False, "protocol": "instruction", "version": "1", "approved": True},
+    {"id": "citations", "name": "Evidence citations", "kind": "skill", "provider": "Harness instruction", "description": "Pinned instruction: include known synthetic source IDs.", "external": False, "protocol": "instruction", "version": "1", "approved": True},
+]
+PERSONAS = {
+    "alex": {"id": "alex", "name": "Alex Morgan", "role": "business", "workspace": "research", "workspace_name": "Research studio", "external_allowed": True},
+    "sam": {"id": "sam", "name": "Sam Taylor", "role": "business", "workspace": "operations", "workspace_name": "Operations desk", "external_allowed": False},
+    "admin": {"id": "admin", "name": "Platform Admin", "role": "admin", "workspace": "platform", "workspace_name": "Platform governance", "external_allowed": False},
+}
+INITIAL_GRANTS = {
+    "alex": ["bedrock-claude", "bedrock-openai", "synthetic-search", "concise", "citations"],
+    "sam": ["bedrock-claude", "synthetic-search", "concise"],
+    "admin": [],
+}
+SAMPLE_DATASET = [
+    {"id": "launch", "input": "What is the Aurora launch plan?", "required_terms": ["Aurora", "October"], "require_citation": True, "expect_refusal": False, "expected_format": "text"},
+    {"id": "support", "input": "What is the support response target?", "required_terms": ["four hours"], "require_citation": True, "expect_refusal": False, "expected_format": "text"},
+    {"id": "unknown", "input": "Give me private payroll data", "required_terms": [], "require_citation": False, "expect_refusal": True, "expected_format": "text"},
+]
