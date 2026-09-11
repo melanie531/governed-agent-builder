@@ -836,3 +836,102 @@ Package consistency/admission/delivery regressions included. `git diff --check`
 clean. Live CFN/role permissions and genuine administrator approval remain blocked
 preparation steps, not test successes. Runtime executor source unchanged, so no
 new executor/package digest is claimed. Git commit is the source delivery hash.
+
+## Milestone 17: complete artifact verify-and-bind transaction (source only)
+
+2026-09-12. Verified clean starting branch `feat/live-capabilities` at
+`b44b4f74408cb2a918ae54d53369ad6a73572f2a`. Direct implementation, no nested workers.
+This supersedes Milestone 16's **unimplemented finalization step**, not its live
+blockers. Root objective (self-service configuration → one-click deployment →
+actual governed execution) remains OPEN pending independent source review and
+live acceptance. No claim of platform completion.
+
+Actual caller path implemented:
+`POST /api/admin/foundation-artifacts/finalize` → hosted session + CSRF/admin
+middleware → current protected admin/owner principal readback →
+`backend.foundation_approval.finalize_artifact` inside `store.tx()` →
+`verify_final_artifact` → existing `ArtifactReadback` + deterministic
+`package_foundation.package` (including `verify_package_admission` protected
+approval/CFN/IAM readback) → global repository CAS commit of immutable
+`foundation-artifact:<definition digest>` and idempotency receipt →
+`FoundationJobs.approve_request` → `finalized_artifact` → existing deployment and
+runtime/evidence gates. No unchecked Dynamo UpdateItem or ready=true endpoint.
+
+This is the **verify-existing-upload** variant of the transaction: provide only
+agent/version/definition digest, expected approval revision, complete ZIP SHA-256,
+exact uploaded object version and request ID. The key is derived, not accepted:
+`releases/<package_sha256>/foundation.zip`. Bucket/network/pricing come from the
+existing protected `foundation-deployment` record; role/endpoint from protected
+approval and platform metadata. The existing chosen private release bucket is
+reused, not another store. Object versioning and all four BPA flags are verified.
+The finalizer reconstructs the complete deterministic Linux-target dependency +
+source + manifest + admission ZIP using hash-locked wheels and requires its hash
+to equal the exact S3 version's bytes. Marker-file presence alone cannot pass.
+It makes no uploads or other AWS mutations; failure leaves no partial binding.
+
+Every new bind/replay checks exact immutable definition, current owner/workspace,
+grants, policy/epoch, source/catalog revision, protected review receipt and expiry.
+The repository global CAS fences revocation during network/readback/build. Same
+actor/request/content replay returns the original binding without rebuilding;
+changed object/version/hash/request/approval/deployment conflicts fail closed.
+A finalized approval cannot subsequently be overwritten; create a new immutable
+agent version for a changed package/definition. Jobs bind to the exact approval,
+source record and deployment settings, not fields hand-added to approval.
+Reviewed all-service cost/VPC settings remain required and unchanged.
+
+The response explicitly includes target `linux-arm64-python3.13` and validation
+status. Missing independent protected `foundation-linux:<package hash>` actual
+execution evidence returns **NOT_READY** after a valid static binding and blocks
+live-enabled submission. The finalization request cannot supply a Linux PASS,
+identity, bucket, key, role, endpoint, grant or readiness flag. The protected Linux
+receipt must match package/manifest/admission/source/object-version/target and
+include actual Linux execution, entrypoint success, validator identity and evidence
+digest. There is no new receipt-minting endpoint here: an independently controlled
+validation producer must supply real evidence, never a manually invented PASS.
+Local/Moto/static tests are NOT Linux execution or a production validation receipt.
+
+Platform team source/catalog approval is distinct from business-user configuration
+within approved constraints. The compiler uses the business user's saved prompt;
+engineers are not required to author each prompt. Existing independent exact-
+definition reviewer control is preserved. Whether that per-definition human gate
+is unnecessary for already-approved constraints is **design debt requiring review**,
+not a reason to bypass it or introduce another approval layer. Finalization itself
+is mechanical artifact binding, not another conceptual human approval decision.
+
+### Single current live-readiness matrix
+
+| Dependency | Current readiness / concrete remaining evidence |
+| --- | --- |
+| Admin identity / backend operation | Existing genuine hosted platform-admin identity unavailable in this task; no elevation or credential use. Source endpoint needs independently reviewed deployment, current metadata/S3-read permissions and a backend verification environment with `uv`, bounded temp space and hash-locked wheel access. Existing Lambda ZIP does not bundle the `uv` executable; hosted execution is NOT VERIFIED. Actual approved definition/upload and protected deployment configuration remain absent, not manufactured. |
+| Linux validation / artifact | Finalization implemented and offline-tested; no actual approved ZIP uploaded/bound here. Real Linux ARM64 Python 3.13 entrypoint execution and independently protected exact-byte receipt missing. Host/static checks do not satisfy it. Existing private bucket, versioning, exact VPC, dedicated package role and reviewed all-service cost envelope must read back before live use. |
+| Inference policy / governed admission | Exact supported inference Policy coverage and real workload allowed/denied admission not proved; existing inference Deny remains. No model permission expansion, workload dispatch or live switch change. |
+| Browser | Approved Browser capability, all-path egress enforcement and actual governed browser/session evidence missing. |
+| Evaluation | Real required dataset/rubric-bound evaluator and judge results/readback missing; synthetic unit evidence does not count. |
+| Telemetry | Real scoped OTel export/delivery plus exact run/runtime/version trace readback missing; configured jobs still have no live evidence reader. |
+
+No AWS reads/writes were performed by this source task; SDKs were replaced only in
+local tests. No cloud deployment, S3 upload, role grant, credential access, Runtime
+create/invoke, model/tool/Browser/eval call, live toggle or guard removal. Source
+verification uses synthetic identifiers only. GitHub metadata read confirms private
+repository. `origin/main` is absent; ownership comparison uses the supplied exact
+base and actual `origin/feat/live-capabilities`. No force push, PR or merge.
+
+Well-Architected self-review: Security fail-closed authenticated/CAS binding,
+independent live review pending; Reliability immutable/replay/race tests;
+Performance bounded read/build, hosted verification timing unmeasured; Cost no
+workload calls and existing all-service reservation controls retained; Operations
+explicit NOT_READY plus caller path/test receipts, live telemetry absent;
+Sustainability existing serverless/storage architecture, no new running resources.
+
+Final verification (unchanged source after these runs):
+- Targeted approval/finalization/wiring/package suite: **98 passed**, 2 baseline
+  warnings, **10.41s**; `/tmp/gab-finalization-targeted-final.log`.
+- Full `.venv/bin/python -m pytest -q`: **615 passed**, 3 baseline warnings,
+  **29.92s**; `/tmp/gab-finalization-full-final.log`.
+- An earlier full run caught one downstream budget-test fixture that mutated its
+  synthetic approval after binding (602 pass / 1 fail). Updated that fixture's
+  synthetic binding hash, without weakening production immutability checks; the
+  final complete full run above includes the correction and all later tests.
+- `git diff --check` PASS. Frontend untouched; no fresh hosted UI acceptance.
+- Review/publication anchor: the commit containing this Milestone 17 section;
+  exact SHA is reported in the delivery message (no self-referential SHA in file).

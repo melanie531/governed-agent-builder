@@ -104,6 +104,8 @@ def compile_approval(db, actor, data, owner, platform):
         raw['evaluation'][field] = {'id': field, 'version': str(data.version), 'digest': digest(definition[field])}
     load_config(raw, digest(raw))
     key = 'foundation-approved:'+data.definition_digest
+    if runs.get(db, 'foundation-artifact:' + data.definition_digest):
+        raise HTTPException(409, 'FINALIZED_APPROVAL_IMMUTABLE')
     old = runs.get(db, key)
     if (old or {}).get('revision', 0) != data.expected_revision or runs.get(db, 'foundation-review:'+data.request_id):
         raise HTTPException(409, 'APPROVAL_REPLAY_OR_REVISION_CONFLICT')
@@ -160,3 +162,164 @@ def platform_metadata(raw=None):
                     if not match or match['inputSchema'] != tool['inputSchema'] or tool['endpoint'] != base+suffix:
                         raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
     return {'endpoint': endpoint, 'role': role}
+
+
+class FinalizeFoundation(Strict):
+    agent_id: str
+    version: int = Field(ge=1, strict=True)
+    definition_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    approval_revision: int = Field(ge=1, strict=True)
+    package_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    artifact_version: str = Field(min_length=1, max_length=1024)
+    request_id: str = Field(pattern=r'^[a-zA-Z0-9_-]{8,100}$')
+
+
+LINUX_TARGET = 'linux-arm64-python3.13'
+
+
+def linux_validation(db, binding):
+    """Only independently protected execution evidence, never a request boolean."""
+    proof = runs.get(db, 'foundation-linux:' + binding['package_digest']) or {}
+    expected = {k: binding[k] for k in ('package_digest', 'manifest_digest',
+                'admission_digest', 'artifact_source_digest', 'artifact_version', 'target')}
+    passed = (all(proof.get(k) == v for k, v in expected.items())
+              and proof.get('status') == 'PASS' and proof.get('execution') == 'ACTUAL_LINUX'
+              and bool(proof.get('validator_identity')) and bool(proof.get('evidence_digest'))
+              and proof.get('entrypoint_passed') is True)
+    return {'target': LINUX_TARGET, 'status': 'PASS' if passed else 'UNVERIFIED'}
+
+
+def finalized_artifact(db, approved):
+    """Jobs consume a separately immutable binding, not hand-added approval fields."""
+    binding = runs.get(db, 'foundation-artifact:' + approved['definition_digest'])
+    if not binding or binding.get('approval_digest') != digest(approved):
+        raise HTTPException(503, 'VERIFIED_ARTIFACT_FINALIZATION_REQUIRED')
+    source = runs.get(db, 'foundation-source:' + approved.get('foundation_id', ''))
+    if binding.get('source_record_digest') != digest(source):
+        raise HTTPException(503, 'CURRENT_REGISTERED_ARTIFACT_SOURCE_REQUIRED')
+    if binding.get('deployment_digest') != digest(runs.get(db, 'foundation-deployment')):
+        raise HTTPException(503, 'CURRENT_ARTIFACT_DEPLOYMENT_REQUIRED')
+    if linux_validation(db, binding)['status'] != 'PASS':
+        raise HTTPException(503, 'LINUX_EXECUTION_NOT_READY')
+    deployment = runs.get(db, 'foundation-deployment') or {}
+    return {**approved, **{k: deployment[k] for k in ('network', 'reservation_usd', 'cost_envelope')
+                          if k in deployment},
+            **{k: binding[k] for k in ('package_digest', 'artifact_key',
+            'artifact_version', 'artifact_source_digest')}}
+
+
+def verify_final_artifact(approved, data, settings):
+    """Read exact existing object; reproduce complete locked ZIP and compare bytes.
+
+    No upload, Runtime creation, credentials, grants or Dynamo writes here. The
+    operator's existing private artifact bucket is selected from protected state.
+    The existing packager rechecks CFN/IAM and protected approval, including receipt.
+    """
+    import hashlib
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    import boto3
+    from botocore.config import Config
+    from scripts.package_foundation import save_config, package, dependency_command
+    from .foundation_jobs import ArtifactReadback
+    if (not settings or not settings.get('bucket') or approved['role'] not in settings.get('roles', [])
+            or settings.get('network', {}).get('networkMode') != 'VPC'):
+        raise HTTPException(409, 'REVIEWED_FOUNDATION_DEPLOYMENT_REQUIRED')
+    if data.artifact_version == 'null':
+        raise HTTPException(409, 'IMMUTABLE_OBJECT_VERSION_REQUIRED')
+    key = 'releases/' + data.package_digest + '/foundation.zip'
+    s3 = boto3.Session(region_name=settings['region']).client('s3', config=Config(
+        retries={'total_max_attempts': 1}, connect_timeout=5, read_timeout=30))
+    bucket = settings['bucket']
+    if (s3.get_bucket_versioning(Bucket=bucket).get('Status') != 'Enabled'
+            or not all(s3.get_public_access_block(Bucket=bucket)['PublicAccessBlockConfiguration'].get(k) is True
+                       for k in ('BlockPublicAcls', 'IgnorePublicAcls', 'BlockPublicPolicy', 'RestrictPublicBuckets'))):
+        raise HTTPException(409, 'PRIVATE_VERSIONED_ARTIFACT_BUCKET_REQUIRED')
+    candidate = {**approved, 'artifact_key': key, 'artifact_version': data.artifact_version,
+                 'package_digest': data.package_digest}
+    ArtifactReadback(s3, bucket)(candidate)
+    # Deterministic reconstruction covers ALL source/admission/dependency bytes,
+    # not just ZIP marker files or the submitter's claimed package hash.
+    with tempfile.TemporaryDirectory(prefix='foundation-finalize-') as directory:
+        root = Path(directory)
+        saved = save_config(approved['config'], root / 'manifests')
+        subprocess.run(dependency_command(root / 'deps'), check=True, timeout=90,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        package(saved, root / 'complete.zip', admission=approved['admission'],
+                approved=approved, dependencies=root / 'deps', mode='live')
+        if hashlib.sha256((root / 'complete.zip').read_bytes()).hexdigest() != data.package_digest:
+            raise HTTPException(409, 'COMPLETE_LOCKED_PACKAGE_DIGEST_REQUIRED')
+    return key
+
+
+def finalize_artifact(db, actor, data, owner, platform, *, verifier=verify_final_artifact):
+    """One serializable verify-and-bind operation, including idempotent replay.
+
+    Caller holds store.tx(): the global revision CAS fences every read (including
+    current grants/approval) against revocation during object readback/build.
+    Network effects are read-only, so a conflict/retry cannot duplicate uploads.
+    """
+    admin(actor)
+    from .app import get_version, validate_definition, resource, digest as definition_hash, audit
+    from scripts.package_foundation import source_digest
+    definition = get_version(db, data.agent_id, data.version)
+    approved = runs.get(db, 'foundation-approved:' + data.definition_digest)
+    agent = db.select('agents', where=[('id', '=', data.agent_id)]).fetchone()
+    if (not approved or definition['digest'] != data.definition_digest
+            or definition_hash({k:v for k,v in definition.items() if k != 'digest'}) != data.definition_digest
+            or not agent or agent['current_version'] != data.version
+            or (agent['owner'], agent['workspace']) != (owner['id'], owner['workspace'])
+            or (approved['owner'], approved['workspace']) != (owner['id'], owner['workspace'])
+            or owner['role'] != 'business' or actor['id'] == owner['id']):
+        raise HTTPException(409, 'CURRENT_IMMUTABLE_OWNER_DEFINITION_REQUIRED')
+    foundation = validate_definition(db, owner, definition)
+    source = runs.get(db, 'foundation-source:' + definition['foundation_id']) or {}
+    receipt = approved.get('receipt') or {}
+    if (approved['revision'] != data.approval_revision or approved['expires_at'] <= time.time()
+            or approved['policy_version'] != runs.get(db, 'policy')['version']
+            or approved['epoch'] != (runs.get(db, 'foundation-epoch') or 0)
+            or approved['source_revision'] != source.get('revision')
+            or source.get('platform') != platform or source.get('foundation_digest') != digest(foundation)
+            or approved['artifact_source_digest'] != source_digest()
+            or approved['manifest_digest'] != digest(approved['config'])
+            or approved['admission'] != admission_config(approved['config'], platform['endpoint'], platform['role'])
+            or receipt.get('definition_digest') != data.definition_digest
+            or receipt.get('approver_role') != 'admin' or not receipt.get('approver')
+            or receipt != runs.get(db, 'foundation-review:' + receipt.get('request_id', ''))
+            or any(source.get('catalog', {}).get(i) != digest(resource(db, 'components', i))
+                   for i in [definition['model_id'], *definition['tools'], *definition['skills']])):
+        raise HTTPException(409, 'CURRENT_PROTECTED_APPROVAL_REQUIRED')
+    settings = runs.get(db, 'foundation-deployment')
+    key = 'foundation-artifact:' + data.definition_digest
+    request_key = 'foundation-finalize:' + data.request_id
+    request_digest = digest(data.model_dump())
+    old, replay = runs.get(db, key), runs.get(db, request_key)
+    if old:
+        if (old['request_digest'] != request_digest or old['actor'] != actor['id']
+                or old['approval_digest'] != digest(approved) or replay != old
+                or old['deployment_digest'] != digest(settings)):
+            raise HTTPException(409, 'IMMUTABLE_ARTIFACT_BINDING_CONFLICT')
+        binding = old
+    else:
+        if replay:
+            raise HTTPException(409, 'FINALIZATION_REPLAY_CONFLICT')
+        artifact_key = verifier(approved, data, settings)
+        if artifact_key != 'releases/' + data.package_digest + '/foundation.zip':
+            raise HTTPException(409, 'CONTENT_ADDRESSED_ARTIFACT_REQUIRED')
+        binding = {'definition_digest': data.definition_digest, 'approval_digest': digest(approved),
+                   'approval_revision': approved['revision'], 'deployment_digest': digest(settings),
+                   'source_record_digest': digest(source),
+                   'manifest_digest': approved['manifest_digest'],
+                   'admission_digest': digest(approved['admission']),
+                   'artifact_source_digest': approved['artifact_source_digest'],
+                   'package_digest': data.package_digest, 'artifact_key': artifact_key,
+                   'artifact_version': data.artifact_version, 'target': LINUX_TARGET,
+                   'actor': actor['id'], 'request_digest': request_digest, 'created_at': time.time()}
+        runs.put(db, key, binding)
+        runs.put(db, request_key, binding)
+        audit(db, actor['id'], 'foundation_artifact_finalized', data.agent_id, json.dumps(binding))
+    validation = linux_validation(db, binding)
+    return {'binding': binding, 'linux_validation': validation,
+            'status': 'ARTIFACT_VERIFIED' if validation['status'] == 'PASS' else 'NOT_READY',
+            'production_ready': False}

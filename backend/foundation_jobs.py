@@ -26,6 +26,8 @@ class FoundationJobs:
         approved = runs.get(db, 'foundation-approved:' + definition['digest'])
         if not approved or approved.get('definition_digest') != definition['digest']:
             raise HTTPException(503, 'APPROVED_ARTIFACT_REQUIRED')
+        from .foundation_approval import finalized_artifact
+        approved = finalized_artifact(db, approved)
         raw = approved['config']
         cfg = load_config(raw, approved['manifest_digest'])
         if (approved['owner'] != persona['id'] or approved['workspace'] != persona['workspace']
@@ -55,7 +57,7 @@ class FoundationJobs:
         from decimal import Decimal
         envelope = approved.get('cost_envelope', {})
         dimensions = {'model', 'gateway', 'policy', 'runtime', 'exchange', 'telemetry', 'storage'}
-        amount = Decimal(approved['reservation_usd'])
+        amount = Decimal(approved.get('reservation_usd', 'NaN'))
         maximum = Decimal(envelope.get('maximum_usd', 'NaN'))
         if (envelope.get('reviewed') is not True or set(envelope.get('dimensions', [])) != dimensions
                 or not envelope.get('rate_card_digest') or not maximum.is_finite()

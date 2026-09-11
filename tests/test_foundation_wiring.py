@@ -105,6 +105,19 @@ def install(store, definition, tmp_path, evidence=False):
                     'dimensions': ['model', 'gateway', 'policy', 'runtime', 'exchange', 'telemetry', 'storage']}}
     with store.tx() as db:
         runs.put(db, 'foundation-approved:' + definition['digest'], approved)
+        # Synthetic protected binding/evidence ONLY for downstream job unit tests.
+        from backend.foundation_approval import LINUX_TARGET
+        binding = {**approved, 'approval_digest': digest(approved),
+                   'admission_digest': 'a'*64, 'target': LINUX_TARGET,
+                   'deployment_digest': digest(runs.get(db, 'foundation-deployment')),
+                   'source_record_digest': digest(None)}
+        runs.put(db, 'foundation-artifact:' + definition['digest'], binding)
+        runs.put(db, 'foundation-linux:' + approved['package_digest'], {
+            **{k: binding[k] for k in ('package_digest', 'manifest_digest', 'admission_digest',
+                'artifact_source_digest', 'artifact_version', 'target')},
+            'status': 'PASS', 'execution': 'ACTUAL_LINUX', 'entrypoint_passed': True,
+            'validator_identity': 'synthetic-validator', 'evidence_digest': 'b'*64})
+
     control = LiveControl()
     runtime = Runtime(store)
     deployment = FoundationDeployment(control, DeploymentPolicy('us-west-2', ACCOUNT,
@@ -240,6 +253,10 @@ def test_atomic_budget_fence_prevents_double_reservation(cloud, payload, tmp_pat
         approved = runs.get(db, 'foundation-approved:' + definition['digest'])
         approved['reservation_usd'] = '5'
         runs.put(db, 'foundation-approved:' + definition['digest'], approved)
+        binding = runs.get(db, 'foundation-artifact:' + definition['digest'])
+        binding['approval_digest'] = digest(approved)
+        runs.put(db, 'foundation-artifact:' + definition['digest'], binding)
+
     persona = {'id': definition['owner'], 'workspace': definition['workspace']}
     a, b = DynamoUnit(app.state.store.table), DynamoUnit(app.state.store.table)
     service.enqueue(a, 'first', definition, persona, time.time()+300)

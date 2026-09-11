@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata
+from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact
 from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
@@ -618,6 +618,19 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
             platform = platform_metadata(source['config'])
             return compile_approval(db, actor, data, principal(db, definition['owner']), platform)
+
+    @app.post("/api/admin/foundation-artifacts/finalize")
+    def finalize_foundation(data: FinalizeFoundation, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        with store.tx() as db:
+            definition = get_version(db, data.agent_id, data.version)
+            source = get_foundation_record(db, 'foundation-source:'+definition['foundation_id'])
+            if not source:
+                raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
+            return finalize_artifact(db, principal(db, actor['id']), data,
+                principal(db, definition['owner']), platform_metadata(source['config']))
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):

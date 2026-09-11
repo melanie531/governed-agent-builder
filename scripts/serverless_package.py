@@ -21,7 +21,7 @@ def main():
         for name in ('foundation_harness', 'foundations'):
             shutil.copytree(ROOT / name, target / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (target / 'scripts').mkdir()
-        for name in ('foundation_target.py', 'package_foundation.py'):
+        for name in ('foundation_target.py', 'package_foundation.py', 'verify_package_admission.py'):
             shutil.copy2(ROOT / 'scripts' / name, target / 'scripts' / name)
         # Approval verifies the exact packaged executor source, not a runtime ARN.
         shutil.copytree(ROOT / 'runtime', target / 'runtime', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
