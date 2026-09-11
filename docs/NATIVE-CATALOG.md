@@ -19,30 +19,88 @@ No deployment or environment change is part of this checkpoint.
 
 `NATIVE_CATALOG_CONFIG` is server-owned JSON, not browser input. Its contract:
 
-- Top-level `approved: true`, `registries: []`, `model_gateways: []`, optional
-  `cache_seconds` (0–60; default 30). Empty sources means not connected.
-- Each Registry source: `approved: true`, `region`, `registry_id`, `exposure`.
-- Each Model Gateway source: `approved: true`, `region`, `gateway_id`,
-  `target_ids` (explicit approved targets), `exposure`, `auth: AWS_IAM`, and
-  `list_models_url` exactly equal to the documented Gateway HTTPS
-  `/inference/v1/models` URL. No redirects, custom hosts or credential URLs.
-- Exposure maps canonical IDs to `approved: true`, exact `version`, `workspaces`,
-  `requestable`, `owner`, `data_handling`. Registry canonical ID:
-  `registry:<registry-id>:<record-id>`; tools append `:tool:<declared-name>`.
-  Tool schemas also require the parent exposure's `descriptor_sha256` to match
-  SHA-256 of sorted JSON descriptors. Approvers must review safe display metadata
-  and schema content at that source version. Descriptors are never returned raw.
-- Model IDs: `model:<gateway-id>:<target-id>:<enumerated-model-id>` (no slash in the catalog
-  key; the separate `model_id` retains the native target-qualified route).
-  Exposure version is SHA-256 of the sorted inference target configuration.
-  No automatic wildcard expansion or mapping aliases into concrete models.
+- Top-level `schema_version: 2`, `approved: true`, explicit `registries: []` and/or
+  `model_gateways: []`, optional `cache_seconds` (0–60, default 30).
+  Empty sources means not connected; it does not approve anything.
+- Required `binding`: `expected_account` (12 digits), `region`, and nonempty
+  `owner_approval` reference. This is server-owned owner approval, not user input.
+- Each Registry source: `approved: true`, `region`, `registry_id`, full
+  `registry_arn`, and `exposure`. ARN account/region/resource ID must match binding.
+- Each Model Gateway source: `approved: true`, `region`, `gateway_id`, full
+  `gateway_arn`, explicit `target_ids`, `exposure`, `auth: AWS_IAM`, and
+  `list_models_url` exactly the documented HTTPS `/inference/v1/models` endpoint.
+  No redirects, custom hosts, secret retrieval or inferred target IDs.
+- Every exposure requires `approved: true`, nonempty string `version`, **explicit
+  nonempty list of nonempty unique workspace strings**, boolean `requestable`,
+  nonempty `owner` and `data_handling`, `digest_format: native-catalog-v2`, and
+  lowercase 64-hex `approval_sha256`. Missing/null/string workspaces never mean all.
+- Registry ID: `registry:<registry-id>:<record-id>`; tools append
+  `:tool:<declared-name>`. Version is exact native recordVersion. Both parent and
+  child approvals must pin the SAME `record_revision(detail)` hash, including
+  full registry/record ARNs, record ID/type/version, name/displayName/description
+  and complete descriptors. Any change without a version increment hides the
+  item and children until reviewed. Children also intersect parent workspace scope.
+- Model ID: `model:<gateway-id>:<target-id>:<unqualified-model-id>`. Each approval
+  also requires `qualified_model_id` equal to the exact enumerated `targetName/modelId`.
+  Version is `target_revision(detail)`: gateway ARN, target ID/name, inference
+  configuration, and allowlisted nonsecret credential-provider configuration.
+  `approval_sha256` is `model_revision(detail, model)`, binding that target hash
+  and the **entire exact enumerated model JSON projection**, not a wildcard mapping.
+  Changes in enumeration extensions also require review. Returned gateway ARN and
+  target ID must equal the configured full identities, not just a name.
 
-There are deliberately no default registry IDs, old demo sources, secret values,
-SSM reads, permission changes or account-wide discovery. Approval and source
-configuration must be supplied by the resource owner before any cloud discovery.
-`client_factory` and `model_reader_factory` are server-side test injection seams.
-The IAM model reader resolves normal workload credentials only at a configured
-read; this checkpoint has not executed that transport or any cloud read.
+### Explicit v1 → v2 migration (no automatic approval)
+
+Existing fixture behavior is unchanged. Old native config is intentionally rejected:
+`descriptor_sha256` and inference-only digests do **not** grant v2 exposure. Do not
+copy an old hash, reuse legacy registry IDs, set all workspaces, or auto-approve rows.
+The owner must nominate the current new-namespace IAM registry/full ARNs and account/
+region, review exact records/display content, choose workspace scopes and exact model
+routes, and explicitly issue new v2 approvals. No source/config is enabled by this
+source-only patch. Retain old configuration privately for rollback; unconfigured or
+old approval configuration stays NotConnected until explicitly migrated.
+
+Digest algorithm `native-catalog-v2`: SHA-256 of UTF-8 Python `json.dumps` of
+`{"format":"native-catalog-v2","value":<projection>}`, with `sort_keys=True`,
+`separators=(',', ':')`, `ensure_ascii=True`, `allow_nan=False`. This is a versioned
+Python JSON serialization contract, **not RFC 8785**. Embedded descriptor JSON strings
+retain exact whitespace; key ordering of outer objects is stable. No `default=str`
+coercion. RecordVersion, package/server version, protocol/schema version and digest
+are distinct. Approval utilities are `record_revision`, `target_revision`, and
+`model_revision` in `backend/live_catalog.py`; they do not obtain or approve data.
+
+Auth hash metadata includes provider type/ARN, scopes, grant type, return URL,
+credential parameter name/prefix/location, IAM service/region, and custom parameter
+**names only**. Tokens, credential values, and custom parameter values are omitted,
+never decrypted. Auth metadata is not exposed in catalog responses. Discovery pins
+are not execution credential-integrity attestations.
+
+ALL source and exposure configuration is validated before SDK construction. Factory
+uses one session with the approved region, compares STS GetCallerIdentity account
+before any source reads, then shares that session across Registry, target metadata
+and signing the model GET. Tests inject a synthetic session implementing the same
+STS check; client/reader factories do not bypass it. Returned full Registry ARN and
+record ARN are checked. No credential/profile/environment fallback on denial.
+
+There are no default IDs, SSM/private skill reads, account-wide discovery, permission
+changes or authenticated acceptance in this checkpoint. Source config is captured
+at app construction; a later approved config change requires controlled reload.
+
+### IAM and connection gate (not applied)
+
+Registry uses exact-registry `agent-registry:ListDiscoverableRegistryRecords` and
+exact-record `agent-registry:GetDiscoverableRegistryRecord` for BatchGet, not an
+invented BatchGet IAM action. Optional Search is 1–20 results and 1–256 query chars;
+normal UI search remains local and needs no Search permission.
+GetGatewayTarget is gateway-ARN scoped; the backend additionally pins target IDs.
+Model Gateway HTTP GET listing under IAM needs **bedrock-agentcore:InvokeGateway**,
+which is broader invocation authority, **not IAM-enforced GET-only permission**.
+Do not add it as a read-only permission. Existing ENFORCE gates/Denies stay unchanged.
+Gateway outbound Mantle ListModels permission belongs to Gateway role, not the user.
+The current interceptor/listing path remains unproven. Prefer registry-only first
+connection while model invocation/listing authority is unresolved. Next gate is
+owner-approved exact source config plus separate IAM/transport review and one-shot
+read acceptance. No cloud connection, policy expansion or deployment is authorized here.
 
 ## Native contracts
 
@@ -66,12 +124,21 @@ batch errors, mismatched versions or incomplete pagination fail closed.
 
 MCP server JSON is `descriptors.mcpServer.data`; tools JSON is
 `descriptors.mcpServer.additionalData.tools.data`. Tool rows preserve operation,
-parent, declared input/output schema safe projection, owner, record version,
+parent, declared input/output **redacted display-only schema, not execution validation**,
+owner, record version,
 descriptor schema version, source hash and unverified execution binding.
 External schema refs, defaults/examples, source URLs and raw package content are
-not exported or fetched. SKILL.md is discovery metadata only; immutable approved
+not exported or fetched. Dropped constraints/refs make this projection unsuitable
+for executing or validating arguments; a separately approved future executor must
+retain and validate the private original. SKILL.md is discovery metadata only; immutable approved
 artifact references and a verified execution binding are required for future
-skill execution. This slice marks **all native entries execution-not-ready**.
+skill execution. Every supplied supported descriptor version is checked, including
+markdown-only SKILL. Structured payloads require valid JSON and minimal selected
+protocol structure: MCP server name/version and callable schemas, A2A wrapper 0.3
+with embedded protocolVersion 0.3.0/card fields, SKILL 0.1.0 typed known metadata,
+CUSTOM valid JSON with no standardized protocol. Unknown SKILL extensions remain
+private and unmodified. Malformed or unsupported descriptors are nonrequestable.
+This is minimal discovery validation, not full execution admission. This slice marks **all native entries execution-not-ready**.
 
 Models are separate AgentCore Model Gateway inference resources, not Tool Gateway
 or Registry rows. Approved exact target GetGatewayTarget reads accept the native
@@ -79,7 +146,11 @@ or Registry rows. Approved exact target GetGatewayTarget reads accept the native
 The native HTTP GET `/inference/v1/models` is the actual enumeration API (there
 is no installed botocore ListModels operation). Only enumerated target-qualified
 Bedrock `owned_by=system` Claude/OpenAI routes with exact exposure are admitted.
-Gemini/direct external connectors are not configured or synthesized.
+Gemini/direct external connectors are not configured or synthesized. Same-region
+Mantle provider endpoint only; cross-region provider endpoints are excluded.
+Model envelopes require actual list-valued `data`; errors, malformed IDs/ownership,
+duplicates and known continuation signals fail NotConnected. Only genuine `data: []`
+is a valid empty discovery snapshot, never execution success.
 
 ## Authorization and bounded snapshots
 
@@ -88,8 +159,9 @@ are required. Requestable means discoverable but lacking a grant; hidden records
 never enter ordinary counts/search/details/requests. Native grants are scoped to
 user and workspace. Child tools cannot widen parent workspace exposure. A grant
 never verifies execution. Detail/version routes reapply authorization.
-Metadata cache is in-process, maximum 60 seconds; revocations become visible at
-next expiry (not instantaneous). Failed refresh clears stale data. Refresh within
+Metadata cache is in-process, maximum 60 seconds; source changes become visible
+after refresh and upstream eventual indexing (not a global 60-second revocation SLA).
+User/workspace authorization is reapplied on every projection, even on cache hits. Failed refresh clears stale data. Refresh within
 TTL may reuse the bounded snapshot. No stale-on-error. Response revision covers
 only the user's visible projection. No tool calls, model calls or Gateway tools/list
 transport are implemented here; Registry-declared tools only.
@@ -109,10 +181,11 @@ References: AWS AgentCore Developer Guide `registry-supported-record-types.html`
 
 ### Source checkpoint results
 
-- 141 offline tests pass across native/legacy Catalog authorization, hosted auth,
+- Historical pre-fix checkpoint: 141 offline tests passed across native/legacy Catalog authorization, hosted auth,
   callback and email verification suites; native responses validated against the
   installed SDK request and response shapes. Tests use synthetic IDs only.
-- Cloudscape TypeScript/Vite production build passes. Existing large-chunk warning
+- Historical pre-fix Cloudscape TypeScript/Vite production build passed.
+  This v2 patch changes no UI; no new frontend build is claimed. Existing large-chunk warning
   remains; no claim of browser visual acceptance or live deployment.
 - Current unconfigured live state: `NotConnected`, no sample rows. Official
   descriptor examples exist only in offline tests, never as production fallback.
