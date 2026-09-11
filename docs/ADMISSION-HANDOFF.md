@@ -30,3 +30,21 @@ Keep CreateInference Deny, fixture UI, Cognito/users/SSM/data/BPA intact.
 No full Runtime creation before real admission. Live catalogs, evaluator/reader,
 UI and Browser remain next slice. Backend release and runtime ZIP are different
 artifacts; never confuse their hashes.
+
+## 02:30 AEST continuation / Milestone 14
+
+Policy implementation published at `a7c936e85eba4fdd706bb553affb4710a6378624`;
+see NIGHTLY-STATUS milestone 14. Full suite 543 passed. Exact-role-only live
+ChangeSet was NOT executed because AWS additionally proposes ToolPolicy.Definition
+via FoundationRole.Arn dependency. Receipt at private ignored
+artifacts/foundation-admission/role-update-proof.json; do not retry prepare or
+execute past the persisted blocked state without resolving scope explicitly.
+Existing role grant/direct-invoke Deny therefore remain NOT DEPLOYED.
+
+User explicitly permits a bounded isolated admission-only Runtime AFTER actual
+Linux artifact validation and narrow IAM review, before successful workload
+admission. This replaces the earlier circular "no Runtime before admission"
+restriction for that isolated probe ONLY. No general PUBLIC-network relaxation.
+No Runtime created; no synthetic service-probe record or isolated probe entry
+implemented yet. Peer Linux receipt still absent at this check. Full current
+engine ZIP is NOT itself the authorized deterministic no-model probe.

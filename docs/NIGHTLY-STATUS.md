@@ -573,3 +573,76 @@ resources unchanged; Performance no live workload measurements; Cost no model
 calls, infrastructure/API probe charges unknown; Operations has deployed-code
 hash and negative HTTP evidence; Sustainability six bounded serverless
 resources, no new always-on service.
+
+## Milestone 14: exact admission role policy source; live ChangeSet blocked
+
+2026-09-12 02:30 AEST. Resumed verified clean `5e39165eb82d471a2a0ee582427795f0600e99e8`.
+Published implementation `a7c936e85eba4fdd706bb553affb4710a6378624` before live prepare.
+New `scripts/admission_role_policy.py` overlays only FoundationRole inline
+Policies onto the LIVE template, retaining every other property/resource and
+AgentCore-only trust. It grants only exact existing API /$default/POST/internal/
+foundation/exchange execute-api:Invoke and explicitly denies lambda:InvokeFunction
+on all functions (the wildcard is a DENY, never trust or Allow). Existing
+CreateInference/model/browser denies remain unchanged. The bounded reviewed
+prepare/execute driver is `scripts/admission_role_update.py`; it refuses any
+ChangeSet outside one non-replacing FoundationRole.Policies modification.
+
+Verification: 45 targeted admission/delivery/policy tests passed; full suite
+**543 passed in 32.62s**, three existing dependency warnings. After enhancing
+blocker persistence only, 9 policy tests passed again. git diff --check passed.
+Feature publication inventory contained exactly our one implementation commit;
+origin/main remains absent, so origin/feat/live-capabilities was the comparison.
+No PR/merge. Memory recall timed out; repository source and live metadata used.
+
+Live StudioTarget checks before and after prepare: **MATCH**, approved profile
+agentic-platform-prod/us-west-2, STS account matches existing Studio stacks,
+CloudFront and Cognito internally; account IDs not printed. AWS_IAM exact route
+was checked. ChangeSet `foundation-role-admission-1789144065` CREATE_COMPLETE /
+AVAILABLE, **NOT EXECUTED**. AWS reports TWO modifications:
+- FoundationRole.Policies: direct, static, RequiresRecreation Never.
+- ToolPolicy.Definition: dynamic ResourceAttribute dependency on
+  FoundationRole.Arn, RequiresRecreation Never.
+
+Both are non-replacing, but the second violates the requested exact-role-only
+execution gate. No dependency exception was silently introduced. The guard
+stopped with FOUNDATION_ROLE_ONLY. Foundation stack remains UPDATE_COMPLETE;
+this is its previous stable state, NOT a receipt of this update. The new exact
+route grant and direct-Lambda explicit Deny are **source-tested, NOT DEPLOYED**.
+No workload principal or live allowed/denied run evidence was obtained. Signed
+operator/anonymous results from milestone 13 do not become workload proof.
+Receipt: private ignored artifacts/foundation-admission/role-update-proof.json.
+Actual CreateChangeSet request ID: 10cb50de-6669-4442-b801-177222a0ee4f.
+
+Artifact: runtime-final.zip SHA-256 still
+3821b5ca17b76b1801c225723b45f14b691dacb55bd4c6c572a5e404b1a2ae82;
+all embedded foundation source bytes match current source, source digest
+6bbeaf313321abc9da4861d539fa1ffd979140dd379b30e2e6efb3e9817a86ca.
+Actual Linux ARM64/Python 3.13 import remains UNVERIFIED; no docs/PEER-LINUX-QA
+receipt present during this slice. No Runtime was created as a substitute for QA.
+The requested typed synthetic service-probe context and isolated probe entry
+are NOT IMPLEMENTED in this slice. Existing human hosted-session checks were
+not bypassed; no synthetic grant/job/session or user records were written.
+
+User authorization supersedes the old circular handoff constraint: an isolated
+admission-only probe Runtime is permitted AFTER Linux artifact validation and
+reviewed narrow IAM/caller bindings, before workload proof (two-phase create
+then bind actual ARN/version, prepare protected record, then invoke). This does
+not authorize full Runtime/harness production enablement. Do not infer that the
+current full engine artifact is a no-inference probe. Need isolated deterministic
+probe source, real Linux validation, protected typed service context, scoped
+operator invoke policy, real-role allowed plus cross-run denied receipts.
+The immediate cloud blocker is the extra ToolPolicy dependency; needs explicitly
+reviewed resolution that honors scope before any execute, not a generic retry.
+
+This slice counts: Runtime creates 0, Runtime sessions 0, Runtime invocations 0,
+model/tool/Browser/eval calls 0; one ChangeSet created and retained unexecuted for
+review, no timer/worker scheduled. Runtime execution duration not applicable;
+actual service charges unknown, no zero-cost/invoice claim. No S3/SSM/Cognito,
+trust, user data, fixture UI or inference-deny changes. No live harness PASS.
+
+Well-Architected: Security fail-closed guard stopped broader cloud mutation;
+Reliability persists exact unknown/blocked states without retrying writes;
+Performance no Runtime timing evidence; Cost no workload execution and unknown
+control-plane charges; Operations published source, test and ChangeSet receipts;
+Sustainability no new running/always-on workload. Full harness/evidence-reader,
+evaluation, custom-input digest acceptance and Browser remain NOT PROVEN.

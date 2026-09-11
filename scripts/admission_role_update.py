@@ -82,7 +82,16 @@ def run(action):
             if change['Status'] not in ('CREATE_PENDING','CREATE_IN_PROGRESS'):
                 break
             time.sleep(5)
-        proof['change'] = inspect_change_set(change, STACK)
+        proof['observed_changes'] = [{k:r.get(k) for k in (
+            'LogicalResourceId', 'ResourceType', 'Action', 'Replacement', 'Details')}
+            for r in (item['ResourceChange'] for item in change.get('Changes', []))]
+        save(proof)
+        try:
+            proof['change'] = inspect_change_set(change, STACK)
+        except ValueError:
+            proof['status'] = 'BLOCKED_UNEXPECTED_CHANGESET_NOT_EXECUTED'
+            save(proof)
+            raise
         assert template(cf, StackName=STACK, ChangeSetName=proof['change_set']) == desired
         proof['status'] = 'REVIEWED_NOT_EXECUTED'
         save(proof)
