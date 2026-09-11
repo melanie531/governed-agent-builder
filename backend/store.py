@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from .catalog import COMPONENTS, FOUNDATIONS, INITIAL_GRANTS
+from .repository import SQLiteRepository
 
 class Store:
     def __init__(self, path: str, seed_personas=True):
@@ -45,7 +46,7 @@ class Store:
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("BEGIN IMMEDIATE")
         try:
-            yield db
+            yield SQLiteRepository(db)
             db.commit()
         except BaseException:
             db.rollback()

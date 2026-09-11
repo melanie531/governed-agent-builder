@@ -61,7 +61,7 @@ def test_every_api_requires_real_auth(hosted, path):
 @pytest.mark.parametrize("path", ["/api/demo/personas", "/api/demo/session"])
 def test_demo_routes_closed_even_after_auth(hosted, path):
     app, c, key = hosted
-    assert c.get(path).status_code == 404
+    assert c.get(path).status_code == 401
     authenticate(app, c, key)
     assert c.post(path, json={"persona_id": "admin"}).status_code == 404
 

@@ -35,21 +35,21 @@ def digest(value):
 
 
 def audit(db, actor, action, resource, detail=""):
-    db.execute("INSERT INTO audit(actor,action,resource,detail,created) VALUES (?,?,?,?,?)", (actor, action, resource, detail, time.time()))
+    db.insert('audit', {'actor': actor, 'action': action, 'resource': resource, 'detail': detail, 'created': time.time()})
 
 
 def event(db, job_id, stage, detail):
-    db.execute("INSERT INTO events(job,stage,detail,created) VALUES (?,?,?,?)", (job_id, stage, json.dumps(detail), time.time()))
+    db.insert('events', {'job': job_id, 'stage': stage, 'detail': json.dumps(detail), 'created': time.time()})
 
 
 def policy(db):
-    return json.loads(db.execute("SELECT body FROM settings WHERE key='policy'").fetchone()[0])
+    return json.loads(db.select('settings', columns=['body'], where=[('key', '=', 'policy')]).fetchone()[0])
 
 
 def resource(db, table, resource_id):
     if table not in ("components", "foundations"):
         raise ValueError("Invalid catalog authority")
-    row = db.execute(f"SELECT body FROM {table} WHERE id=?", (resource_id,)).fetchone()
+    row = db.select(table, columns=['body'], where=[('id', '=', resource_id)]).fetchone()
     if not row:
         raise HTTPException(422, "Unknown catalog resource")
     return json.loads(row[0])
@@ -59,7 +59,7 @@ def allowed(db, persona, component, foundation):
     kind = component["kind"] + "s"
     return (component["approved"] and component["id"] in foundation[kind]
             and (not component["external"] or persona["external_allowed"])
-            and db.execute("SELECT 1 FROM grants WHERE persona=? AND component=?", (persona["id"], component["id"])).fetchone() is not None)
+            and db.select('grants', where=[('persona', '=', persona['id']), ('component', '=', component['id'])]).fetchone() is not None)
 
 
 def validate_definition(db, persona, definition):
@@ -80,7 +80,7 @@ def validate_definition(db, persona, definition):
 
 
 def agent_access(db, persona, agent_id):
-    row = db.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
+    row = db.select('agents', where=[('id', '=', agent_id)]).fetchone()
     # Admin governance is not a blanket right to read another user's prompt/dataset.
     if not row or row["owner"] != persona["id"] or row["workspace"] != persona["workspace"]:
         raise HTTPException(404, "Agent not found")
@@ -88,13 +88,13 @@ def agent_access(db, persona, agent_id):
 
 
 def get_version(db, agent_id, version):
-    row = db.execute("SELECT * FROM versions WHERE agent=? AND version=?", (agent_id, version)).fetchone()
+    row = db.select('versions', where=[('agent', '=', agent_id), ('version', '=', version)]).fetchone()
     if not row:
         raise HTTPException(404, "Version not found")
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None):
     hosted = os.getenv("HOSTED_PREVIEW") == "1"
     demo = os.getenv("DEMO_MODE") == "1" if demo_mode is None else demo_mode
     if hosted and demo:
@@ -112,7 +112,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     if hosted:
         if parsed.scheme != "https" or not parsed.hostname or parsed.hostname in ("localhost", "127.0.0.1", "::1") or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/") or parsed.port not in (None, 443):
             raise RuntimeError("HOSTED_PREVIEW requires an exact public HTTPS origin")
-        if not os.getenv("STATE_PATH") and not db_path:
+        if not os.getenv("STATE_PATH") and not db_path and repository is None:
             raise RuntimeError("HOSTED_PREVIEW requires persistent STATE_PATH")
         origins = {public.rstrip("/")}
     else:
@@ -120,7 +120,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise RuntimeError("PUBLIC_URL must be a loopback origin without a path or credentials")
         origins = {public.rstrip("/"), f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
     hosts = {urlparse(x).netloc for x in origins}
-    store = Store(db_path or (os.environ["STATE_PATH"] if hosted else str(ROOT / "artifacts/state.sqlite")), seed_personas=not hosted)
+    store = repository if repository is not None else Store(db_path or (os.environ["STATE_PATH"] if hosted else str(ROOT / "artifacts/state.sqlite")), seed_personas=not hosted)
     auth = HostedAuth(store, public) if hosted else None
     mode_label = "CLOUD-HOSTED DEMO" if hosted else "LOCAL SIMULATION"
 
@@ -129,7 +129,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if subject not in PERSONAS:
                 raise HTTPException(404, "Identity not found")
             return PERSONAS[subject]
-        row = db.execute("SELECT body FROM principals WHERE id=? AND expires>?", (subject, time.time())).fetchone()
+        row = db.select('principals', columns=['body'], where=[('id', '=', subject), ('expires', '>', time.time())]).fetchone()
         if not row:
             raise HTTPException(403, "Studio membership expired; sign in and retry")
         return json.loads(row[0])
@@ -137,7 +137,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def principal_list(db):
         if not hosted:
             return list(PERSONAS.values())
-        return [json.loads(r[0]) for r in db.execute("SELECT body FROM principals WHERE expires>?", (time.time(),))]
+        return [json.loads(r[0]) for r in db.select('principals', columns=['body'], where=[('expires', '>', time.time())])]
 
     @asynccontextmanager
     async def lifespan(app):
@@ -146,8 +146,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             with store.tx() as db:
                 # A single supported worker owns this local database. Active jobs restart
                 # safely because fixture execution has no external side effects.
-                for job in db.execute("SELECT id FROM jobs WHERE stage NOT IN ('PASS','NEEDS_CHANGES')").fetchall():
-                    db.execute("UPDATE jobs SET stage='VALIDATING',updated=? WHERE id=?", (time.time(), job["id"]))
+                for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchall():
+                    db.update('jobs', {'stage': 'VALIDATING', 'updated': time.time()}, where=[('id', '=', job['id'])])
                     event(db, job["id"], "RECOVERED", {"message": "Resumed durable local job after process restart"})
             task = asyncio.create_task(worker_loop())
         yield
@@ -160,6 +160,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     app = FastAPI(title="Agent Studio · " + mode_label, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
+    app.state.wake = asyncio.Event()
     app.state.hosted_auth = auth
 
     @app.middleware("http")
@@ -171,13 +172,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         if request.headers.get("sec-fetch-site") == "cross-site" and not callback_request:
             return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
         api_request = request.url.path == "/api" or request.url.path.startswith("/api/")
-        if hosted and request.url.path.startswith("/api/demo/"):
-            return JSONResponse({"detail": "Not found"}, status_code=404)
         if hosted and api_request:
             try:
                 request.state.persona, request.state.csrf = await asyncio.to_thread(auth.authenticate, request)
             except HTTPException as exc:
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers={"Cache-Control": "no-store"})
+            if request.url.path.startswith("/api/demo/"):
+                return JSONResponse({"detail": "Not found"}, status_code=404, headers={"Cache-Control": "no-store"})
             if request.method not in ("GET", "HEAD", "OPTIONS") and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), request.state.csrf):
                 return JSONResponse({"detail": "CSRF token required"}, status_code=403)
         # Enforce while reading, rather than allocating an unbounded upload first.
@@ -193,7 +194,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             return JSONResponse({"detail": "Same-origin request required"}, status_code=403)
         if not hosted and request.url.path.startswith("/api/") and request.url.path not in ("/api/demo/personas", "/api/demo/session"):
             with store.tx() as db:
-                row = db.execute("SELECT * FROM sessions WHERE id=? AND expires>?", (request.cookies.get("gab_session", ""), time.time())).fetchone()
+                row = db.select('sessions', where=[('id', '=', request.cookies.get('gab_session', '')), ('expires', '>', time.time())]).fetchone()
             if not row:
                 return JSONResponse({"detail": "Choose a DEV ONLY demo persona to continue"}, status_code=401)
             request.state.persona = PERSONAS[row["persona"]]
@@ -245,8 +246,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise HTTPException(404, "Not found")
         session_id, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with store.tx() as db:
-            db.execute("DELETE FROM sessions WHERE expires<? OR id=?", (time.time(), request.cookies.get("gab_session", "")))
-            db.execute("INSERT INTO sessions VALUES (?,?,?,?)", (session_id, data.persona_id, csrf, time.time() + 8 * 3600))
+            db.delete('sessions', where=[('expires', '<', time.time()), ('id', '=', request.cookies.get('gab_session', ''))], any_of=True)
+            db.insert('sessions', {'id': session_id, 'persona': data.persona_id, 'csrf': csrf, 'expires': time.time() + 8 * 3600})
             audit(db, data.persona_id, "demo_session", "local", "DEV ONLY persona selected")
         response.set_cookie("gab_session", session_id, httponly=True, samesite="strict", secure=parsed.scheme == "https", max_age=8 * 3600)
         return {"persona": PERSONAS[data.persona_id], "csrf": csrf, "mode": mode_label}
@@ -259,7 +260,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def options(request: Request, foundation_id: str | None = None, model_id: str | None = None):
         persona = who(request)
         with store.tx() as db:
-            foundations = [json.loads(r[0]) for r in db.execute("SELECT body FROM foundations")]
+            foundations = [json.loads(r[0]) for r in db.select('foundations', columns=['body'])]
             foundations = [f for f in foundations if f["approved"]]
             choices = {"models": [], "tools": [], "skills": []}
             if foundation_id:
@@ -268,7 +269,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                     raise HTTPException(403, "Foundation unavailable")
                 if model_id and not allowed(db, persona, resource(db, "components", model_id), foundation):
                     raise HTTPException(403, "Model unavailable")
-                for row in db.execute("SELECT body FROM components"):
+                for row in db.select('components', columns=['body']):
                     component = json.loads(row[0])
                     if allowed(db, persona, component, foundation):
                         choices[component["kind"] + "s"].append(component)
@@ -284,18 +285,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if data.base_version != agent["current_version"]:
                 raise HTTPException(409, "Stale draft; reload the current version")
             version = agent["current_version"] + 1
-            db.execute("UPDATE agents SET current_version=? WHERE id=?", (version, agent_id))
+            db.update('agents', {'current_version': version}, where=[('id', '=', agent_id)])
         else:
             if data.base_version is not None:
                 raise HTTPException(422, "New agents cannot have base_version")
-            count = db.execute("SELECT COUNT(*) FROM agents WHERE owner=?", (persona["id"],)).fetchone()[0]
+            count = db.select('agents', count=True, where=[('owner', '=', persona['id'])]).fetchone()[0]
             if count >= 100:
                 raise HTTPException(429, "Local demo cap: 100 agents per identity")
             agent_id, version = uid(), 1
-            db.execute("INSERT INTO agents VALUES (?,?,?,?,?)", (agent_id, persona["id"], persona["workspace"], version, time.time()))
+            db.insert('agents', {'id': agent_id, 'owner': persona['id'], 'workspace': persona['workspace'], 'current_version': version, 'created': time.time()})
         payload.update({"agent_id": agent_id, "version": version, "owner": persona["id"], "workspace": persona["workspace"], "foundation_manifest": foundation, "foundation_manifest_digest": digest(foundation), "schema_version": "1", "mode": mode_label, "prompt_ref": "sha256:" + digest(payload["prompt"]), "dataset_ref": "sha256:" + digest(payload["dataset"]), "rubric_ref": "sha256:" + digest(payload["rubric"]), "decision_policy_version": policy(db)["version"]})
         payload["digest"] = digest(payload)
-        db.execute("INSERT INTO versions VALUES (?,?,?,?,?)", (agent_id, version, payload["digest"], json.dumps(payload), time.time()))
+        db.insert('versions', {'agent': agent_id, 'version': version, 'digest': payload['digest'], 'body': json.dumps(payload), 'created': time.time()})
         audit(db, persona["id"], "definition_created", agent_id, f"version={version}, digest={payload['digest']}")
         return payload
 
@@ -313,11 +314,11 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def agents(request: Request):
         persona = who(request)
         with store.tx() as db:
-            rows = db.execute("SELECT * FROM agents WHERE owner=? AND workspace=? ORDER BY created DESC", (persona["id"], persona["workspace"])).fetchall()
+            rows = db.select('agents', where=[('owner', '=', persona['id']), ('workspace', '=', persona['workspace'])], order='created', descending=True).fetchall()
             result = []
             for row in rows:
                 definition = get_version(db, row["id"], row["current_version"])
-                latest = db.execute("SELECT id,stage,version FROM jobs WHERE agent=? ORDER BY created DESC LIMIT 1", (row["id"],)).fetchone()
+                latest = db.select('jobs', columns=['id', 'stage', 'version'], where=[('agent', '=', row['id'])], order='created', descending=True, limit=1).fetchone()
                 result.append({**dict(row), "name": definition["name"], "foundation_id": definition["foundation_id"], "job": dict(latest) if latest else None})
             return result
 
@@ -325,8 +326,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def get_agent(agent_id: str, request: Request):
         with store.tx() as db:
             agent = agent_access(db, who(request), agent_id)
-            versions = [dict(r) for r in db.execute("SELECT version,digest,created FROM versions WHERE agent=? ORDER BY version DESC", (agent_id,))]
-            jobs = [dict(r) for r in db.execute("SELECT id,version,stage,created FROM jobs WHERE agent=? ORDER BY created DESC", (agent_id,))]
+            versions = [dict(r) for r in db.select('versions', columns=['version', 'digest', 'created'], where=[('agent', '=', agent_id)], order='version', descending=True)]
+            jobs = [dict(r) for r in db.select('jobs', columns=['id', 'version', 'stage', 'created'], where=[('agent', '=', agent_id)], order='created', descending=True)]
             return {**agent, "definition": get_version(db, agent_id, agent["current_version"]), "versions": versions, "jobs": jobs}
 
     @app.post("/api/agents/{agent_id}/deploy-test", status_code=202)
@@ -338,32 +339,35 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "Only the current definition can be tested")
             definition = get_version(db, agent_id, data.version)
             validate_definition(db, persona, definition)
-            existing = db.execute("SELECT * FROM jobs WHERE agent=? AND requester=? AND idem=?", (agent_id, persona["id"], data.idempotency_key)).fetchone()
+            existing = db.select('jobs', where=[('agent', '=', agent_id), ('requester', '=', persona['id']), ('idem', '=', data.idempotency_key)]).fetchone()
             if existing:
                 if existing["version"] != data.version:
                     raise HTTPException(409, "Idempotency key already binds a different version")
                 return {"job_id": existing["id"], "stage": existing["stage"], "reused": True}
-            if db.execute("SELECT 1 FROM jobs WHERE agent=? AND stage NOT IN ('PASS','NEEDS_CHANGES')", (agent_id,)).fetchone():
+            if db.select('jobs', where=[('agent', '=', agent_id), ('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchone():
                 raise HTTPException(409, "A job already owns this agent; wait for completion")
-            if db.execute("SELECT COUNT(*) FROM jobs WHERE stage NOT IN ('PASS','NEEDS_CHANGES')").fetchone()[0] >= 8:
+            if db.select('jobs', count=True, where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])]).fetchone()[0] >= 8:
                 raise HTTPException(429, "Local queue cap reached (8)")
-            if db.execute("SELECT COUNT(*) FROM jobs WHERE requester=? AND created>?", (persona["id"], time.time() - 3600)).fetchone()[0] >= 30:
+            if db.select('jobs', count=True, where=[('requester', '=', persona['id']), ('created', '>', time.time() - 3600)]).fetchone()[0] >= 30:
                 raise HTTPException(429, "Local budget cap: 30 jobs per identity per hour")
             job_id, now = uid(), time.time()
-            db.execute("INSERT INTO jobs(id,agent,version,requester,idem,stage,created,updated,deadline) VALUES (?,?,?,?,?,'VALIDATING',?,?,?)", (job_id, agent_id, data.version, persona["id"], data.idempotency_key, now, now, now + 60))
+            db.insert('jobs', {'id': job_id, 'agent': agent_id, 'version': data.version, 'requester': persona['id'], 'idem': data.idempotency_key, 'stage': 'VALIDATING', 'created': now, 'updated': now, 'deadline': now + (900 if repository is not None else 60)})
             event(db, job_id, "VALIDATING", {"message": "Local deploy/test accepted", "digest": definition["digest"], "mode": mode_label})
             audit(db, persona["id"], "deploy_test", agent_id, job_id)
+            if repository is not None and hosted:
+                from .hosted_auth import SESSION_COOKIE, sha
+                db.insert("job_authority", {"id": job_id, "session_hash": sha(request.cookies.get(SESSION_COOKIE, ""))})
         request.app.state.wake.set()
         return {"job_id": job_id, "stage": "VALIDATING", "reused": False}
 
     @app.get("/api/jobs/{job_id}")
     def job_result(job_id: str, request: Request):
         with store.tx() as db:
-            row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            row = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
             if not row:
                 raise HTTPException(404, "Job not found")
             agent = agent_access(db, who(request), row["agent"])
-            events = [{**dict(r), "detail": json.loads(r["detail"])} for r in db.execute("SELECT * FROM events WHERE job=? ORDER BY id", (job_id,))]
+            events = [{**dict(r), "detail": json.loads(r["detail"])} for r in db.select('events', where=[('job', '=', job_id)], order='id')]
             result = json.loads(row["result"]) if row["result"] else None
             return {**dict(row), "result": result, "events": events, "current_version": agent["current_version"], "stale": row["version"] != agent["current_version"], "mode": mode_label}
 
@@ -376,13 +380,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "Current version required; revise and retest")
             definition = get_version(db, agent_id, data.version)
             validate_definition(db, persona, definition)
-            job = db.execute("SELECT * FROM jobs WHERE agent=? AND version=? ORDER BY created DESC LIMIT 1", (agent_id, data.version)).fetchone()
+            job = db.select('jobs', where=[('agent', '=', agent_id), ('version', '=', data.version)], order='created', descending=True, limit=1).fetchone()
             if not job or job["stage"] != "PASS":
                 raise HTTPException(409, "Current version has not passed local checks")
             result = json.loads(job["result"])
             if result["definition_digest"] != definition["digest"] or result["policy_version"] != policy(db)["version"]:
                 raise HTTPException(409, "Stale evaluation evidence or changed policy; retest required")
-            if db.execute("SELECT COUNT(*) FROM audit WHERE actor=? AND action='local_invoke' AND created>?", (persona["id"], time.time() - 60)).fetchone()[0] >= 30:
+            if db.select('audit', count=True, where=[('actor', '=', persona['id']), ('action', '=', 'local_invoke'), ('created', '>', time.time() - 60)]).fetchone()[0] >= 30:
                 raise HTTPException(429, "Local invocation cap: 30 per minute")
             output = run_case(definition, data.input)
             audit(db, persona["id"], "local_invoke", agent_id, f"version={data.version}")
@@ -408,22 +412,26 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             archive.writestr("requirements.txt", "# Python >=3.12; portable runner uses standard library only. No dependencies.\n")
             archive.writestr("uv.lock", (ROOT / "uv.lock").read_text())
             archive.writestr("README.md", "# Local fixture export\n\nRun `python3 run.py` in this directory. Python >=3.12, standard library only.\n\nLOCAL SIMULATION. No model calls, credentials, cloud logs, or production readiness. The application dependency lock is included for provenance; the portable harness needs none. Definition is immutable; digest covers every field except digest itself. config.json pins the export-time gate policy. Natural language rubric is preserved; no LLM judge runs. Prompt logic and synthetic sources are in harness.py. Editing files creates an ungoverned local copy, not a new platform version.\n")
+        if repository is not None and hosted:
+            import boto3
+            key = f"exports/{who(request)['id']}/{agent_id}/{agent['current_version']}/{uid()}.zip"
+            boto3.client("s3").put_object(Bucket=os.environ["EXPORT_BUCKET"], Key=key, Body=buffer.getvalue(), ContentType="application/zip", ServerSideEncryption="AES256")
         return Response(buffer.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="agent-{agent_id}-v{agent["current_version"]}.zip"'})
 
     @app.get("/api/capabilities")
     def capabilities(request: Request):
         persona = who(request)
         with store.tx() as db:
-            grants = {r[0] for r in db.execute("SELECT component FROM grants WHERE persona=?", (persona["id"],))}
-            return [{**json.loads(r[0]), "granted": json.loads(r[0])["id"] in grants, "data_policy_allowed": not json.loads(r[0])["external"] or persona["external_allowed"]} for r in db.execute("SELECT body FROM components")]
+            grants = {r[0] for r in db.select('grants', columns=['component'], where=[('persona', '=', persona['id'])])}
+            return [{**json.loads(r[0]), "granted": json.loads(r[0])["id"] in grants, "data_policy_allowed": not json.loads(r[0])["external"] or persona["external_allowed"]} for r in db.select('components', columns=['body'])]
 
     @app.get("/api/requests")
     def requests(request: Request):
         persona = who(request)
         with store.tx() as db:
             if persona["role"] == "admin":
-                return [dict(r) for r in db.execute("SELECT * FROM requests ORDER BY created DESC")]
-            return [dict(r) for r in db.execute("SELECT * FROM requests WHERE requester=? AND workspace=? ORDER BY created DESC", (persona["id"], persona["workspace"]))]
+                return [dict(r) for r in db.select('requests', order='created', descending=True)]
+            return [dict(r) for r in db.select('requests', where=[('requester', '=', persona['id']), ('workspace', '=', persona['workspace'])], order='created', descending=True)]
 
     @app.post("/api/requests", status_code=201)
     def submit_request(data: CapabilityRequest, request: Request):
@@ -432,10 +440,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise HTTPException(403, "Business identity required")
         with store.tx() as db:
             resource(db, "components", data.component_id)
-            if db.execute("SELECT 1 FROM requests WHERE requester=? AND component=? AND status='PENDING'", (persona["id"], data.component_id)).fetchone():
+            if db.select('requests', where=[('requester', '=', persona['id']), ('component', '=', data.component_id), ('status', '=', 'PENDING')]).fetchone():
                 raise HTTPException(409, "A request is already pending")
             request_id = uid()
-            db.execute("INSERT INTO requests VALUES (?,?,?,?,?,'PENDING',NULL,?)", (request_id, persona["id"], persona["workspace"], data.component_id, data.reason, time.time()))
+            db.insert('requests', {'id': request_id, 'requester': persona['id'], 'workspace': persona['workspace'], 'component': data.component_id, 'reason': data.reason, 'status': 'PENDING', 'decision': None, 'created': time.time()})
             audit(db, persona["id"], "capability_requested", request_id, data.component_id)
         return {"id": request_id}
 
@@ -443,7 +451,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def admin_catalog(request: Request):
         who(request, True)
         with store.tx() as db:
-            return {"foundations": [json.loads(r[0]) for r in db.execute("SELECT body FROM foundations")], "components": [json.loads(r[0]) for r in db.execute("SELECT body FROM components")], "grants": [dict(r) for r in db.execute("SELECT * FROM grants")], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.execute("SELECT * FROM catalog_history ORDER BY id DESC LIMIT 100")]}
+            return {"foundations": [json.loads(r[0]) for r in db.select('foundations', columns=['body'])], "components": [json.loads(r[0]) for r in db.select('components', columns=['body'])], "grants": [dict(r) for r in db.select('grants')], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.select('catalog_history', order='id', descending=True, limit=100)]}
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):
@@ -455,9 +463,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if data.enabled and (not component["approved"] or component["external"] and not principal(db, data.persona_id)["external_allowed"]):
                 raise HTTPException(403, "Approval or workspace data policy blocks this grant")
             if data.enabled:
-                db.execute("INSERT OR IGNORE INTO grants VALUES (?,?)", (data.persona_id, data.component_id))
+                db.insert('grants', {'persona': data.persona_id, 'component': data.component_id}, ignore=True)
             else:
-                db.execute("DELETE FROM grants WHERE persona=? AND component=?", (data.persona_id, data.component_id))
+                db.delete('grants', where=[('persona', '=', data.persona_id), ('component', '=', data.component_id)])
             audit(db, persona["id"], "grant" if data.enabled else "revoke", data.persona_id, data.component_id)
         return {"ok": True}
 
@@ -465,7 +473,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def decide(request_id: str, data: Decision, request: Request):
         persona = who(request, True)
         with store.tx() as db:
-            row = db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
+            row = db.select('requests', where=[('id', '=', request_id)]).fetchone()
             if not row:
                 raise HTTPException(404, "Request not found")
             if row["requester"] == persona["id"]:
@@ -476,8 +484,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if data.approve:
                 if not component["approved"] or component["external"] and not principal(db, row["requester"])["external_allowed"]:
                     raise HTTPException(403, "Approval or data policy blocks this capability")
-                db.execute("INSERT OR IGNORE INTO grants VALUES (?,?)", (row["requester"], row["component"]))
-            db.execute("UPDATE requests SET status=?,decision=? WHERE id=?", ("APPROVED" if data.approve else "REJECTED", data.reason, request_id))
+                db.insert('grants', {'persona': row['requester'], 'component': row['component']}, ignore=True)
+            db.update('requests', {'status': 'APPROVED' if data.approve else 'REJECTED', 'decision': data.reason}, where=[('id', '=', request_id)])
             audit(db, persona["id"], "request_decided", request_id, "approved" if data.approve else "rejected")
         return {"ok": True, "notice": "Existing seeded capability grant updated; no connector was created"}
 
@@ -488,10 +496,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise HTTPException(404, "Unknown catalog authority")
         with store.tx() as db:
             item = resource(db, authority, resource_id)
-            db.execute("INSERT INTO catalog_history(resource,body,created) VALUES (?,?,?)", (resource_id, json.dumps(item), time.time()))
+            db.insert('catalog_history', {'resource': resource_id, 'body': json.dumps(item), 'created': time.time()})
             item["approved"] = data.approved
             item["version"] = str(int(item["version"]) + 1) if authority == "components" else f"1.0.{int(item['version'].split('.')[-1]) + 1}"
-            db.execute(f"UPDATE {authority} SET body=? WHERE id=?", (json.dumps(item), resource_id))
+            db.update(authority, {'body': json.dumps(item)}, where=[('id', '=', resource_id)])
             audit(db, persona["id"], "catalog_revision", resource_id, item["version"])
         return item
 
@@ -501,8 +509,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             previous = policy(db)
             current = {**data.model_dump(), "version": previous["version"] + 1}
-            db.execute("INSERT INTO catalog_history(resource,body,created) VALUES ('policy',?,?)", (json.dumps(previous), time.time()))
-            db.execute("UPDATE settings SET body=? WHERE key='policy'", (json.dumps(current),))
+            db.insert('catalog_history', {'resource': 'policy', 'body': json.dumps(previous), 'created': time.time()})
+            db.update('settings', {'body': json.dumps(current)}, where=[('key', '=', 'policy')])
             audit(db, persona["id"], "policy_revision", "mandatory-gates", str(current["version"]))
         return current
 
@@ -510,17 +518,25 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def audit_log(request: Request):
         who(request, True)
         with store.tx() as db:
-            return [dict(r) for r in db.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 300")]
+            return [dict(r) for r in db.select('audit', order='id', descending=True, limit=300)]
 
     def step_job(job_id):
         with store.tx() as db:
-            job = dict(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+            job = dict(db.select('jobs', where=[('id', '=', job_id)]).fetchone())
             if job["stage"] in TERMINAL:
                 return
             try:
                 if time.time() > job["deadline"]:
-                    raise HTTPException(408, "Local job deadline exceeded (60 seconds)")
+                    raise HTTPException(408, "Job deadline exceeded; submit a new test")
                 persona = principal(db, job["requester"])
+                if repository is not None and hosted:
+                    authority = db.select("job_authority", where=[("id", "=", job_id)]).fetchone()
+                    session = db.select("hosted_sessions", where=[("id_hash", "=", authority["session_hash"]), ("expires", ">", time.time())]).fetchone() if authority else None
+                    if not session or session["subject"] != job["requester"]:
+                        raise HTTPException(403, "Job authorization expired or revoked; sign in and retest")
+                    claims = auth.verify(session["access_token"], "access")
+                    if claims["sub"] != job["requester"]:
+                        raise HTTPException(403, "Job subject binding invalid")
                 agent = agent_access(db, persona, job["agent"])
                 if agent["current_version"] != job["version"]:
                     raise HTTPException(409, "Definition changed during test; retest current version")
@@ -531,18 +547,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                     result = evaluate(definition, policy(db))
                     result.update({"definition_digest": definition["digest"], "dataset_ref": definition["dataset_ref"], "version": job["version"], "policy_version": policy(db)["version"]})
                     next_stage = "PASS" if result["passed"] else "NEEDS_CHANGES"
-                    db.execute("UPDATE jobs SET result=? WHERE id=?", (json.dumps(result), job_id))
+                    db.update('jobs', {'result': json.dumps(result)}, where=[('id', '=', job_id)])
                     for case in result["cases"]:
                         event(db, job_id, "CASE_EVIDENCE", {"case_id": case["id"], "trace": case["trace"], "score": case["score"]})
                     detail = {"message": result["gate"], "score": result["score"], "judge": result["judge"]}
                 else:
                     next_stage = ACTIVE[ACTIVE.index(stage) + 1]
                     detail = {"message": {"PREPARING": "Pinned fixture harness loaded", "LOCAL_RUNTIME_READY": "Local fixture runner ready (not AWS Runtime)", "TESTING": "Bounded synthetic cases scheduled", "EVALUATING": "Executing fixture cases and deterministic checks"}[next_stage]}
-                db.execute("UPDATE jobs SET stage=?,updated=? WHERE id=?", (next_stage, time.time(), job_id))
+                db.update('jobs', {'stage': next_stage, 'updated': time.time()}, where=[('id', '=', job_id)])
                 event(db, job_id, next_stage, detail)
             except HTTPException as exc:
                 result = {"passed": False, "gate": "Needs changes", "error": exc.detail, "mode": mode_label, "production_ready": False}
-                db.execute("UPDATE jobs SET stage='NEEDS_CHANGES',result=?,updated=? WHERE id=?", (json.dumps(result), time.time(), job_id))
+                db.update('jobs', {'stage': 'NEEDS_CHANGES', 'result': json.dumps(result), 'updated': time.time()}, where=[('id', '=', job_id)])
                 event(db, job_id, "NEEDS_CHANGES", {"message": exc.detail})
 
     async def execute_job(job_id):
@@ -554,7 +570,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise
         except Exception:
             with store.tx() as db:
-                db.execute("UPDATE jobs SET stage='NEEDS_CHANGES',result=?,updated=? WHERE id=?", (json.dumps({"passed": False, "gate": "Needs changes", "error": "Local worker error; inspect server diagnostics", "mode": mode_label}), time.time(), job_id))
+                db.update('jobs', {'stage': 'NEEDS_CHANGES', 'result': json.dumps({'passed': False, 'gate': 'Needs changes', 'error': 'Local worker error; inspect server diagnostics', 'mode': mode_label}), 'updated': time.time()}, where=[('id', '=', job_id)])
                 event(db, job_id, "NEEDS_CHANGES", {"message": "Sanitized worker error"})
 
     async def worker_loop():
@@ -562,9 +578,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         running = set()
         while True:
             with store.tx() as db:
-                jobs = [r["id"] for r in db.execute("SELECT id FROM jobs WHERE stage NOT IN ('PASS','NEEDS_CHANGES') ORDER BY created") if r["id"] not in running][:2 - len(running)]
+                jobs = [r["id"] for r in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])], order='created') if r["id"] not in running][:2 - len(running)]
                 for job_id in jobs:
-                    db.execute("UPDATE jobs SET attempts=attempts+1 WHERE id=?", (job_id,))
+                    db.update('jobs', {}, where=[('id', '=', job_id)], increments={'attempts': 1})
             if jobs:
                 running.update(jobs)
                 try:
@@ -575,7 +591,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             app.state.wake.clear()
             # Close enqueue/clear race before sleeping.
             with store.tx() as db:
-                pending = db.execute("SELECT 1 FROM jobs WHERE stage NOT IN ('PASS','NEEDS_CHANGES') LIMIT 1").fetchone()
+                pending = db.select('jobs', where=[('stage', "not_in", ['PASS','NEEDS_CHANGES'])], limit=1).fetchone()
             if pending:
                 continue
             await app.state.wake.wait()

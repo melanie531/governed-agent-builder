@@ -1,6 +1,6 @@
 # Cloud-hosted fixture preview plan
 
-Status: **Cognito identity approved and implemented in code; NOT deployed. Origin TLS/DNS input required.**
+Status: **Deployment in progress. Private origin HTTP explicitly approved 2026-09-11; viewer and Cognito HTTPS mandatory.**
 Verified 2026-09-11. Application baseline: `feat/local-first` at
 `e79dc4c7837e45cbb1b16055f4c3a2f2bb97b90b` with a clean working tree before this document.
 
@@ -39,7 +39,7 @@ collect passwords in this application, or borrow the old demo's acceptance broke
 The user explicitly approved Cognito sign-in for this prototype. The hosted
 experience is now Agent Studio landing → managed Cognito code/PKCE → assigned
 workspace. The hosted persona selector and demo login routes are closed. New
-invite-only pool/client/groups are defined in `infra/identity.py`; **not deployed**.
+invite-only pool/client/groups are defined in `infra/identity.py`; **deployment in progress**.
 
 Server-controlled group policy maps the verified Cognito subject to exactly one
 workspace/role. Multiple approved groups fail closed rather than offer an unsafe
@@ -48,34 +48,21 @@ The current-user menu offers logout only. No real users have been invited or
 assigned groups. Parent must confirm the invitation email and intended membership
 before onboarding; no password or authentication code goes through chat.
 
-**Current deployment blocker: no approved backend DNS hostname/trusted TLS
-certificate.** Read-only discovery found zero Route 53 hosted zones and zero
-issued ACM certificates in the verified account/region. CloudFront private origin
-support does not remove origin certificate validation. Its public viewer
-certificate cannot be installed on EC2, and a self-signed origin certificate is
-rejected. Need an approved origin subdomain and DNS validation path, or an approved
-alternative architecture with a managed TLS endpoint. Do not guess ownership or
-change DNS in another account. No public HTTP/self-signed fallback is permitted.
+## Approved security exception (2026-09-11)
 
-Reference: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-cloudfront-to-custom-origin.html
+Operator explicitly approved CloudFront → private backend HTTP for this synthetic
+preview. This replaces the former origin TLS/DNS blocker only. CloudFront viewer
+HTTPS/default AWS certificate and Cognito HTTPS remain mandatory. No public IP,
+public backend, SSH, anonymous business API or public administrator is approved.
+Only CloudFront's service-managed VPC-origin security group may reach TCP/80.
+No custom DNS or self-signed origin certificate is required.
 
-No cloud resources have been created, existing resources modified, or credentials
-read. This is implementation preparation, not a completed deployment.
-
-## Selected hosting direction, pending origin TLS and runtime provisioning
-
-Prefer **CloudFront + private S3 + private EC2 VPC origin + retained encrypted EBS**
-for the least application change. One small ARM64 instance is sufficient as the
-starting hypothesis for this bounded fixture preview; verify the runtime/artifact
-architecture before selecting an AMI and instance type. This is a single-instance
-preview, not an HA production service.
-
-AWS documentation confirms that CloudFront supports a private EC2 instance as a
-VPC origin in `us-west-2`. A VPC internet gateway must exist, but it need not route
-internet traffic to the private subnet. No public EC2 IP, SSH ingress, public ALB,
-Function URL or unauthenticated public API is required.
-
-Reference: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html
+Selected: private S3/OAC + CloudFront + private t4g.small EC2 + encrypted retained
+20 GiB gp3 EBS, single AZ and one Python worker. An isolated NAT gateway supplies
+TLS-only bootstrap/Cognito/SSM egress. Planning estimate: NAT + public IPv4 about
+USD 36/month before data; instance about USD 12–13, EBS about USD 3, plus requests,
+logs and transfer; approximately USD 55–70/month at low traffic, not a quote/cap.
+No existing demo resources or shared roles are changed.
 
 ### Resource boundary
 
@@ -102,9 +89,8 @@ supports explicit names. Tag new resources `project=governed-agent-builder`,
 - Private-subnet instance without public IPv4 or inbound SSH. Restrict origin
   ingress to CloudFront's documented managed origin connectivity; never modify
   the CloudFront service-managed security group.
-- Validate origin HTTPS certificate/name support end to end before choosing the
-  origin TLS configuration. A CloudFront viewer certificate does not secure the
-  origin hop automatically. Do not silently downgrade a required TLS boundary.
+- Validate the approved private HTTP hop and viewer HTTPS independently; restrict
+  origin ingress to CloudFront service-managed SG. This hop is unencrypted by exception.
 - Choose reproducible prebuilt artifacts and an AMI supporting Python >=3.12.
   Verify dependency bootstrap in a private subnet, not an untested `apt`/`pip`
   internet download at startup. No global tool installations on the operator host.
@@ -172,7 +158,7 @@ where security permits. Amplify frontend-only would not remove these backend cos
 
 | Pillar | Planned status / unresolved check |
 |---|---|
-| Security | Private origin + private S3 + real operator login; identity implemented offline; origin TLS/egress design and live auth remain open |
+| Security | Private origin + private S3 + real operator login; identity implemented offline; approved private HTTP exception; real login acceptance remains open |
 | Reliability | Durable local SQLite + bounded replay; single AZ/process intentionally accepted for preview, recovery must be tested |
 | Performance | Existing two fixture slots; measure hosted browser/API latency before claiming performance |
 | Cost optimization | Small instance, no model calls; price networking rather than hiding endpoint/NAT costs |
@@ -182,7 +168,7 @@ where security permits. Amplify frontend-only would not remove these backend cos
 ## Acceptance and delivery gate
 
 1. Review/synthesize new IaC and scoped IAM; verify no changes to old stacks.
-2. Deploy only new isolated resources after network/TLS checks close.
+2. Deploy only new isolated resources with the approved private HTTP boundary enforced.
 3. Perform real operator login using safe browser/host-owned entry. Ask the operator
    only to perform necessary login, never to send a password or code.
 4. Test public CloudFront `/api/demo/personas`, `/api/demo/session`, `/api/me`,
@@ -209,7 +195,7 @@ where security permits. Amplify frontend-only would not remove these backend cos
   validation, hosted CSRF, closed demo endpoints, current subject ownership,
   original loopback local mode preserved. No arbitrary forwarded-header trust.
 - `backend/hosted.py`: separate fail-closed, one-process launcher; requires `/data`
-  state path and binds loopback behind a future same-instance TLS proxy.
+  state path and binds loopback behind a same-instance private HTTP proxy.
 - Frontend: branded Agent Studio entry, current-user/logout menu, no hosted user
   list, direct assigned workspace entry. Original Cloudscape local journeys remain.
 - `infra/identity.py` and `infra/edge.py`: isolated CloudFormation templates;
@@ -217,9 +203,10 @@ where security permits. Amplify frontend-only would not remove these backend cos
   successful service provisioning, IAM sufficiency or full deployment readiness.
 - Live discovery corrected and verified CloudFront's managed CachingDisabled and
   AllViewer policies; API/auth/config behaviors do not cache or use SPA rewrite.
-- EC2/VPC/EBS/TLS proxy/bootstrap/backup provisioning is **not implemented yet**.
-  The edge template takes an already healthy private TLS origin as an input, not
-  a placeholder backend. Do not deploy it until that requirement is satisfied.
+- EC2/VPC/EBS/private proxy/bootstrap/online backup provisioning is now defined in
+  `infra/compute.py`, `bootstrap.sh`, and `backup.py`; live evidence is recorded separately.
+  The edge references the new private instance. Runtime stays fail-closed until
+  the exact distribution URL and isolated Cognito client are configured.
 
 Cognito access tokens are configured for 15 minutes; this BFF does not refresh
 provider tokens. Expiry requires sign-in again. Application grant revocations are
@@ -228,5 +215,5 @@ session expires, because validation does not make a paid/privileged admin lookup
 on every request. No claim of immediate provider-side revocation is made.
 
 Offline tests use generated test signing keys and mocked token endpoints. They
-are **not** hosted Cognito E2E evidence. No live operator login, cloud URL, origin
-TLS handshake, cloud database recovery or hosted job test has occurred.
+are **not** hosted Cognito E2E evidence. See CLOUD-VERIFICATION.md for live
+results and remaining operator-login acceptance gates.

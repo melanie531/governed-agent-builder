@@ -2,10 +2,10 @@ from infra.edge import template as edge
 from infra.identity import template as identity
 
 
-def test_edge_private_s3_and_tls_origin():
+def test_edge_private_s3_and_approved_private_http_origin():
     r = edge()["Resources"]
     assert all(r["WebBucket"]["Properties"]["PublicAccessBlockConfiguration"].values())
-    assert r["VpcOrigin"]["Properties"]["VpcOriginEndpointConfig"]["OriginProtocolPolicy"] == "https-only"
+    assert r["VpcOrigin"]["Properties"]["VpcOriginEndpointConfig"]["OriginProtocolPolicy"] == "http-only"
     d = r["Distribution"]["Properties"]["DistributionConfig"]
     assert "CustomErrorResponses" not in d
     assert {b["PathPattern"] for b in d["CacheBehaviors"]} == {"/api", "/api/*", "/auth", "/auth/*", "/studio-config.json"}

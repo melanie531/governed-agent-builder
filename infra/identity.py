@@ -22,7 +22,7 @@ def template(origin):
             "UsernameAttributes": ["email"], "UsernameConfiguration": {"CaseSensitive": False},
             "AutoVerifiedAttributes": ["email"], "AccountRecoverySetting": {"RecoveryMechanisms": [{"Name": "verified_email", "Priority": 1}]},
             "Policies": {"PasswordPolicy": {"MinimumLength": 14, "RequireLowercase": True, "RequireUppercase": True, "RequireNumbers": True, "RequireSymbols": True, "TemporaryPasswordValidityDays": 1}},
-            "MfaConfiguration": "OPTIONAL", "SoftwareTokenMfaConfiguration": {"Enabled": True},
+            "UserPoolTier": "ESSENTIALS", "MfaConfiguration": "OPTIONAL", "SoftwareTokenMfaConfiguration": {"Enabled": True},
             "DeletionProtection": "ACTIVE",
         }},
         "Client": {"Type": "AWS::Cognito::UserPoolClient", "Properties": {
@@ -36,7 +36,7 @@ def template(origin):
             "ReadAttributes": ["email", "email_verified"], "WriteAttributes": [],
         }},
         "Domain": {"Type": "AWS::Cognito::UserPoolDomain", "Properties": {
-            "UserPoolId": {"Ref": "Pool"}, "Domain": {"Fn::Sub": "governed-agent-builder-${AWS::AccountId}-${AWS::Region}"},
+            "UserPoolId": {"Ref": "Pool"}, "Domain": {"Fn::Join": ["-", ["governed-agent-builder", {"Fn::Select": [2, {"Fn::Split": ["/", {"Ref": "AWS::StackId"}]}]}]]},
             "ManagedLoginVersion": 2,
         }},
         "LoginBranding": {"Type": "AWS::Cognito::ManagedLoginBranding", "Properties": {

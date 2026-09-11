@@ -1,7 +1,7 @@
-"""CloudFormation for a private-S3 frontend and an already healthy private TLS origin.
+"""CloudFormation for a private-S3 frontend and an isolated private HTTP origin.
 
 This does not provision EC2, certificates or DNS. The backend provisioning layer
-must be completed first. No public HTTP fallback or anonymous API is generated.
+must be completed first. Private HTTP approved 2026-09-11; viewer and Cognito remain HTTPS.
 """
 import argparse
 import json
@@ -10,7 +10,7 @@ import json
 def template():
     tags = [{"Key": k, "Value": v} for k, v in {"project": "governed-agent-builder", "owner": "melanie531", "managedBy": "cloudformation"}.items()]
     disabled_cache = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    # AllViewer forwards Authorization and Host; the TLS proxy must validate the
+    # AllViewer forwards Authorization and Host; the private proxy must validate the
     # configured distribution Host and set only its known origin for the app.
     all_viewer = "216adef6-5c7f-47e4-b989-5492eafa07d3"
     r = {
@@ -24,7 +24,7 @@ def template():
         }}},
         "VpcOrigin": {"Type": "AWS::CloudFront::VpcOrigin", "Properties": {"Tags": tags, "VpcOriginEndpointConfig": {
             "Name": "governed-agent-builder-backend", "Arn": {"Ref": "PrivateOriginArn"}, "HTTPPort": 80, "HTTPSPort": 443,
-            "OriginProtocolPolicy": "https-only", "OriginSSLProtocols": ["TLSv1.2"],
+            "OriginProtocolPolicy": "http-only", "OriginSSLProtocols": ["TLSv1.2"],
         }}},
         "SpaRewrite": {"Type": "AWS::CloudFront::Function", "Properties": {
             "Name": "governed-agent-builder-spa", "AutoPublish": True,
@@ -48,7 +48,7 @@ def template():
         "HttpVersion": "http2and3", "IPV6Enabled": True, "ViewerCertificate": {"CloudFrontDefaultCertificate": True},
         "Origins": [
             {"Id": "web", "DomainName": {"Fn::GetAtt": ["WebBucket", "RegionalDomainName"]}, "S3OriginConfig": {"OriginAccessIdentity": ""}, "OriginAccessControlId": {"Fn::GetAtt": ["OAC", "Id"]}},
-            {"Id": "backend", "DomainName": {"Ref": "OriginTlsHostname"}, "VpcOriginConfig": {"VpcOriginId": {"Fn::GetAtt": ["VpcOrigin", "Id"]}, "OriginReadTimeout": 30}},
+            {"Id": "backend", "DomainName": {"Ref": "PrivateOriginHostname"}, "VpcOriginConfig": {"VpcOriginId": {"Fn::GetAtt": ["VpcOrigin", "Id"]}, "OriginReadTimeout": 30}},
         ],
         "DefaultCacheBehavior": {"TargetOriginId": "web", "ViewerProtocolPolicy": "redirect-to-https", "AllowedMethods": ["GET", "HEAD", "OPTIONS"], "CachedMethods": ["GET", "HEAD"],
             "CachePolicyId": disabled_cache, "Compress": True, "ResponseHeadersPolicyId": {"Ref": "SecurityHeaders"},
@@ -60,10 +60,10 @@ def template():
          "Condition": {"StringEquals": {"AWS:SourceArn": {"Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"}}}},
         {"Effect": "Deny", "Principal": "*", "Action": "s3:*", "Resource": [{"Fn::GetAtt": ["WebBucket", "Arn"]}, {"Fn::Sub": "${WebBucket.Arn}/*"}], "Condition": {"Bool": {"aws:SecureTransport": "false"}}},
     ]}}}
-    return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Agent Studio private frontend and TLS-only VPC origin; backend readiness required",
+    return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Agent Studio private frontend and approved HTTP VPC origin; backend readiness required",
             "Parameters": {
                 "PrivateOriginArn": {"Type": "String", "Description": "Healthy new isolated EC2 instance or private ALB ARN, never an old demo resource"},
-                "OriginTlsHostname": {"Type": "String", "AllowedPattern": "[a-zA-Z0-9.-]+", "Description": "DNS name covered by the trusted certificate installed on the private origin"},
+                "PrivateOriginHostname": {"Type": "String", "AllowedPattern": "[a-zA-Z0-9.-]+", "Description": "Private DNS name of this isolated EC2 origin, never a public backend"},
             }, "Resources": r, "Outputs": {
                 "ApplicationOrigin": {"Value": {"Fn::Sub": "https://${Distribution.DomainName}"}},
                 "DistributionId": {"Value": {"Ref": "Distribution"}}, "FrontendBucket": {"Value": {"Ref": "WebBucket"}},

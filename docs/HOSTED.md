@@ -1,118 +1,151 @@
-# Agent Studio hosted mode
+# Agent Studio hosted fixture preview
 
-**Implemented, offline-tested, not deployed. No cloud URL yet.**
+Deployment started 2026-09-11. See `CLOUD-VERIFICATION.md` for observed results;
+resource creation is not a claim that authenticated acceptance passed.
 
-## Entry and identity
+## Approved boundary
 
-The hosted frontend reads `/studio-config.json`, renders an Agent Studio landing,
-and offers **Sign in / Open Studio**. Cognito managed login authenticates invited
-members. The backend exchanges the authorization code using PKCE, validates the
-access token and ID-token nonce, then creates a Secure/HttpOnly/SameSite session.
-Provider tokens stay server-side. There is no hosted persona menu or public
-`/api/demo/*` bootstrap. Hosted mode seeds no synthetic user grants.
+Browser → CloudFront uses HTTPS and the default AWS domain/certificate. HTTP
+frontend requests redirect to HTTPS; API/auth behaviors require HTTPS. CloudFront
+→ private EC2 uses HTTP, **explicitly approved on 2026-09-11 for synthetic preview**.
+This is an unencrypted private hop, not end-to-end TLS. The instance has no public
+IP or SSH ingress; TCP/80 ingress references only CloudFront's service-managed SG
+in the new VPC. Cognito authorization, token exchange and JWKS all use HTTPS.
 
-Cognito groups are assigned by an authorized operator outside this app:
+Private S3/OAC serves the Cloudscape frontend. API/auth/config behaviors are
+cache-disabled, forward viewer cookies/headers, and never rewrite errors as SPA
+HTML. The private nginx listener accepts only the exact CloudFront host and sets
+that fixed Host upstream. Uvicorn trusts no proxy headers; `PUBLIC_URL` is an
+explicit HTTPS origin. Arbitrary forwarded identity/role/protocol headers are not
+used. Access logs are disabled to prevent OAuth query/cookie/token logging.
 
-| Group | Server-owned membership |
+This is an independent prototype, **not an AWS service or SageMaker Studio Domain**.
+The UI says `CLOUD-HOSTED DEMO · Fixture runner, no live LLM`.
+
+## Identity
+
+A new invite-only Cognito pool/public code-PKCE client and groups are isolated
+from the old demo. Tokens stay server-side on encrypted storage; browsers receive
+Secure/HttpOnly/SameSite opaque cookies. State/nonce/issuer/client/signature/token
+purpose and exact redirect are verified. Sessions expire within 15 minutes.
+Logout invalidates the server session. No password or token goes through chat.
+
+| Group | Membership |
 |---|---|
-| `studio-research` | Business member, Research studio, initial fixture model/tool/skill grants |
-| `studio-operations` | Business member, Operations desk, narrower initial fixture grants |
-| `studio-admin` | Governance administrator, no blanket access to private agent content |
+| `studio-research` | Business member, Research studio |
+| `studio-operations` | Business member, Operations desk |
+| `studio-admin` | Governance administration, not access to private agent content |
 
-Exactly one of these groups is required. Users cannot grant themselves a group,
-role or workspace. This first version does not support multiple workspaces per
-subject; ambiguous memberships fail closed. Each user owns records by immutable
-Cognito `sub`, not email or a browser-supplied persona identifier.
+Exactly one approved group is required. No self-registration or default admin.
+The verified Cognito subject owns records; the browser cannot choose a persona.
+All `/api` routes, including disabled `/api/demo/*`, authenticate before body
+parsing/business logic. Unauthenticated requests receive 401; an authenticated
+request to a disabled demo route receives 404. Mutations require exact Origin and
+session-bound CSRF. Revoked application grants are not restored by fresh login.
 
-Fresh sign-in does not restore a capability revoked by an administrator. Current
-application grants/policy are checked on every protected operation and worker
-transition. Expired membership evidence stops a pending job; sign in and retry.
-An administrator can only grant capabilities to known business members.
+**Onboarding:** the operator must confirm the exact invitation recipient and one
+group. Create the user only in this new pool and let Cognito email its invitation.
+Do not collect passwords, authentication codes, or reuse old app credentials.
+Real authenticated browser acceptance requires this invited user's interactive
+login; local JWT fixtures and browser interceptions are not that evidence.
 
-Access sessions expire at most 15 minutes after token issuance with the supplied
-identity template. There is no silent refresh. Browser 401 resets the workspace
-to sign-in. Logout invalidates the server session and then visits Cognito logout.
-Cognito group changes/user disablement are bounded by token expiry, not instantly
-rechecked through an admin API. Local application grants are immediately checked.
+## Runtime and durable storage
 
-## Explicit launch configuration
+`infra/compute.py` defines isolated VPC/subnets/NAT, private EC2, scoped IAM,
+artifact bucket, retained encrypted gp3 data EBS, and ingress-only SG stack.
+`infra/bootstrap.sh` is the dedicated instance's reviewed initial configuration.
+It installs Python 3.12/nginx, reads a content-addressed release from its private
+bucket, verifies SHA256, and installs locked ARM64 wheels offline with hashes.
+TLS egress via NAT is used for OS packages, SSM, JWKS, token exchange and logs.
 
-This contract is for future provisioning, not instructions to expose a laptop:
+The bootstrap selects the exact EBS volume by NVMe serial, refuses unknown disk
+signatures, formats only an empty volume, then mounts it at `/data`. Persistent
+fstab UUID and `RequiresMountsFor=/data`/mountpoint checks prevent silent root-disk
+fallback. An unprivileged `studio` user runs one Uvicorn process plus its async
+fixture worker. `flock` prevents a second cooperating launcher on the same
+volume. systemd restarts failures; code is root-owned and the service can write
+only `/data`. No live model, AgentCore, Cognito-admin or IAM permission is granted.
 
-- `HOSTED_PREVIEW=1`; **unset DEMO_MODE**. Mixing the two fails.
-- `EXECUTION_MODE=local`: fixture execution only. AWS agent execution stays blocked.
-- `PUBLIC_URL`: exact CloudFront HTTPS origin, no path/query/credentials.
-- `STATE_PATH=/data/state.sqlite`: durable encrypted local-block volume.
-- `COGNITO_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `COGNITO_DOMAIN`:
-  nonsecret outputs from the new isolated identity stack only.
-- Start `python -m backend.hosted` as an unprivileged process behind the approved
-  same-host TLS proxy. It binds `127.0.0.1:5187`, one worker, with proxy-header trust
-  disabled and access logging off. This is not a Lambda handler or multi-worker service.
+The app's initial hosted config is deliberately absent until the distribution and
+new identity exist. Nginx returns 503 and the service remains stopped, rather than
+starting with an invented callback or unsafe auth mode.
 
-The reverse proxy must accept only the configured CloudFront Host and set the
-same exact host for the app. Do not pass arbitrary identity headers or infer a
-public URL from forwarded headers. The proxy TLS certificate must be trusted by
-CloudFront and cover the configured origin hostname. Access logs must exclude
-query strings, cookies, Authorization and token exchange bodies. Never log full
-OAuth callback URLs, which contain a short-lived authorization code.
+Explicit config, held in root-only `/etc/studio/runtime.env`:
+`HOSTED_PREVIEW=1`, no `DEMO_MODE`, `EXECUTION_MODE=local`, exact HTTPS `PUBLIC_URL`,
+`STATE_PATH=/data/state.sqlite` and nonsecret new Cognito output identifiers.
+Uvicorn binds `127.0.0.1:5187`, proxy-header trust and access logging disabled.
 
-## Infrastructure prepared
+## Deployment and changes
 
-`infra/edge.py` renders CloudFormation for private S3/OAC, TLS-only private VPC
-origin, security headers and cache-disabled API/auth/config behaviors. Frontend
-SPA rewrite applies only to the frontend behavior. S3 requires TLS and only the
-specific CloudFront distribution can read objects. No shared IAM changes.
+This deployment is explicit, not attached to CI or git push. The operator runs
+`scripts/cloud_deploy.py` with actions in dependency order: `network`, `runtime`,
+`edge`, `ingress`, `identity`, `frontend`, `configure`. Each step live-checks STS,
+validates its CloudFormation, waits for terminal state, and logs sanitized status.
+`bootstrap-status` inspects the dedicated instance through SSM, not SSH.
 
-`infra/identity.py --application-origin https://<new-distribution>.cloudfront.net`
-renders a new invite-only Cognito pool/client/domain/groups. The exact callback
-is `/auth/callback`. No users/passwords are embedded in the template. Public
-self-registration, implicit OAuth and password APIs are not enabled.
+The release `/tmp/gab-release.tgz` contains backend/infra, a `uv export --frozen
+--no-dev --no-emit-project` requirements file, and wheels downloaded for CPython
+3.12/manylinux2014_aarch64 with `--only-binary=:all: --require-hashes`. The frontend
+is a production `npm run build`. Cloud outputs in `/tmp/governed-agent-builder-
+cloud-state.json` are operator-local, not committed. Recover them from stack
+outputs if that file is lost. Account identifiers are not hardcoded in templates.
 
-**These two templates are not an end-to-end deploy command.** Edge requires an
-already healthy private TLS origin. EC2/VPC/EBS bootstrap and TLS provisioning
-remain to be written after an approved origin DNS/validation path is provided.
-No Route 53 zone or issued regional ACM certificate was available in the verified
-account. Never substitute HTTP or a self-signed certificate to get a green deploy.
+Before any future update: inspect CloudFormation changes, backup data, and check
+that no old-demo resources or shared roles are in scope. Instance replacement is
+**stop-before-detach**, never an overlapping rollout. Stop `studio`, make/verify
+an online backup, stop the old instance, detach only after unmounted/stopped, and
+attach the retained volume to the replacement in the **same AZ**. The initial
+VolumeAttachment does not make arbitrary replacement updates safe; stage removal
+of the old attachment before replacing the instance, then add the attachment to
+the replacement. Verify mount UUID, service, DB and job recovery before traffic.
 
-## Safe operator onboarding
+## Backup and restore
 
-After the stack and secure origin exist, confirm the exact recipient and intended
-membership with the parent/operator. Create the invited member only in the new
-pool, use Cognito's email invitation, and assign exactly one approved group.
-The user sets their password in managed Cognito login; never ask for or transmit
-a password or authentication code through chat/logs. Do not create a default admin,
-reuse old demo acceptance credentials, or borrow another app's browser session.
+A systemd daily timer runs `infra/backup.py` as the unprivileged user. SQLite's
+online backup API includes committed WAL data and verifies `PRAGMA integrity_check`.
+Seven copies are retained on encrypted EBS, mode 0600 in a 0700 directory. These
+contain session material; never export or log rows. **Same-volume backups are not
+protection against losing the volume/AZ.** A separate encrypted EBS snapshot should
+be taken by the authorized operator before destructive maintenance. Snapshot
+lifecycle/cross-AZ disaster recovery is not claimed by this preview.
 
-A real browser acceptance run requires the invited operator's interactive login.
-Offline token fixtures and intercepted UI responses are test doubles, not evidence
-of this step. No user creation or email invitation has been performed.
+Restore on the dedicated instance: stop `studio`; retain the current DB and its
+WAL/SHM as one quarantine set; use SQLite backup API to restore a verified backup
+into a new `/data/state.sqlite`; set studio ownership/mode 0600; start the service.
+Never copy only a live main DB while WAL writes continue. Do not replay expired
+sessions as a substitute for Cognito login. Validate integrity and application
+state. Startup replays unfinished side-effect-free fixture jobs subject to their
+persisted deadlines and current authorization.
 
-## Verification distinction
+## Cost and cleanup
 
-- `tests/test_hosted_auth.py`: locally generated RSA-signed JWTs, auth-route matrix,
-  token constraints, role/subject isolation, grants, CSRF, session expiry/logout.
-- `tests/test_hosted_callback.py`: mocked Cognito token exchange, PKCE/nonce/subject
-  binding, cookie flags and callback replay rejection.
-- `tests/test_cloud_templates.py`: private origin, TLS-only, invite-only identity,
-  cache/SPA behavior invariants.
-- `frontend/e2e/hosted-entry.spec.ts`: **UI-only mocked API** entry/menu contracts.
-- Existing browser journeys still execute real local API/worker interactions.
+Low-traffic planning allowance: approximately **USD 55–70/month**, not a quote or
+cap. NAT + its public IPv4 is about USD 36/month before transfer, t4g.small about
+USD 12–13, two encrypted gp3 volumes about USD 3; CloudFront/S3/logs/transfer vary.
+Single AZ, no HA, no paid model usage. Stopping EC2 does not stop NAT/EBS charges.
 
-Required hosted acceptance remains: real Cognito login, unauthenticated edge/API
-denial, actual business/admin identities, direct origin isolation, lifecycle and
-cross-user tests, logout, database/job restart, encrypted backup/restore, security
-review, and verified remote code/image provenance. None is claimed complete.
+Safe teardown, with explicit operator approval:
+1. Preserve required data/online backup and optional encrypted snapshot. Stop the
+   service before detaching storage. Record retained resource IDs privately.
+2. Disable the new CloudFront distribution, wait until deployed, then delete the
+   edge stack (distribution before VPC origin). Do not modify managed CloudFront SG.
+3. Delete the new ingress stack, then runtime stack (instance/attachment only).
+4. Cognito pool is deletion-protected/retained: decide whether to preserve users;
+   disable protection only with explicit deletion approval. Delete identity stack,
+   then deliberately remove retained pool if authorized.
+5. Delete network stack only after CloudFront origin ENIs and instance are gone.
+   It removes NAT/EIP/routes/VPC and scoped instance role/profile. Retained data
+   EBS, artifact bucket and logs remain billable until explicitly deleted.
+6. Frontend bucket is also retained. Remove all versions/delete markers only after
+   retention approval, then delete the bucket. Audit tagged orphan resources and
+   CloudFormation deletion failures; never touch the previous demo's resources.
 
-## Data and secrets
+## Verification honesty
 
-The encrypted server volume holds the SQLite database, including short-lived
-access tokens and CSRF secrets. Treat backups as sensitive. Run with restrictive
-filesystem permissions, encrypt/retain backups deliberately, and purge expired
-session rows; login already removes expired sessions. This prototype is for
-synthetic datasets only. Exported ZIPs contain fixture configuration/source, not
-session records or provider tokens; an export executes locally outside platform
-policy enforcement.
-
-Cognito is approved prototype identity, not customer Okta. Future Okta federation
-and live AgentCore/model/tool/evaluation integration are separate work. This does
-not provision a SageMaker Studio Domain or any SageMaker compute service.
+Python JWT/callback fixtures and two mocked hosted browser tests exercise local
+contracts. Two other browser tests run the local application/worker. None prove
+real Cognito onboarding. Live public rejection, private-origin topology, actual
+Cognito login page and runtime durability can be checked before an invite; the
+full create/evaluate/revise/export/invoke/grants journey needs an invited session.
+AWS logo branding is separate from functional hosting and must use an authorized
+official asset without suggesting this prototype is an AWS-operated service.

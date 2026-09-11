@@ -49,7 +49,8 @@ class HostedAuth:
             raise RuntimeError("Use the isolated Cognito-managed HTTPS domain")
         self.issuer = f"https://cognito-idp.{region}.amazonaws.com/{pool}"
         self.keys = jwt.PyJWKClient(self.issuer + "/.well-known/jwks.json", cache_keys=False, lifespan=300, timeout=5)
-        with store.tx() as db:
+        if not hasattr(store, "table"):
+          with store.tx() as db:
             db.executescript('''
             CREATE TABLE IF NOT EXISTS oidc_flows(state_hash TEXT PRIMARY KEY, verifier TEXT NOT NULL, nonce TEXT NOT NULL, expires REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS hosted_sessions(id_hash TEXT PRIMARY KEY, subject TEXT NOT NULL, access_token TEXT NOT NULL, csrf TEXT NOT NULL, expires REAL NOT NULL);
@@ -86,15 +87,16 @@ class HostedAuth:
         policy = GROUP_POLICY[approved[0]]
         subject = claims["sub"]
         with self.store.tx() as db:
-            old = db.execute("SELECT body FROM principals WHERE id=?", (subject,)).fetchone()
+            old = db.select('principals', columns=['body'], where=[('id', '=', subject)]).fetchone()
             old_body = json.loads(old[0]) if old else None
             principal = {"id": subject, "name": name or (old_body or {}).get("name", "Studio member"), **{k: v for k, v in policy.items() if k != "grants"}}
             # Initial grants only once. Login never undoes an admin revocation.
             # Membership changes reset grants to the newly approved workspace.
             if old_body is None or old_body["workspace"] != principal["workspace"] or old_body["role"] != principal["role"]:
-                db.execute("DELETE FROM grants WHERE persona=?", (subject,))
-                db.executemany("INSERT OR IGNORE INTO grants VALUES (?,?)", [(subject, c) for c in policy["grants"]])
-            db.execute("INSERT INTO principals VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body,expires=excluded.expires", (subject, json.dumps(principal), claims["exp"]))
+                db.delete('grants', where=[('persona', '=', subject)])
+                for component in policy["grants"]:
+                    db.insert("grants", {"persona": subject, "component": component}, ignore=True)
+            db.insert('principals', {'id': subject, 'body': json.dumps(principal), 'expires': claims['exp']}, upsert=True)
         return principal
 
     def authenticate(self, request):
@@ -102,7 +104,7 @@ class HostedAuth:
         if not cookie:
             raise HTTPException(401, "Sign in to Agent Studio")
         with self.store.tx() as db:
-            row = db.execute("SELECT * FROM hosted_sessions WHERE id_hash=? AND expires>?", (sha(cookie), time.time())).fetchone()
+            row = db.select('hosted_sessions', where=[('id_hash', '=', sha(cookie)), ('expires', '>', time.time())]).fetchone()
         if not row:
             raise HTTPException(401, "Sign in to Agent Studio")
         claims = self.verify(row["access_token"], "access")
@@ -114,11 +116,11 @@ class HostedAuth:
         state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         with self.store.tx() as db:
-            db.execute("DELETE FROM oidc_flows WHERE expires<?", (time.time(),))
-            db.execute("DELETE FROM hosted_sessions WHERE expires<?", (time.time(),))
-            if db.execute("SELECT COUNT(*) FROM oidc_flows").fetchone()[0] >= 100:
+            db.delete('oidc_flows', where=[('expires', '<', time.time())])
+            db.delete('hosted_sessions', where=[('expires', '<', time.time())])
+            if db.select('oidc_flows', count=True).fetchone()[0] >= 100:
                 raise HTTPException(429, "Sign-in capacity reached; retry shortly")
-            db.execute("INSERT INTO oidc_flows VALUES (?,?,?,?)", (sha(state), verifier, nonce, time.time() + 600))
+            db.insert('oidc_flows', {'state_hash': sha(state), 'verifier': verifier, 'nonce': nonce, 'expires': time.time() + 600})
         response = RedirectResponse(self.domain + "/oauth2/authorize?" + urlencode({"response_type": "code", "client_id": self.client_id,
             "redirect_uri": self.public_url + "/auth/callback", "scope": "openid email profile", "state": state, "nonce": nonce,
             "code_challenge": challenge, "code_challenge_method": "S256"}), status_code=302)
@@ -131,8 +133,8 @@ class HostedAuth:
         if not state or len(state) > 256 or not code or len(code) > 4096 or not secrets.compare_digest(state, request.cookies.get(FLOW_COOKIE, "")):
             raise HTTPException(400, "Invalid sign-in response; start again")
         with self.store.tx() as db:
-            flow = db.execute("SELECT * FROM oidc_flows WHERE state_hash=? AND expires>?", (sha(state), time.time())).fetchone()
-            db.execute("DELETE FROM oidc_flows WHERE state_hash=?", (sha(state),))
+            flow = db.select('oidc_flows', where=[('state_hash', '=', sha(state)), ('expires', '>', time.time())]).fetchone()
+            db.delete('oidc_flows', where=[('state_hash', '=', sha(state))])
         if not flow:
             raise HTTPException(400, "Sign-in expired or already used")
         try:
@@ -151,8 +153,8 @@ class HostedAuth:
         self.resolve(access, identity.get("email", "Studio member"))
         cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with self.store.tx() as db:
-            db.execute("DELETE FROM hosted_sessions WHERE id_hash=?", (sha(request.cookies.get(SESSION_COOKIE, "")),))
-            db.execute("INSERT INTO hosted_sessions VALUES (?,?,?,?,?)", (sha(cookie), access["sub"], tokens["access_token"], csrf, min(access["exp"], time.time() + 3600)))
+            db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
+            db.insert('hosted_sessions', {'id_hash': sha(cookie), 'subject': access['sub'], 'access_token': tokens['access_token'], 'csrf': csrf, 'expires': min(access['exp'], time.time() + 3600)})
         result = RedirectResponse(self.public_url + "/", status_code=303)
         result.delete_cookie(FLOW_COOKIE, secure=True, httponly=True, samesite="lax")
         result.set_cookie(SESSION_COOKIE, cookie, secure=True, httponly=True, samesite="strict", max_age=max(0, int(min(access["exp"] - time.time(), 3600))))
@@ -160,7 +162,7 @@ class HostedAuth:
 
     def logout(self, request):
         with self.store.tx() as db:
-            db.execute("DELETE FROM hosted_sessions WHERE id_hash=?", (sha(request.cookies.get(SESSION_COOKIE, "")),))
+            db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
         result = JSONResponse({"logout_url": self.domain + "/logout?" + urlencode({"client_id": self.client_id, "logout_uri": self.public_url + "/"})})
         result.delete_cookie(SESSION_COOKIE, secure=True, httponly=True, samesite="strict")
         return result
