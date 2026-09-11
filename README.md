@@ -1,14 +1,14 @@
 # Governed Agent Builder
 
-## Cloud hosting work in progress
+## Portable cloud source handoff
 
-The local prototype below remains runnable. A separate **Agent Studio hosted mode**
-is implemented in code with Cognito code/PKCE sign-in, verified-subject workspace
-roles, and no persona selector. It is **not deployed**. See
-[the cloud plan](docs/CLOUD-PLAN.md) and [hosted setup](docs/HOSTED.md) for exact
-status, requirements, tests and the origin TLS/DNS blocker. The local 92-test
-baseline is not cloud acceptance evidence.
-
+For the current guarded serverless deployment, start with
+[the target-account handoff](docs/TARGET-ACCOUNT-HANDOFF.md). It specifies exact
+source/ZIP verification, Linux environment setup, explicit target-account inputs,
+fresh identity resources and the remaining human login acceptance gate.
+The reported real sign-in failure is **not confirmed fixed**. Historical deployment
+documents are intentionally omitted from source ZIPs. The local prototype guide
+and original architecture tables below describe the local mode, not cloud readiness.
 
 A working **local interactive prototype**, not a cloud deployment. A business user selects a maintained harness foundation, chooses authorized capabilities, writes their own prompt and evaluation, creates an immutable version, and runs a real asynchronous fixture evaluation. A platform administrator owns catalog approvals, grants, mandatory gates and audit.
 
