@@ -48,3 +48,16 @@ restriction for that isolated probe ONLY. No general PUBLIC-network relaxation.
 No Runtime created; no synthetic service-probe record or isolated probe entry
 implemented yet. Peer Linux receipt still absent at this check. Full current
 engine ZIP is NOT itself the authorized deterministic no-model probe.
+
+## Parent-reported peer QA constraint update
+
+Parent reports private Slack artifact transfer succeeded: file F0C18NNLT50,
+runtime-final.zip, 27,507,933 bytes, SHA-256 prefix 3821b5ca (full local hash
+recorded above). Transfer was verified by parent, not independently in this
+worker. Peer host is x86_64 with ARM64 binfmt, but Docker daemon access is denied;
+there is still NO actual ARM64 execution/import proof. Static inspection and
+artifact delivery do not satisfy the execution gate. Do not relax Docker
+permissions or borrow a human role. A native Runtime first-target smoke, if
+separately authorized under the artifact gate, must be labeled first target
+execution, never preverified compatibility. This update does not resolve the
+unexecuted role ChangeSet's ToolPolicy dependency or authorize that extra change.
