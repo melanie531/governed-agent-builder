@@ -16,6 +16,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata
+from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
 from .harness import evaluate, run_case
@@ -594,6 +596,28 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         who(request, True)
         with store.tx() as db:
             return {"foundations": [json.loads(r[0]) for r in db.select('foundations', columns=['body'])], "components": catalog_records(db), "grants": [dict(r) for r in db.select('grants')], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.select('catalog_history', order='id', descending=True, limit=100)]}
+
+    @app.post("/api/admin/foundation-sources")
+    def register_foundation(data: RegisterFoundation, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        platform = platform_metadata(data.config)
+        with store.tx() as db:
+            return register_source(db, actor, data, platform)
+
+    @app.post("/api/admin/foundation-approvals")
+    def approve_foundation(data: ApproveFoundation, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        with store.tx() as db:
+            definition = get_version(db, data.agent_id, data.version)
+            source = get_foundation_record(db, 'foundation-source:'+definition['foundation_id'])
+            if not source:
+                raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
+            platform = platform_metadata(source['config'])
+            return compile_approval(db, actor, data, principal(db, definition['owner']), platform)
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):

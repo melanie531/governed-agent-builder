@@ -69,4 +69,24 @@ def read_platform_approval(definition_digest, *, target=None):
     row = json.loads(result['Item']['body']['S'])
     if row.get('key') != key:
         raise ValueError('PLATFORM_APPROVAL_KEY_MISMATCH')
-    return json.loads(row['body'])
+    approved = json.loads(row['body'])
+    receipt = approved.get('receipt') or {}
+    if (receipt.get('definition_digest') != definition_digest or receipt.get('approver_role') != 'admin'
+            or not receipt.get('approver') or not receipt.get('request_id') or not receipt.get('reviewed_at')
+            or not approved.get('foundation_id')):
+        raise ValueError('AUTHENTICATED_APPROVAL_RECEIPT_REQUIRED')
+    def setting(key):
+        response = target.client('dynamodb').get_item(TableName=tables[0], ConsistentRead=True,
+            Key={'pk': {'S':'settings'}, 'sk': {'S':json.dumps([key], separators=(',', ':'))}})
+        item = response.get('Item')
+        return json.loads(json.loads(item['body']['S'])['body']) if item else None
+    # Read-only packaging is not runtime authority; execution checks the CAS ledger
+    # again. Never package a known revoked grant or superseded registered source.
+    policy = setting('policy') or {}
+    source = setting('foundation-source:'+approved['foundation_id']) or {}
+    if (approved.get('epoch') != (setting('foundation-epoch') or 0)
+            or approved.get('policy_version') != policy.get('version')
+            or approved.get('source_revision') != source.get('revision')
+            or receipt != setting('foundation-review:'+receipt['request_id'])):
+        raise ValueError('CURRENT_REVIEWED_APPROVAL_REQUIRED')
+    return approved

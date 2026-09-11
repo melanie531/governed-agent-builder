@@ -21,7 +21,10 @@ def main():
         for name in ('foundation_harness', 'foundations'):
             shutil.copytree(ROOT / name, target / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (target / 'scripts').mkdir()
-        shutil.copy2(ROOT / 'scripts/foundation_target.py', target / 'scripts/foundation_target.py')
+        for name in ('foundation_target.py', 'package_foundation.py'):
+            shutil.copy2(ROOT / 'scripts' / name, target / 'scripts' / name)
+        # Approval verifies the exact packaged executor source, not a runtime ARN.
+        shutil.copytree(ROOT / 'runtime', target / 'runtime', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         shutil.copy2(ROOT / "uv.lock", target / "uv.lock")
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(target.rglob("*")):

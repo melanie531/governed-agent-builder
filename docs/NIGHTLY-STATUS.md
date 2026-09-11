@@ -767,3 +767,72 @@ call count was not instrumented; do not infer it from this final-readback count.
 
 New base package repeat build SHA matches exactly. Runtime-entry missing, invalid
 and cross-manifest configs reject before creating an SDK session (offline test).
+
+## Milestone 16: authoritative approval producer (2026-09-12)
+
+Source implementation, NOT cloud deployment or human approval:
+- `POST /api/admin/foundation-sources`: existing hosted session/CSRF/admin auth;
+  local demo personas cannot mint approval. Platform resolves current Studio CFN
+  endpoint/role and owned READY AWS_IAM Gateway/target metadata. Register reviewed
+  executor source/config against current catalog versions and target/schema digests.
+- `POST /api/admin/foundation-approvals`: exact existing agent ID/version/digest,
+  registered source revision, policy version, epoch, expected approval revision,
+  unique request ID and substantive reason. Identity comes only from the session.
+  Owner must remain a separate business principal in the exact workspace with
+  current grants. Stale source/catalog/policy/grants and replay fail closed.
+- Writes protected `foundation-approved:<definitiondigest>` plus immutable review
+  receipt under the existing DynamoDB global CAS fence; receipt includes actual
+  session approver, request, definition version/digest and time. No new signer,
+  fake human token, password access, service impersonation or direct approval toggle.
+- Approval pins manifest/admission references BEFORE Runtime creation. Final ZIP
+  hash and S3 version are downstream deployment evidence, not compilation inputs;
+  there is no package/manifest circular hash. Existing deploy-time artifact,
+  cost-envelope, VPC and Linux execution guards remain unchanged.
+- Packaging readback additionally requires the stored review receipt and current
+  source revision/policy/epoch. Lambda builder now includes the source-hash module
+  and executor source so hosted source verification has its required files.
+
+Concrete preparation order (not performed in cloud during this slice):
+1. Review/deploy backend ZIP plus narrowly scoped metadata permissions needed by
+   `platform_metadata`/`StudioTarget` (CFN, owned Gateway/targets and existing Studio
+   identity metadata). Current Business role has not been extended here. No
+   claim that these endpoints are already deployed or callable in production.
+2. A real existing platform administrator registers the reviewed actual-project
+   source config through the source API, then approves the EXACT saved definition
+   through the approval API, including current policy/epoch/revisions. The owner
+   authorizing implementation is NOT that approval. Current business user is not
+   elevated. No operator CLI authority path was introduced in this bounded slice.
+3. Save the returned `config` as immutable JSON and run the existing
+   `scripts.package_foundation` CLI with `--mode live --linux-dependencies`, its
+   existing `--config/--store/--output`, and exact `--definition-digest`. The CLI
+   rereads protected approval and actual CFN/IAM bindings. It generates a complete
+   dependency/admission ZIP only after real approval, still marked Linux UNVERIFIED.
+4. Linux ARM64 execution proof, exact versioned artifact readback, all-service cost
+   envelope and approved VPC remain REQUIRED before deployment. Binding the final
+   package/S3 version for `FoundationJobs` is still a separate unimplemented admin
+   finalization step; do not insert unchecked DDB fields to bypass it. No Runtime
+   should be created as a purported already-verified validation.
+
+No cloud reads/writes or deployment attempted in this slice; prior IAM deployment
+claims above are historical, not independently reverified now. No model/tool/
+Runtime/Browser/evaluator calls, no Cognito/user/data changes. Full end-to-end
+journey NOT_READY. No complete approved per-agent ZIP exists from this run.
+
+Offline tests use synthetic session tokens only inside Moto test fixtures, never
+against real Cognito. Focused initial suite: 75 passed in 8.68s. Initial full run
+was cut off by the tool's 20-second timeout (not a test failure); a single complete
+rerun with a 120-second bound was started. Final result recorded below.
+
+Well-Architected: Security fail-closed authenticated producer, live role/IAM and
+review pending; Reliability CAS/replay/freshness covered offline; Performance no
+live measurement; Cost no workload calls, no billing assertion; Operations source
+receipt workflow implemented, deployment pending; Sustainability no new workload.
+
+Final full verification: `.venv/bin/python -m pytest -q` **573 passed**, three
+baseline warnings, **30.94s** (`/tmp/gab-approval-full-final.log`). Includes new
+hosted API workflow, owner/workspace denial, stale governance/catalog/source,
+request replay, immutable hash, extra-field denial and competing Dynamo CAS.
+Package consistency/admission/delivery regressions included. `git diff --check`
+clean. Live CFN/role permissions and genuine administrator approval remain blocked
+preparation steps, not test successes. Runtime executor source unchanged, so no
+new executor/package digest is claimed. Git commit is the source delivery hash.
