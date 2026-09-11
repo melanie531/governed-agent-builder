@@ -8,7 +8,7 @@ from pathlib import Path
 from .catalog import COMPONENTS, FOUNDATIONS, INITIAL_GRANTS
 
 class Store:
-    def __init__(self, path: str):
+    def __init__(self, path: str, seed_personas=True):
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.tx() as db:
@@ -32,7 +32,7 @@ class Store:
                 db.execute("INSERT OR IGNORE INTO foundations VALUES (?,?)", (foundation["id"], json.dumps({**foundation, "approved": True})))
             seeded = db.execute("SELECT 1 FROM settings WHERE key='seeded'").fetchone()
             if not seeded:
-                for persona, components in INITIAL_GRANTS.items():
+                for persona, components in (INITIAL_GRANTS.items() if seed_personas else []):
                     db.executemany("INSERT INTO grants VALUES (?,?)", [(persona, c) for c in components])
                 db.execute("INSERT INTO settings VALUES ('seeded','true')")
                 db.execute("INSERT INTO settings VALUES ('policy',?)", (json.dumps({"version": 1, "require_judge": False, "minimum_score": 1}),))

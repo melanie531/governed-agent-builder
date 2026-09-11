@@ -19,6 +19,7 @@ from .catalog import PERSONAS, SAMPLE_DATASET
 from .harness import evaluate, run_case
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
+from .hosted_auth import HostedAuth
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = {"PASS", "NEEDS_CHANGES"}
@@ -94,22 +95,49 @@ def get_version(db, agent_id, version):
 
 
 def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None):
+    hosted = os.getenv("HOSTED_PREVIEW") == "1"
     demo = os.getenv("DEMO_MODE") == "1" if demo_mode is None else demo_mode
+    if hosted and demo:
+        raise RuntimeError("HOSTED_PREVIEW and DEMO_MODE are mutually exclusive")
     mode = os.getenv("EXECUTION_MODE", "local")
     if mode != "local":
         raise RuntimeError("AWS mode disabled: configure and validate Okta, scoped Runtime deployment, both Gateways, Registry and evaluation adapters first. No simulation fallback.")
-    if not demo:
+    if not demo and not hosted:
         raise RuntimeError("Demo authentication is disabled. Set DEMO_MODE=1 only for loopback synthetic demos. Production Okta enforcement is not implemented; startup fails closed.")
-    if os.getenv("HOST", "127.0.0.1") not in ("127.0.0.1", "localhost", "::1"):
+    if not hosted and os.getenv("HOST", "127.0.0.1") not in ("127.0.0.1", "localhost", "::1"):
         raise RuntimeError("Demo must bind to loopback only")
     port = os.getenv("PORT", "5187")
     public = public_url or os.getenv("PUBLIC_URL", f"http://127.0.0.1:{port}")
     parsed = urlparse(public)
-    if parsed.hostname not in ("localhost", "127.0.0.1", "::1") or parsed.scheme not in ("http", "https") or parsed.username or parsed.query or parsed.path not in ("", "/"):
-        raise RuntimeError("PUBLIC_URL must be a loopback origin without a path or credentials")
-    origins = {public.rstrip("/"), f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+    if hosted:
+        if parsed.scheme != "https" or not parsed.hostname or parsed.hostname in ("localhost", "127.0.0.1", "::1") or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/") or parsed.port not in (None, 443):
+            raise RuntimeError("HOSTED_PREVIEW requires an exact public HTTPS origin")
+        if not os.getenv("STATE_PATH") and not db_path:
+            raise RuntimeError("HOSTED_PREVIEW requires persistent STATE_PATH")
+        origins = {public.rstrip("/")}
+    else:
+        if parsed.hostname not in ("localhost", "127.0.0.1", "::1") or parsed.scheme not in ("http", "https") or parsed.username or parsed.query or parsed.path not in ("", "/"):
+            raise RuntimeError("PUBLIC_URL must be a loopback origin without a path or credentials")
+        origins = {public.rstrip("/"), f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
     hosts = {urlparse(x).netloc for x in origins}
-    store = Store(db_path or str(ROOT / "artifacts/state.sqlite"))
+    store = Store(db_path or (os.environ["STATE_PATH"] if hosted else str(ROOT / "artifacts/state.sqlite")), seed_personas=not hosted)
+    auth = HostedAuth(store, public) if hosted else None
+    mode_label = "CLOUD-HOSTED DEMO" if hosted else "LOCAL SIMULATION"
+
+    def principal(db, subject):
+        if not hosted:
+            if subject not in PERSONAS:
+                raise HTTPException(404, "Identity not found")
+            return PERSONAS[subject]
+        row = db.execute("SELECT body FROM principals WHERE id=? AND expires>?", (subject, time.time())).fetchone()
+        if not row:
+            raise HTTPException(403, "Studio membership expired; sign in and retry")
+        return json.loads(row[0])
+
+    def principal_list(db):
+        if not hosted:
+            return list(PERSONAS.values())
+        return [json.loads(r[0]) for r in db.execute("SELECT body FROM principals WHERE expires>?", (time.time(),))]
 
     @asynccontextmanager
     async def lifespan(app):
@@ -130,16 +158,28 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             except asyncio.CancelledError:
                 pass
 
-    app = FastAPI(title="Governed Agent Builder · LOCAL SIMULATION", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Agent Studio · " + mode_label, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
+    app.state.hosted_auth = auth
 
     @app.middleware("http")
     async def security(request: Request, call_next):
         # No forwarded identity/role/header trust. Host checks prevent DNS rebinding.
         if request.headers.get("host") not in hosts:
-            return JSONResponse({"detail": "Unapproved local host"}, status_code=400)
-        if request.headers.get("sec-fetch-site") == "cross-site":
+            return JSONResponse({"detail": "Unapproved host"}, status_code=400)
+        callback_request = hosted and request.url.path == "/auth/callback" and request.method == "GET"
+        if request.headers.get("sec-fetch-site") == "cross-site" and not callback_request:
             return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
+        api_request = request.url.path == "/api" or request.url.path.startswith("/api/")
+        if hosted and request.url.path.startswith("/api/demo/"):
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        if hosted and api_request:
+            try:
+                request.state.persona, request.state.csrf = await asyncio.to_thread(auth.authenticate, request)
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers={"Cache-Control": "no-store"})
+            if request.method not in ("GET", "HEAD", "OPTIONS") and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), request.state.csrf):
+                return JSONResponse({"detail": "CSRF token required"}, status_code=403)
         # Enforce while reading, rather than allocating an unbounded upload first.
         chunks, size = [], 0
         async for chunk in request.stream():
@@ -151,7 +191,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         mutating = request.method not in ("GET", "HEAD", "OPTIONS")
         if mutating and request.headers.get("origin") not in origins:
             return JSONResponse({"detail": "Same-origin request required"}, status_code=403)
-        if request.url.path.startswith("/api/") and request.url.path not in ("/api/demo/personas", "/api/demo/session"):
+        if not hosted and request.url.path.startswith("/api/") and request.url.path not in ("/api/demo/personas", "/api/demo/session"):
             with store.tx() as db:
                 row = db.execute("SELECT * FROM sessions WHERE id=? AND expires>?", (request.cookies.get("gab_session", ""), time.time())).fetchone()
             if not row:
@@ -165,7 +205,27 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self' http://127.0.0.1:* http://localhost:*; base-uri 'self'; form-action 'self'"
+        if hosted:
+            response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
+
+    if hosted:
+        @app.get("/auth/login")
+        def hosted_login():
+            return auth.start()
+
+        @app.get("/auth/callback")
+        async def hosted_callback(request: Request):
+            return await auth.callback(request)
+
+        @app.post("/api/auth/logout")
+        def hosted_logout(request: Request):
+            return auth.logout(request)
+
+    @app.get("/studio-config.json")
+    def studio_config():
+        return {"hosted": hosted, "mode": mode_label}
 
     def who(request, admin=False):
         persona = request.state.persona
@@ -175,21 +235,25 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/api/demo/personas")
     def personas():
-        return {"mode": "LOCAL SIMULATION", "notice": "DEV ONLY identity selector. Not production authentication. Synthetic data only.", "personas": list(PERSONAS.values())}
+        if hosted:
+            raise HTTPException(404, "Not found")
+        return {"mode": mode_label, "notice": "DEV ONLY identity selector. Not production authentication. Synthetic data only.", "personas": list(PERSONAS.values())}
 
     @app.post("/api/demo/session")
     def login(data: Login, request: Request, response: Response):
+        if hosted:
+            raise HTTPException(404, "Not found")
         session_id, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with store.tx() as db:
             db.execute("DELETE FROM sessions WHERE expires<? OR id=?", (time.time(), request.cookies.get("gab_session", "")))
             db.execute("INSERT INTO sessions VALUES (?,?,?,?)", (session_id, data.persona_id, csrf, time.time() + 8 * 3600))
             audit(db, data.persona_id, "demo_session", "local", "DEV ONLY persona selected")
         response.set_cookie("gab_session", session_id, httponly=True, samesite="strict", secure=parsed.scheme == "https", max_age=8 * 3600)
-        return {"persona": PERSONAS[data.persona_id], "csrf": csrf, "mode": "LOCAL SIMULATION"}
+        return {"persona": PERSONAS[data.persona_id], "csrf": csrf, "mode": mode_label}
 
     @app.get("/api/me")
     def me(request: Request):
-        return {"persona": who(request), "csrf": request.state.csrf, "mode": "LOCAL SIMULATION"}
+        return {"persona": who(request), "csrf": request.state.csrf, "mode": mode_label}
 
     @app.get("/api/build-options")
     def options(request: Request, foundation_id: str | None = None, model_id: str | None = None):
@@ -212,7 +276,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     def save_definition(db, persona, data, agent_id=None):
         if persona["role"] != "business":
-            raise HTTPException(403, "Use a business demo identity to create agents")
+            raise HTTPException(403, "A business workspace membership is required to create agents")
         payload = data.model_dump(exclude={"base_version"})
         foundation = validate_definition(db, persona, payload)
         if agent_id:
@@ -229,7 +293,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(429, "Local demo cap: 100 agents per identity")
             agent_id, version = uid(), 1
             db.execute("INSERT INTO agents VALUES (?,?,?,?,?)", (agent_id, persona["id"], persona["workspace"], version, time.time()))
-        payload.update({"agent_id": agent_id, "version": version, "owner": persona["id"], "workspace": persona["workspace"], "foundation_manifest": foundation, "foundation_manifest_digest": digest(foundation), "schema_version": "1", "mode": "LOCAL SIMULATION", "prompt_ref": "sha256:" + digest(payload["prompt"]), "dataset_ref": "sha256:" + digest(payload["dataset"]), "rubric_ref": "sha256:" + digest(payload["rubric"]), "decision_policy_version": policy(db)["version"]})
+        payload.update({"agent_id": agent_id, "version": version, "owner": persona["id"], "workspace": persona["workspace"], "foundation_manifest": foundation, "foundation_manifest_digest": digest(foundation), "schema_version": "1", "mode": mode_label, "prompt_ref": "sha256:" + digest(payload["prompt"]), "dataset_ref": "sha256:" + digest(payload["dataset"]), "rubric_ref": "sha256:" + digest(payload["rubric"]), "decision_policy_version": policy(db)["version"]})
         payload["digest"] = digest(payload)
         db.execute("INSERT INTO versions VALUES (?,?,?,?,?)", (agent_id, version, payload["digest"], json.dumps(payload), time.time()))
         audit(db, persona["id"], "definition_created", agent_id, f"version={version}, digest={payload['digest']}")
@@ -287,7 +351,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(429, "Local budget cap: 30 jobs per identity per hour")
             job_id, now = uid(), time.time()
             db.execute("INSERT INTO jobs(id,agent,version,requester,idem,stage,created,updated,deadline) VALUES (?,?,?,?,?,'VALIDATING',?,?,?)", (job_id, agent_id, data.version, persona["id"], data.idempotency_key, now, now, now + 60))
-            event(db, job_id, "VALIDATING", {"message": "Local deploy/test accepted", "digest": definition["digest"], "mode": "LOCAL SIMULATION"})
+            event(db, job_id, "VALIDATING", {"message": "Local deploy/test accepted", "digest": definition["digest"], "mode": mode_label})
             audit(db, persona["id"], "deploy_test", agent_id, job_id)
         request.app.state.wake.set()
         return {"job_id": job_id, "stage": "VALIDATING", "reused": False}
@@ -301,7 +365,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             agent = agent_access(db, who(request), row["agent"])
             events = [{**dict(r), "detail": json.loads(r["detail"])} for r in db.execute("SELECT * FROM events WHERE job=? ORDER BY id", (job_id,))]
             result = json.loads(row["result"]) if row["result"] else None
-            return {**dict(row), "result": result, "events": events, "current_version": agent["current_version"], "stale": row["version"] != agent["current_version"], "mode": "LOCAL SIMULATION"}
+            return {**dict(row), "result": result, "events": events, "current_version": agent["current_version"], "stale": row["version"] != agent["current_version"], "mode": mode_label}
 
     @app.post("/api/agents/{agent_id}/invoke")
     def invoke(agent_id: str, data: Invoke, request: Request):
@@ -322,7 +386,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(429, "Local invocation cap: 30 per minute")
             output = run_case(definition, data.input)
             audit(db, persona["id"], "local_invoke", agent_id, f"version={data.version}")
-            return {**output, "mode": "LOCAL SIMULATION", "version": data.version}
+            return {**output, "mode": mode_label, "version": data.version}
 
     @app.get("/api/agents/{agent_id}/export")
     def export(agent_id: str, request: Request):
@@ -338,7 +402,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             archive.writestr("dataset.json", json.dumps(definition["dataset"], indent=2))
             archive.writestr("rubric.json", json.dumps(definition["rubric"], indent=2))
             archive.writestr("foundation-manifest.json", json.dumps(definition["foundation_manifest"], indent=2))
-            archive.writestr("config.json", json.dumps({"mode": "LOCAL SIMULATION", "component_versions": definition["component_versions"], "evaluation_policy": export_policy}, indent=2))
+            archive.writestr("config.json", json.dumps({"mode": "LOCAL SIMULATION", "exported_from": mode_label, "component_versions": definition["component_versions"], "evaluation_policy": export_policy}, indent=2))
             archive.writestr("harness.py", (ROOT / "backend/harness.py").read_text())
             archive.writestr("run.py", 'import json\nfrom pathlib import Path\nfrom harness import evaluate\nd=json.loads(Path("definition.json").read_text())\np=json.loads(Path("config.json").read_text())["evaluation_policy"]\nprint(json.dumps(evaluate(d,p),indent=2))\n')
             archive.writestr("requirements.txt", "# Python >=3.12; portable runner uses standard library only. No dependencies.\n")
@@ -379,14 +443,16 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def admin_catalog(request: Request):
         who(request, True)
         with store.tx() as db:
-            return {"foundations": [json.loads(r[0]) for r in db.execute("SELECT body FROM foundations")], "components": [json.loads(r[0]) for r in db.execute("SELECT body FROM components")], "grants": [dict(r) for r in db.execute("SELECT * FROM grants")], "personas": list(PERSONAS.values()), "policy": policy(db), "history": [dict(r) for r in db.execute("SELECT * FROM catalog_history ORDER BY id DESC LIMIT 100")]}
+            return {"foundations": [json.loads(r[0]) for r in db.execute("SELECT body FROM foundations")], "components": [json.loads(r[0]) for r in db.execute("SELECT body FROM components")], "grants": [dict(r) for r in db.execute("SELECT * FROM grants")], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.execute("SELECT * FROM catalog_history ORDER BY id DESC LIMIT 100")]}
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):
         persona = who(request, True)
         with store.tx() as db:
             component = resource(db, "components", data.component_id)
-            if data.enabled and (not component["approved"] or component["external"] and not PERSONAS[data.persona_id]["external_allowed"]):
+            if principal(db, data.persona_id)["role"] != "business":
+                raise HTTPException(403, "Business identity required")
+            if data.enabled and (not component["approved"] or component["external"] and not principal(db, data.persona_id)["external_allowed"]):
                 raise HTTPException(403, "Approval or workspace data policy blocks this grant")
             if data.enabled:
                 db.execute("INSERT OR IGNORE INTO grants VALUES (?,?)", (data.persona_id, data.component_id))
@@ -408,7 +474,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "Request already decided")
             component = resource(db, "components", row["component"])
             if data.approve:
-                if not component["approved"] or component["external"] and not PERSONAS[row["requester"]]["external_allowed"]:
+                if not component["approved"] or component["external"] and not principal(db, row["requester"])["external_allowed"]:
                     raise HTTPException(403, "Approval or data policy blocks this capability")
                 db.execute("INSERT OR IGNORE INTO grants VALUES (?,?)", (row["requester"], row["component"]))
             db.execute("UPDATE requests SET status=?,decision=? WHERE id=?", ("APPROVED" if data.approve else "REJECTED", data.reason, request_id))
@@ -454,7 +520,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             try:
                 if time.time() > job["deadline"]:
                     raise HTTPException(408, "Local job deadline exceeded (60 seconds)")
-                persona = PERSONAS[job["requester"]]
+                persona = principal(db, job["requester"])
                 agent = agent_access(db, persona, job["agent"])
                 if agent["current_version"] != job["version"]:
                     raise HTTPException(409, "Definition changed during test; retest current version")
@@ -475,7 +541,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 db.execute("UPDATE jobs SET stage=?,updated=? WHERE id=?", (next_stage, time.time(), job_id))
                 event(db, job_id, next_stage, detail)
             except HTTPException as exc:
-                result = {"passed": False, "gate": "Needs changes", "error": exc.detail, "mode": "LOCAL SIMULATION", "production_ready": False}
+                result = {"passed": False, "gate": "Needs changes", "error": exc.detail, "mode": mode_label, "production_ready": False}
                 db.execute("UPDATE jobs SET stage='NEEDS_CHANGES',result=?,updated=? WHERE id=?", (json.dumps(result), time.time(), job_id))
                 event(db, job_id, "NEEDS_CHANGES", {"message": exc.detail})
 
@@ -488,7 +554,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise
         except Exception:
             with store.tx() as db:
-                db.execute("UPDATE jobs SET stage='NEEDS_CHANGES',result=?,updated=? WHERE id=?", (json.dumps({"passed": False, "gate": "Needs changes", "error": "Local worker error; inspect server diagnostics", "mode": "LOCAL SIMULATION"}), time.time(), job_id))
+                db.execute("UPDATE jobs SET stage='NEEDS_CHANGES',result=?,updated=? WHERE id=?", (json.dumps({"passed": False, "gate": "Needs changes", "error": "Local worker error; inspect server diagnostics", "mode": mode_label}), time.time(), job_id))
                 event(db, job_id, "NEEDS_CHANGES", {"message": "Sanitized worker error"})
 
     async def worker_loop():
@@ -521,7 +587,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/{path:path}")
     def spa(path: str):
-        if path.startswith("api/"):
+        if path == "api" or path.startswith("api/"):
             raise HTTPException(404, "API route not found")
         index = dist / "index.html"
         if not index.exists():

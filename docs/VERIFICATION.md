@@ -1,5 +1,23 @@
 # Verification report — 11 September 2026
 
+## Hosted identity implementation update (not a cloud deployment)
+
+- Expanded backend suite: **126 passed**, 5.78 seconds, including locally signed
+  JWT contracts, mocked OAuth callback/replay, subject/role isolation, revoked
+  grants, expired sessions, CSRF and cloud-template invariants.
+- Frontend TypeScript/Vite production build passed. Existing bundle-size warning
+  remains. No dependency/browser warning was suppressed.
+- Final browser run: **4 passed**, 10.7 seconds. Two original real local API/worker
+  journeys plus two hosted landing/current-user-menu tests with explicitly
+  **mocked API responses**, not a live Cognito login.
+- AWS `ValidateTemplate` passed for isolated edge and identity templates; no stack
+  create/update operation was executed. Validation is not deployability proof.
+- AWS profile/account match and existing stack metadata checked read-only. No
+  existing demo resources, user pool, app client, IAM policies or DNS were changed.
+- No approved origin DNS/TLS certificate was available; cloud deployment and real
+  HTTPS end-to-end acceptance remain blocked. No new URL or live Cognito login.
+
+
 ## Executed locally
 
 | Check | Result |

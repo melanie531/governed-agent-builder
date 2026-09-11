@@ -1,5 +1,14 @@
 # Unconnected integration boundaries
 
+## Approved Cognito prototype identity
+
+A separate `HOSTED_PREVIEW=1` Cognito code/PKCE mode now exists in code; it is not
+deployed. See [HOSTED.md](HOSTED.md) and [CLOUD-PLAN.md](CLOUD-PLAN.md). Hosted mode
+closes demo identity selection and resolves roles/workspaces from verified
+Cognito subjects and operator-assigned groups. Customer Okta remains unconnected.
+The loopback DEMO_MODE and fail-closed AWS execution boundary remain unchanged.
+
+
 ## Production identity: Okta OIDC
 
 Production mode is deliberately unavailable. Do not expose DEV ONLY persona selection to real users. Before adding a non-demo launcher:

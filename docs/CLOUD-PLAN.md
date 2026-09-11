@@ -1,6 +1,6 @@
 # Cloud-hosted fixture preview plan
 
-Status: **preflight complete; NOT deployed. Authentication decision required.**
+Status: **Cognito identity approved and implemented in code; NOT deployed. Origin TLS/DNS input required.**
 Verified 2026-09-11. Application baseline: `feat/local-first` at
 `e79dc4c7837e45cbb1b16055f4c3a2f2bb97b90b` with a clean working tree before this document.
 
@@ -34,27 +34,35 @@ cannot complete an OAuth login with that callback configuration unchanged.
 Password/SRP flows being enabled is not approval to repurpose the existing client,
 collect passwords in this application, or borrow the old demo's acceptance broker.
 
-## Blocking decision
+## Approved identity and remaining blocking input
 
-**Recommended: authorize a new, isolated Cognito user pool and public PKCE client
-for this preview, with self-registration disabled and only explicitly invited
-operators.** Confirm which operator email should receive the invitation through
-Cognito, without sending any password or authentication code in chat.
+The user explicitly approved Cognito sign-in for this prototype. The hosted
+experience is now Agent Studio landing → managed Cognito code/PKCE → assigned
+workspace. The hosted persona selector and demo login routes are closed. New
+invite-only pool/client/groups are defined in `infra/identity.py`; **not deployed**.
 
-Alternative: explicitly authorize reuse of the existing user pool with a separate
-new client and an operator allowlist. This changes an existing identity resource
-and is outside the current no-mutation boundary. Do not silently choose it.
+Server-controlled group policy maps the verified Cognito subject to exactly one
+workspace/role. Multiple approved groups fail closed rather than offer an unsafe
+role selector. `studio-admin` cannot create/read another member's private agents.
+The current-user menu offers logout only. No real users have been invited or
+assigned groups. Parent must confirm the invitation email and intended membership
+before onboarding; no password or authentication code goes through chat.
 
-The new pool/client choice is a real access-control decision. All approved preview
-operators can deliberately select any synthetic persona, including demo Admin.
-This is not production tenant identity or customer Okta integration.
+**Current deployment blocker: no approved backend DNS hostname/trusted TLS
+certificate.** Read-only discovery found zero Route 53 hosted zones and zero
+issued ACM certificates in the verified account/region. CloudFront private origin
+support does not remove origin certificate validation. Its public viewer
+certificate cannot be installed on EC2, and a self-signed origin certificate is
+rejected. Need an approved origin subdomain and DNS validation path, or an approved
+alternative architecture with a managed TLS endpoint. Do not guess ownership or
+change DNS in another account. No public HTTP/self-signed fallback is permitted.
 
-There is no verified reusable login for this application yet. Consequently no
-cloud resources have been created, no account policies have been altered, and no
-public application or persona-selection endpoint has been exposed. No tokens,
-cookies, passwords, SSM values, environment secrets or credential files were read.
+Reference: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-cloudfront-to-custom-origin.html
 
-## Selected hosting direction, pending identity decision
+No cloud resources have been created, existing resources modified, or credentials
+read. This is implementation preparation, not a completed deployment.
+
+## Selected hosting direction, pending origin TLS and runtime provisioning
 
 Prefer **CloudFront + private S3 + private EC2 VPC origin + retained encrypted EBS**
 for the least application change. One small ARM64 instance is sufficient as the
@@ -77,8 +85,7 @@ supports explicit names. Tag new resources `project=governed-agent-builder`,
 
 - Separate IaC stack(s), VPC/subnet/security groups, CloudFront distribution/OAC,
   private frontend/artifact S3 buckets, EC2 instance role/profile, instance,
-  retained encrypted EBS data volume, scoped log group and new identity resources
-  only if the recommended identity option is approved.
+  retained encrypted EBS data volume, scoped log group and new approved Cognito identity resources.
 - No edits to the old demo stack, app client, pool, bucket, distribution, domain,
   API, shared auth policy, runtime or control-plane integrations.
 - Do not reuse the existing CDK bootstrap deployment role simply because it is
@@ -113,7 +120,7 @@ supports explicit names. Tag new resources `project=governed-agent-builder`,
 
 ### Authentication and browser boundary
 
-- New login uses authorization code + PKCE, exact redirect, state/nonce, secure
+- Implemented login uses authorization code + PKCE, exact redirect, state/nonce, secure
   server-side sessions and bounded expiry. No tokens in URLs delivered to the
   operator, browser local storage, logs or repository.
 - Every `/api` and `/api/*` request, including persona bootstrap, unknown routes
@@ -124,10 +131,10 @@ supports explicit names. Tag new resources `project=governed-agent-builder`,
   public; persona selection and application data may not be public.
 - Validate issuer, signature algorithm, keys/rotation, token purpose, intended
   audience/client, expiration, scopes and approved operator subject. Do not use
-  an ID token as an API access token. Bind synthetic sessions to the authenticated
-  operator so another operator's session cookie cannot be reused.
-- Preserve existing server-side persona authorization and grant/revocation checks.
-  Persona selection occurs only after real operator authentication.
+  an ID token as an API access token. Use opaque server-side sessions bound to the verified subject. Store only a hash
+  of the browser session identifier; never put provider tokens in browser storage.
+- Preserve ownership/grant/revocation checks, using verified subject IDs rather
+  than synthetic persona IDs. Hosted persona selection is unavailable.
 - HttpOnly, Secure, SameSite cookies; exact Origin and session-bound CSRF checks
   on mutations; logout invalidation. No wildcard CORS or host allowlist.
 - CloudFront API and auth behaviors disable caching and forward required cookies,
@@ -165,7 +172,7 @@ where security permits. Amplify frontend-only would not remove these backend cos
 
 | Pillar | Planned status / unresolved check |
 |---|---|
-| Security | Private origin + private S3 + real operator login; identity approval and origin TLS/egress design are blocking checks |
+| Security | Private origin + private S3 + real operator login; identity implemented offline; origin TLS/egress design and live auth remain open |
 | Reliability | Durable local SQLite + bounded replay; single AZ/process intentionally accepted for preview, recovery must be tested |
 | Performance | Existing two fixture slots; measure hosted browser/API latency before claiming performance |
 | Cost optimization | Small instance, no model calls; price networking rather than hiding endpoint/NAT costs |
@@ -175,7 +182,7 @@ where security permits. Amplify frontend-only would not remove these backend cos
 ## Acceptance and delivery gate
 
 1. Review/synthesize new IaC and scoped IAM; verify no changes to old stacks.
-2. Deploy only new isolated resources after identity and network/TLS checks close.
+2. Deploy only new isolated resources after network/TLS checks close.
 3. Perform real operator login using safe browser/host-owned entry. Ask the operator
    only to perform necessary login, never to send a password or code.
 4. Test public CloudFront `/api/demo/personas`, `/api/demo/session`, `/api/me`,
@@ -193,9 +200,33 @@ where security permits. Amplify frontend-only would not remove these backend cos
    fixture limitations. Cleanup guide must cover CloudFront/VPC-origin teardown
    ordering, stop costs, retained EBS/backups/logs and new identity resources.
 
-## Current result
+## Current implementation result
 
-Only inspection and this plan are complete. There is **no new cloud URL** and no
-cloud E2E evidence. Identity approval is the next necessary decision; origin TLS,
-private runtime packaging and endpoint/egress costs must then be resolved in the
-implementation before any service can be called ready.
+- `backend/hosted_auth.py`: RS256 issuer/client/token-purpose/scope/time validation,
+  PKCE/state/nonce, secure server-side sessions, group-derived backend workspace,
+  hashed session lookup, logout, no session re-seeding of revoked grants.
+- `backend/app.py`: real auth before API body parsing/business logic, exact-host
+  validation, hosted CSRF, closed demo endpoints, current subject ownership,
+  original loopback local mode preserved. No arbitrary forwarded-header trust.
+- `backend/hosted.py`: separate fail-closed, one-process launcher; requires `/data`
+  state path and binds loopback behind a future same-instance TLS proxy.
+- Frontend: branded Agent Studio entry, current-user/logout menu, no hosted user
+  list, direct assigned workspace entry. Original Cloudscape local journeys remain.
+- `infra/identity.py` and `infra/edge.py`: isolated CloudFormation templates;
+  AWS ValidateTemplate passed for both. This validates template syntax, **not**
+  successful service provisioning, IAM sufficiency or full deployment readiness.
+- Live discovery corrected and verified CloudFront's managed CachingDisabled and
+  AllViewer policies; API/auth/config behaviors do not cache or use SPA rewrite.
+- EC2/VPC/EBS/TLS proxy/bootstrap/backup provisioning is **not implemented yet**.
+  The edge template takes an already healthy private TLS origin as an input, not
+  a placeholder backend. Do not deploy it until that requirement is satisfied.
+
+Cognito access tokens are configured for 15 minutes; this BFF does not refresh
+provider tokens. Expiry requires sign-in again. Application grant revocations are
+immediate; Cognito group removal/disablement can take until the current access
+session expires, because validation does not make a paid/privileged admin lookup
+on every request. No claim of immediate provider-side revocation is made.
+
+Offline tests use generated test signing keys and mocked token endpoints. They
+are **not** hosted Cognito E2E evidence. No live operator login, cloud URL, origin
+TLS handshake, cloud database recovery or hosted job test has occurred.

@@ -1,5 +1,15 @@
 # Governed Agent Builder
 
+## Cloud hosting work in progress
+
+The local prototype below remains runnable. A separate **Agent Studio hosted mode**
+is implemented in code with Cognito code/PKCE sign-in, verified-subject workspace
+roles, and no persona selector. It is **not deployed**. See
+[the cloud plan](docs/CLOUD-PLAN.md) and [hosted setup](docs/HOSTED.md) for exact
+status, requirements, tests and the origin TLS/DNS blocker. The local 92-test
+baseline is not cloud acceptance evidence.
+
+
 A working **local interactive prototype**, not a cloud deployment. A business user selects a maintained harness foundation, chooses authorized capabilities, writes their own prompt and evaluation, creates an immutable version, and runs a real asynchronous fixture evaluation. A platform administrator owns catalog approvals, grants, mandatory gates and audit.
 
 **LOCAL SIMULATION throughout. Fixture runner, no live LLM.** No AWS resources, paid model calls, real Runtime ARNs, CloudWatch logs, production identity, or production quality claims.
