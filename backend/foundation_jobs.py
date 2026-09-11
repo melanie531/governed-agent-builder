@@ -16,13 +16,14 @@ from . import foundation_runs as runs
 
 
 class FoundationJobs:
-    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None, producer=None, evidence_collector=None):
+    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None, producer=None, evidence_collector=None, evidence_exporter=None):
         self.deployment, self.runtime_client, self.target = deployment, runtime_client, target
         self.enabled, self.evidence_reader = enabled, evidence_reader
         self.artifact_reader = artifact_reader
         self.policy_evaluator = policy_evaluator
         self.producer = producer
         self.evidence_collector = evidence_collector
+        self.evidence_exporter = evidence_exporter
 
     def approve_request(self, db, definition, persona):
         if not self.enabled:
@@ -172,10 +173,11 @@ class FoundationJobs:
             stage = job['stage']
             if stage == 'EVALUATING':
                 owner_key = 'foundation-evaluating:' + job_id
-                if runs.get(db, owner_key):
+                active = runs.get(db, owner_key)
+                if active and active.get('expires', float('inf')) > time.time():
                     return  # another step owns collection AND the outer transition
-                owner = {'token': uuid4().hex, 'stage': stage,
-                         'fence': digest([row['approved'], row.get('collection_grant'), row.get('runtime')])}
+                owner = {'token': uuid4().hex, 'stage': stage, 'expires': time.time() + 240,
+                         'fence': digest([row['approved'], row.get('response_digest'), row.get('runtime')])}
                 runs.put(db, owner_key, owner)
             if stage == 'RUNNING':
                 runs.claim_dispatch(db, row)
@@ -243,7 +245,10 @@ class FoundationJobs:
             with store.tx() as db:
                 current = runs.get(db, 'foundation-run:' + job_id)
                 runs.current(db, current)
+                if current.get('response') is not None:
+                    raise Denied('IMMUTABLE_RESPONSE_ALREADY_RECORDED')
                 current['response'] = result
+                current['response_digest'] = digest(result)
                 current['runtime_request_id'] = response.get('ResponseMetadata', {}).get('RequestId')
                 runs.put(db, 'foundation-run:' + job_id, current)
                 self.transition(db, job_id, 'EVALUATING')
@@ -251,8 +256,11 @@ class FoundationJobs:
             # A trusted reader must fetch persisted trace/evaluation evidence;
             # fields claimed by the Runtime response are never release authority.
             from .evaluation_collector import CollectionInFlight
+            failure_code = None
             try:
-                if self.evidence_collector is not None:
+                if self.evidence_exporter is not None:
+                    row = self.evidence_exporter.export(store, job_id, owner)
+                if self.evidence_collector is not None and (self.evidence_exporter is None or row['approved'].get('agentcore_evaluation')):
                     row = self.evidence_collector.collect(store, job_id)
                 evidence = self.evidence_reader(row) if self.evidence_reader else None
             except CollectionInFlight:
@@ -260,16 +268,23 @@ class FoundationJobs:
                     if runs.get(db, owner_key) == owner:
                         db.delete('settings', where=[('key', '=', owner_key)])
                 return  # keep the rightful collector's stage and evidence intact
-            except Exception:
+            except Exception as error:
+                # Only fixed internal codes; never provider bodies or exception text.
+                import re
+                failure_code = str(error) if isinstance(error, Denied) and re.fullmatch(r'[A-Z_]{1,80}', str(error)) else 'EVIDENCE_PROVIDER_ERROR'
                 evidence = None  # Provider failures must not leak or fall back to fixtures.
             with store.tx() as db:
                 row = runs.get(db, 'foundation-run:' + job_id)
                 runs.current(db, row)
                 observed = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
                 if (observed['stage'] != owner['stage'] or runs.get(db, owner_key) != owner
-                        or digest([row['approved'], row.get('collection_grant'), row.get('runtime')]) != owner['fence']):
+                        or digest([row['approved'], row.get('response_digest'), row.get('runtime')]) != owner['fence']):
                     return
-                row['evidence'] = evidence
+                if failure_code:
+                    row['evidence_failure'] = failure_code
+                if evidence is not None or not row.get('evidence'):
+                    row['evidence'] = evidence
+                db.delete('settings', where=[('key', '=', owner_key)])
                 runs.put(db, 'foundation-run:' + job_id, row)
                 self.transition(db, job_id, 'EVIDENCE_CHECK')
         elif stage == 'EVIDENCE_CHECK':
@@ -335,15 +350,20 @@ def configured_jobs(store, *, worker=False):
     from .evaluation_collector import configured_evidence
     evidence_settings = settings.get('evaluation_collector', {})
     collector, reader = (None, None)
+    exporter = None
     if worker and evidence_settings.get('enabled') is True:
         collector, reader = configured_evidence(evidence_settings,
             agentcore=session.client('bedrock-agentcore', config=sdk),
             control=session.client('bedrock-agentcore-control', config=sdk),
             s3=session.client('s3', config=sdk), cloudwatch=session.client('logs', config=sdk))
+    if collector is not None:
+        from .run_evidence_exporter import RunEvidenceExporter
+        exporter = RunEvidenceExporter(s3=collector.s3, cloudwatch=reader.cloudwatch,
+            bucket=evidence_settings['bucket'], prefix=evidence_settings['prefix'])
     return FoundationJobs(FoundationDeployment(session.client('bedrock-agentcore-control', config=sdk),
                           policy, settings['network']), session.client('bedrock-agentcore', config=sdk),
                           StudioTarget(session), enabled=True, producer=producer,
-                          evidence_collector=collector, evidence_reader=reader,
+                          evidence_collector=collector, evidence_reader=reader, evidence_exporter=exporter,
                           artifact_reader=ArtifactReadback(session.client('s3', config=sdk), settings['bucket']))
 
 

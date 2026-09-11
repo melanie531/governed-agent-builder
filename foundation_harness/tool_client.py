@@ -76,7 +76,7 @@ class ToolClient:
         recheck(authority, binding, 'tool', name)
         budget.require_reservation(self.transport)
         budget.tool()
-        with telemetry.span('tool', {'tool': name}):
+        with telemetry.span('tool', {'tool': name}) as span:
             if not self.ready:
                 self.discover(authority, binding, tool, budget, telemetry)
             recheck(authority, binding, 'tool', name)
@@ -87,5 +87,8 @@ class ToolClient:
             if (not isinstance(blocks, list) or not blocks or len(canonical(blocks)) > 8192
                     or any(b.get('type') != 'text' or not isinstance(b.get('text'), str) for b in blocks)):
                 raise GatewayError('UNSUPPORTED_TOOL_CONTENT')
+            telemetry.content(span, {'gen_ai.tool.name': name,
+                'gen_ai.tool.call.arguments': canonical(arguments).decode(),
+                'gen_ai.tool.call.result': '\n'.join(b['text'] for b in blocks)})
             budget.check()
             return [{'type': 'text', 'text': b['text']} for b in blocks]

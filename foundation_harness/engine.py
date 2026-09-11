@@ -12,16 +12,22 @@ class Engine:
         self.model, self.tools, self.telemetry = model, tools, telemetry
 
     def run(self, run_ref, authenticated_entry, user_input, budget):
+        if not isinstance(user_input, str) or not user_input.strip() or len(user_input.encode()) > 16384:
+            raise ValueError('INPUT_TEXT_OR_BYTE_CAP')
         started = time.monotonic()
         # Admission errors propagate before any service can be dispatched.
         binding = admit(self.authority, run_ref, authenticated_entry, self.config)
         budget.deadline = min(budget.deadline, time.monotonic() + max(0, binding.expires_at - time.time()))
         self.tools.reset()
+        self.telemetry.session_id = binding.runtime_session
+        self.telemetry.record.spans.clear()
+        self.telemetry.private.clear()
         output, status = [], 'ITERATION_LIMIT'
         messages = [{'role': 'user', 'content': [{'type': 'text', 'text': user_input}]}]
         system = '\n\n'.join([p.text for p in self.config.systemPrompt] + instructions(self.config.skills))
         with self.telemetry.span('run', {'manifest_digest': binding.manifest_digest,
                                          'foundation_digest': binding.foundation_digest}) as span:
+            self.telemetry.content(span, {'gen_ai.task.input': user_input})
             try:
                 if not isinstance(user_input, str):
                     raise ValueError('INPUT_TEXT_REQUIRED')
@@ -53,6 +59,7 @@ class Engine:
             finally:
                 self.authority.finish(binding)
                 self.telemetry.attributes(span, {'status': status})
+                self.telemetry.content(span, {'gen_ai.task.output': '\n'.join(b['text'] for b in output if b.get('type') == 'text')})
         try:
             exported = self.telemetry.flush()
         except Exception:
@@ -73,4 +80,4 @@ class Engine:
                 'latency_ms': round((time.monotonic() - started) * 1000, 2),
                 'billing_estimate_usd': None, 'actual_cost_usd': None, 'trace_id': self.telemetry.trace_id,
                 'otel_exported': exported, 'live_evidence': False,
-                'production_ready': False}
+                'production_ready': False, 'execution_record': self.telemetry.execution_record()}

@@ -109,6 +109,13 @@ class PinnedSpanReader:
                 or [list(i) for i in ids] != pin['span_ids']
                 or any(not re.fullmatch('[a-f0-9]{32}', t) or not re.fullmatch('[a-f0-9]{16}', s) for t, s in ids)):
             raise Denied('SPAN_COVERAGE')
+        if pin.get('format') == 'CLOUDWATCH_SPAN_JSON_V1':
+            from .run_evidence_exporter import query_spans, content_for
+            actual = query_spans(self.cloudwatch, pin['query_id'], row)
+            rebuilt, _ = content_for(row, actual)
+            if rebuilt != content:
+                raise Denied('SPAN_EXPORT_CONTENT_CHANGED')
+            return content
         query = self.cloudwatch.get_query_results(queryId=pin['query_id'])
         if query.get('status') != 'Complete' or query.get('nextToken') or len(query['results']) != len(ids):
             raise Denied('SPAN_QUERY_INCOMPLETE')

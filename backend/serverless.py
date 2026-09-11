@@ -104,7 +104,7 @@ def dispatch_handler(event, context):
 
 def worker_handler(event, context):
     failures = []
-    app = application(worker=True) if os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' else application()
+    app = application(worker=True) if (os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' or os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1') else application()
     for record in event.get("Records", []):
         try:
             job_id = json.loads(record["body"])["job_id"]

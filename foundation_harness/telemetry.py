@@ -1,11 +1,13 @@
 """Manual OTel only: allowlisted metadata, no prompt/output/SDK auto-capture."""
 from contextlib import contextmanager
 import re
+import json
+import copy
 
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult, SpanProcessor
 from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
 
 from .transport import IAMTransport
@@ -50,6 +52,24 @@ class CloudWatchExporter(SpanExporter):
             return SpanExportResult.FAILURE
 
 
+class ExecutionSpans(SpanProcessor):
+    """Private invocation record of actual ended spans; never a log exporter."""
+    def __init__(self):
+        self.spans = []
+
+    def on_end(self, span):
+        if len(self.spans) >= 100:
+            raise ValueError('EXECUTION_SPAN_CAP')
+        self.spans.append({
+            'traceId': format(span.context.trace_id, '032x'),
+            'spanId': format(span.context.span_id, '016x'),
+            **({'parentSpanId': format(span.parent.span_id, '016x')} if span.parent else {}),
+            'name': span.name, 'kind': span.kind.name,
+            'scope': {'name': span.instrumentation_scope.name, 'version': span.instrumentation_scope.version},
+            'startTimeUnixNano': span.start_time, 'endTimeUnixNano': span.end_time,
+            'attributes': dict(span.attributes)})
+
+
 class Telemetry:
     def __init__(self, exporter=None):
         self.exporter = exporter
@@ -58,7 +78,11 @@ class Telemetry:
             'aws.log.group.names': '/governed-agent-builder/foundation-m0'}))
         if exporter:
             self.provider.add_span_processor(SimpleSpanProcessor(exporter))
-        self.tracer = self.provider.get_tracer('owned-foundation', '1')
+        self.record = ExecutionSpans()
+        self.provider.add_span_processor(self.record)
+        self.private = {}
+        self.session_id = None
+        self.tracer = self.provider.get_tracer('opentelemetry.instrumentation.owned_foundation', '1')
         self.trace_id = None
 
     @classmethod
@@ -85,7 +109,26 @@ class Telemetry:
                                                set_status_on_exception=False) as span:
             self.trace_id = format(span.get_span_context().trace_id, '032x')
             self.attributes(span, attributes or {})
+            span.set_attribute('gen_ai.operation.name', {'run': 'invoke_agent', 'model': 'chat', 'tool': 'execute_tool', 'admission': 'admission'}[operation])
+            if self.session_id:
+                span.set_attribute('session.id', self.session_id)
             yield span
+
+    def content(self, span, attributes):
+        # Only the private Invoke response carries these documented attributes.
+        key = format(span.get_span_context().span_id, '016x')
+        value = copy.deepcopy(attributes)
+        # Reject, rather than silently redact and misrepresent, credential-bearing
+        # content. Headers/transport credentials never enter this record.
+        serialized = json.dumps(value)
+        if re.search(r'(?i)(authorization|api[_-]?key|access[_-]?token|secret[_-]?access[_-]?key|password|client[_-]?secret)\\?"\s*:', serialized) or re.search(r'(?i)bearer\s+[a-z0-9._~+/-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[A-Z0-9]{16}', serialized):
+            raise ValueError('PRIVATE_CREDENTIAL_CONTENT_DENIED')
+        if len(serialized.encode()) > 32768:
+            raise ValueError('PRIVATE_CONTENT_CAP')
+        self.private.setdefault(key, {}).update(value)
+
+    def execution_record(self):
+        return {'spans': copy.deepcopy(self.record.spans), 'content': copy.deepcopy(self.private)}
 
     def headers(self):
         context = trace.get_current_span().get_span_context()

@@ -50,5 +50,8 @@ class ModelClient:
                     raise GatewayError('UNSUPPORTED_MODEL_BLOCK')
             if len(set(ids)) != len(ids) or bool(ids) != (value['stop_reason'] == 'tool_use'):
                 raise GatewayError('TOOL_CORRELATION_INVALID')
+            telemetry.content(span, {'gen_ai.input.messages': canonical(messages).decode(),
+                'gen_ai.output.messages': canonical([{'role': 'assistant', 'content': blocks}]).decode(),
+                'gen_ai.system_instructions': system})
             budget.check()
             return value

@@ -155,7 +155,17 @@ def checked(row, evidence):
         raise ValueError('EVIDENCE_FIELDS')
     if evidence.get('readback') != 'SERVER_READBACK_V1':
         raise ValueError('READBACK')
-    validate_receipts(row, evidence)
+    export_only = row.get('evidence_source', {}).get('kind') == 'RUN_EXPORT_ONLY'
+    if export_only:
+        pin = row['collection_input']
+        grant = row['collection_grant']
+        if (row['evidence_source']['input_digest'] != digest(pin)
+                or grant['input_digest'] != digest(pin) or grant['binding'] != expected
+                or grant['approval_digest'] != digest(row['approved'])
+                or evidence['evaluations'] or evidence['agentcore_receipts']):
+            raise ValueError('EXPORT_ONLY_GRANT')
+    else:
+        validate_receipts(row, evidence)
     if any('codeBased' in r['native_evaluator_config']['evaluatorConfig'] for r in evidence['agentcore_receipts']):
         from .code_evaluator import ADAPTER
         if any(r.get('code_adapter') != ADAPTER
@@ -170,7 +180,7 @@ def checked(row, evidence):
             or row.get('response', {}).get('trace_id') not in traces):
         raise ValueError('TRACE')
     evaluations = [Evaluation.model_validate(e) for e in evidence['evaluations']]
-    if (not 1 <= len(evaluations) <= 20 or len({e.id for e in evaluations}) != len(evaluations)
+    if (not (0 if export_only else 1) <= len(evaluations) <= 20 or len({e.id for e in evaluations}) != len(evaluations)
             or any(e.completed != e.required
                    or e.status == 'INCOMPLETE' for e in evaluations)):
         raise ValueError('EVALUATION_INCOMPLETE')
@@ -196,6 +206,15 @@ class EvidenceReader:
             expected = binding(row)
             if src['binding'] != expected or not self.prefix or not self.prefix.endswith('/'):
                 raise ValueError('SOURCE_BINDING')
+            if src.get('kind') == 'RUN_EXPORT_ONLY':
+                from .evaluation_collector import PinnedSpanReader
+                content = PinnedSpanReader(s3=self.s3, cloudwatch=self.cloudwatch, bucket=self.bucket, prefix=self.prefix)(row)
+                evidence = {k: content[k] for k in ('binding', 'report', 'source_ids', 'trace_ids')}
+                if 'provider' in content:
+                    evidence['provider'] = content['provider']
+                evidence.update(evaluations=[], agentcore_receipts=[], readback='SERVER_READBACK_V1')
+                checked(row, evidence)
+                return evidence
             key = src['key']
             if not key.startswith(self.prefix) or '..' in key.split('/') or '://' in key:
                 raise ValueError('SOURCE_KEY')
@@ -214,17 +233,23 @@ class EvidenceReader:
             content.pop('readback', None)
             if content.get('source_ids') != src['source_ids']:
                 raise ValueError('SOURCE_IDS')
-            query = self.cloudwatch.get_query_results(queryId=src['query_id'])
-            if query.get('status') != 'Complete' or query.get('nextToken') or not 1 <= len(query['results']) <= 20:
-                raise ValueError('TRACE_QUERY')
-            traces = []
-            for record in query['results']:
-                fields = {x['field']: x['value'] for x in record}
-                if len(fields) != len(record) or fields.get('binding_digest') != digest(expected):
-                    raise ValueError('TRACE_BINDING')
-                traces.append(fields['trace_id'])
-            if set(traces) != set(content['trace_ids']):
-                raise ValueError('TRACE_CONTENT')
+            if row.get('collection_input', {}).get('format') == 'CLOUDWATCH_SPAN_JSON_V1':
+                from .run_evidence_exporter import query_spans
+                actual = query_spans(self.cloudwatch, src['query_id'], row)
+                if {s['traceId'] for s in actual} != set(content['trace_ids']):
+                    raise ValueError('TRACE_CONTENT')
+            else:
+                query = self.cloudwatch.get_query_results(queryId=src['query_id'])
+                if query.get('status') != 'Complete' or query.get('nextToken') or not 1 <= len(query['results']) <= 20:
+                    raise ValueError('TRACE_QUERY')
+                traces = []
+                for record in query['results']:
+                    fields = {x['field']: x['value'] for x in record}
+                    if len(fields) != len(record) or fields.get('binding_digest') != digest(expected):
+                        raise ValueError('TRACE_BINDING')
+                    traces.append(fields['trace_id'])
+                if set(traces) != set(content['trace_ids']):
+                    raise ValueError('TRACE_CONTENT')
             if not 1 <= len(src['evaluations']) <= 20:
                 raise ValueError('EVALUATION_CAP')
             # Discard all inline receipt claims. Fetch only server-pinned objects.
@@ -298,7 +323,7 @@ def project(row, evidence):
     try:
         report, evaluations, traces = checked(row, evidence)
         citations_valid = citation_quality(report, evidence['source_ids'])
-        judge_passed = all(e.judge_complete and e.status == 'PASS' for e in evaluations)
+        judge_passed = bool(evaluations) and all(e.judge_complete and e.status == 'PASS' for e in evaluations)
         quality = ('FAIL' if not citations_valid or any(e.status == 'FAIL' for e in evaluations)
                    else 'PASS' if judge_passed else 'INCOMPLETE')
         display_report = report.model_dump()
@@ -306,7 +331,7 @@ def project(row, evidence):
             display_report['citations'] = []  # never endorse invalid source references
         base.update(status='AVAILABLE',
                     reason=('INVALID_CITATIONS' if not citations_valid else
-                            'SEMANTIC_JUDGE_NOT_RUN' if any(not e.judge_complete for e in evaluations) else None),
+                            'SEMANTIC_JUDGE_NOT_RUN' if not evaluations or any(not e.judge_complete for e in evaluations) else None),
                     quality_status=quality, required_judge_passed=judge_passed,
                     citation_status='VALID' if citations_valid else 'INVALID', report=display_report,
                     evaluations=[e.model_dump() for e in evaluations], trace_ids=traces,
