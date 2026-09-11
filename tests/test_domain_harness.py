@@ -223,3 +223,111 @@ def test_native_model_union_and_wildcard_rejected():
     with pytest.raises(ValueError,match='EXACTLY_ONE_MODEL'): validate_wire_shape('create',payload)
     payload=wire('create');payload['allowedTools']=['@approved_tools/*']
     with pytest.raises(ValueError,match='FORBIDDEN_TOOL'): validate_wire_shape('create',payload)
+
+
+@pytest.mark.parametrize('profile', ['identity','observability','memory','evaluation','execution'])
+def test_foundation_profiles_mandatory(profile):
+    data=load();del data['foundations']['versions'][0][profile]
+    with pytest.raises(ValidationError):compile_data(data)
+
+
+@pytest.mark.parametrize('profile,field,value', [
+    ('identity','subject_workspace','client_claim'),
+    ('identity','session_ownership','shared'),
+    ('identity','jwt_to_iam_conversion',True),
+    ('identity','client_actor_override',True),
+    ('observability','audit_required',False),
+    ('observability','cloudwatch_required',False),
+    ('observability','otel_required',False),
+    ('observability','audit_separate_from_reasoning',False),
+    ('observability','raw_credentials',True),
+    ('observability','full_prompt_default',True),
+    ('observability','trace_fields',['request_id']),
+    ('observability','event_types',['completion']),
+    ('memory','default_policy','enabled'),
+    ('memory','cross_namespace_access',True),
+    ('evaluation','domain_layer','domain_only'),
+    ('evaluation','release_evidence_required',False),
+    ('execution','retry_on_denial',True),
+    ('execution','total_timeout_includes_retries',False),
+])
+def test_foundation_downgrades_invalid(profile,field,value):
+    data=load();data['foundations']['versions'][0][profile][field]=value
+    with pytest.raises(ValidationError):compile_data(data)
+
+
+@pytest.mark.parametrize('profile',['identity','observability','memory','evaluation','execution'])
+def test_domain_cannot_override_foundation_profiles(profile):
+    data=load();data['domain'][profile]={}
+    with pytest.raises(ValidationError):compile_data(data)
+
+
+@pytest.mark.parametrize('change',['session_owner','session_workspace','role','model_gateway','tool_gateway'])
+def test_forged_identity_binding_denied(change):
+    data=load()
+    if change.startswith('session_'):
+        data['authorization']['session'][change.removeprefix('session_')]='other'
+    elif change=='role':
+        data['authorization']['role_binding']['id']='other-role'
+    else:
+        kind='model' if change=='model_gateway' else 'tool'
+        entry=data['catalogs']['model_routes' if kind=='model' else 'tool_bindings'][0]
+        entry[change]['id']='other-gateway';regrant(data,kind,entry)
+    with pytest.raises(AdmissionDenied):compile_data(data)
+
+
+def test_inherited_profiles_release_binding_and_missing_evidence():
+    a,b=compile_data(load()),compile_data(load('b'))
+    for profile in ('identity','observability','memory','evaluation','execution'):
+        assert getattr(a.foundation,profile)==getattr(b.foundation,profile)
+    assert a.foundation.ref.version==b.foundation.ref.version==2
+    assert a.memory_namespace_digest != b.memory_namespace_digest
+    assert a.release_binding_digest != b.release_binding_digest
+    for blocker in ('BLOCKED_IDENTITY_RUNTIME_BINDING','BLOCKED_OBSERVABILITY_PIPELINE',
+                    'BLOCKED_MEMORY_ISOLATION','BLOCKED_EVALUATION_RELEASE_EVIDENCE',
+                    'BLOCKED_EXECUTION_LIMIT_ENFORCEMENT'):
+        assert blocker in a.readiness and blocker in b.readiness
+    with pytest.raises(ValidationError): a.foundation.observability.audit_required=False
+    assert not a.execution_ready and not b.execution_ready
+
+
+def test_session_namespace_isolation_and_release_reuse():
+    data=load();a=compile_data(data)
+    data['authorization']['session']['id']='new-session'
+    b=compile_data(data)
+    assert a.memory_namespace_digest != b.memory_namespace_digest
+    assert a.release_binding_digest == b.release_binding_digest
+    assert a.version_digest != b.version_digest
+
+
+def test_foundation_change_invalidates_grant_and_domain_limits_only_tighten():
+    data=load();data['foundations']['versions'][0]['execution']['max_retries']=0
+    with pytest.raises(AdmissionDenied,match='STALE_GRANT'):compile_data(data)
+    data=load();data['domain']['limits']['timeout_seconds']=60;reapprove_domain(data)
+    plan=compile_data(data)
+    assert plan.domain.limits.timeout_seconds < plan.foundation.limits.timeout_seconds
+    assert plan.foundation.execution.max_retries==1
+
+
+def test_splunk_export_requires_approval_and_no_endpoint():
+    data=load();obs=data['foundations']['versions'][0]['observability']
+    obs['splunk_export']={'id':'approved-splunk-export','version':1}
+    with pytest.raises(ValidationError):compile_data(data)
+    obs['splunk_export_approval_digest']='b'*64
+    regrant(data,'foundation',data['foundations']['versions'][0])
+    assert 'BLOCKED_OBSERVABILITY_PIPELINE' in compile_data(data).readiness
+    obs['endpoint']='https://invalid.example'
+    with pytest.raises(ValidationError):compile_data(data)
+
+
+def test_foundation_schema_is_published():
+    from backend.domain_harness_schema import FoundationDefinition
+    assert json.loads((ROOT/'docs/foundation-definition.schema.json').read_text())==FoundationDefinition.model_json_schema()
+
+
+def test_release_evidence_invalidated_by_resolved_route_change():
+    data=load();a=compile_data(data)
+    route=data['catalogs']['model_routes'][0];route['target_model']='new-approved-target'
+    regrant(data,'model',route)
+    b=compile_data(data)
+    assert a.release_binding_digest != b.release_binding_digest

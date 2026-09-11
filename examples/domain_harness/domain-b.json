@@ -5,7 +5,7 @@
   },
   "foundation": {
     "id": "generic-native",
-    "version": 1
+    "version": 2
   },
   "limits": {
     "eval_cases": 20,
@@ -20,7 +20,7 @@
   "owner": "example-owner",
   "ref": {
     "id": "domain-b",
-    "version": 1
+    "version": 2
   },
   "rubric": {
     "id": "policy-rubric",

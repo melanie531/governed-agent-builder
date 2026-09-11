@@ -1,0 +1,416 @@
+{
+  "$defs": {
+    "EvaluationProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_dataset": {
+          "$ref": "#/$defs/Ref"
+        },
+        "baseline_dataset_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Baseline Dataset Digest",
+          "type": "string"
+        },
+        "baseline_rubric": {
+          "$ref": "#/$defs/Ref"
+        },
+        "baseline_rubric_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Baseline Rubric Digest",
+          "type": "string"
+        },
+        "domain_layer": {
+          "const": "baseline_and_domain_rubric",
+          "default": "baseline_and_domain_rubric",
+          "title": "Domain Layer",
+          "type": "string"
+        },
+        "release_evidence_required": {
+          "const": true,
+          "default": true,
+          "title": "Release Evidence Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "baseline_dataset",
+        "baseline_dataset_digest",
+        "baseline_rubric",
+        "baseline_rubric_digest"
+      ],
+      "title": "EvaluationProfile",
+      "type": "object"
+    },
+    "ExecutionProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "max_retries": {
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "retry_on_denial": {
+          "const": false,
+          "default": false,
+          "title": "Retry On Denial",
+          "type": "boolean"
+        },
+        "retry_scope": {
+          "const": "transient_idempotent_only",
+          "default": "transient_idempotent_only",
+          "title": "Retry Scope",
+          "type": "string"
+        },
+        "total_timeout_includes_retries": {
+          "const": true,
+          "default": true,
+          "title": "Total Timeout Includes Retries",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "max_retries"
+      ],
+      "title": "ExecutionProfile",
+      "type": "object"
+    },
+    "IdentityProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "client_actor_override": {
+          "const": false,
+          "default": false,
+          "title": "Client Actor Override",
+          "type": "boolean"
+        },
+        "jwt_to_iam_conversion": {
+          "const": false,
+          "default": false,
+          "title": "Jwt To Iam Conversion",
+          "type": "boolean"
+        },
+        "model_gateways": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Model Gateways",
+          "type": "array"
+        },
+        "outbound_credentials_policy": {
+          "$ref": "#/$defs/Ref"
+        },
+        "policy_enforcement": {
+          "const": "gateway_required",
+          "default": "gateway_required",
+          "title": "Policy Enforcement",
+          "type": "string"
+        },
+        "provider": {
+          "const": "agentcore_identity",
+          "default": "agentcore_identity",
+          "title": "Provider",
+          "type": "string"
+        },
+        "role_binding": {
+          "$ref": "#/$defs/Ref"
+        },
+        "session_ownership": {
+          "const": "owner_workspace_session",
+          "default": "owner_workspace_session",
+          "title": "Session Ownership",
+          "type": "string"
+        },
+        "subject_workspace": {
+          "const": "verified_server_context",
+          "default": "verified_server_context",
+          "title": "Subject Workspace",
+          "type": "string"
+        },
+        "tool_gateways": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Tool Gateways",
+          "type": "array"
+        }
+      },
+      "required": [
+        "role_binding",
+        "model_gateways",
+        "tool_gateways",
+        "outbound_credentials_policy"
+      ],
+      "title": "IdentityProfile",
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "eval_cases": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Eval Cases",
+          "type": "integer"
+        },
+        "max_iterations": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Iterations",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_iterations",
+        "max_tokens",
+        "timeout_seconds",
+        "eval_cases"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "MemoryProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "cross_namespace_access": {
+          "const": false,
+          "default": false,
+          "title": "Cross Namespace Access",
+          "type": "boolean"
+        },
+        "default_policy": {
+          "const": "disabled",
+          "default": "disabled",
+          "title": "Default Policy",
+          "type": "string"
+        },
+        "namespace": {
+          "const": "owner_workspace_session",
+          "default": "owner_workspace_session",
+          "title": "Namespace",
+          "type": "string"
+        }
+      },
+      "title": "MemoryProfile",
+      "type": "object"
+    },
+    "ObservabilityProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "audit_required": {
+          "const": true,
+          "default": true,
+          "title": "Audit Required",
+          "type": "boolean"
+        },
+        "audit_separate_from_reasoning": {
+          "const": true,
+          "default": true,
+          "title": "Audit Separate From Reasoning",
+          "type": "boolean"
+        },
+        "cloudwatch_required": {
+          "const": true,
+          "default": true,
+          "title": "Cloudwatch Required",
+          "type": "boolean"
+        },
+        "event_types": {
+          "default": [
+            "admission",
+            "model_call",
+            "tool_call",
+            "browser_operation",
+            "evaluation",
+            "error",
+            "denial",
+            "completion"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Types",
+          "type": "array"
+        },
+        "full_prompt_default": {
+          "const": false,
+          "default": false,
+          "title": "Full Prompt Default",
+          "type": "boolean"
+        },
+        "otel_required": {
+          "const": true,
+          "default": true,
+          "title": "Otel Required",
+          "type": "boolean"
+        },
+        "provider": {
+          "const": "agentcore_observability",
+          "default": "agentcore_observability",
+          "title": "Provider",
+          "type": "string"
+        },
+        "raw_credentials": {
+          "const": false,
+          "default": false,
+          "title": "Raw Credentials",
+          "type": "boolean"
+        },
+        "splunk_export": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ref"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "splunk_export_approval_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Splunk Export Approval Digest"
+        },
+        "trace_fields": {
+          "default": [
+            "trace_id",
+            "request_id",
+            "run_id",
+            "foundation_version",
+            "domain_version",
+            "release_binding_digest",
+            "model_ref",
+            "tool_ref",
+            "gateway_ref",
+            "browser_ref",
+            "event_type",
+            "latency_ms",
+            "token_usage_when_available",
+            "error_category",
+            "denial_category"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Trace Fields",
+          "type": "array"
+        }
+      },
+      "title": "ObservabilityProfile",
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "Ref",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "approved": {
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "capabilities": {
+      "items": {
+        "enum": [
+          "browser",
+          "readonly_mcp"
+        ],
+        "type": "string"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/EvaluationProfile"
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionProfile"
+    },
+    "gateway_only": {
+      "const": true,
+      "default": true,
+      "title": "Gateway Only",
+      "type": "boolean"
+    },
+    "identity": {
+      "$ref": "#/$defs/IdentityProfile"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits"
+    },
+    "memory": {
+      "$ref": "#/$defs/MemoryProfile"
+    },
+    "native_skill_loading_verified": {
+      "default": false,
+      "title": "Native Skill Loading Verified",
+      "type": "boolean"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityProfile"
+    },
+    "ref": {
+      "$ref": "#/$defs/Ref"
+    },
+    "source_digest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Source Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ref",
+    "source_digest",
+    "approved",
+    "capabilities",
+    "limits",
+    "identity",
+    "observability",
+    "memory",
+    "evaluation",
+    "execution"
+  ],
+  "title": "FoundationDefinition",
+  "type": "object"
+}

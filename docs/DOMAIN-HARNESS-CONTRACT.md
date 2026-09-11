@@ -183,3 +183,83 @@ but no measured runtime improvement is claimed.
   private-access check via Git transport, no repository metadata API used.
 - Native execution, deployed Browser/MCP, skill fetching, judges and Gateway auth:
   **NOT RUN**. No frontend files changed; no frontend build claimed.
+
+## Follow-up: mandatory Foundation identity and observability (contract v2)
+
+The original milestone above did **not** include IdentityProfile or
+ObservabilityProfile. The follow-up adds mandatory Foundation-owned profiles,
+not domain options. Both synthetic domains now select Foundation version **2**
+and domain version **2**; legacy source/plan digests in the earlier recorded run
+are historical v1 evidence, not current v2 hashes. The plan's compiler contract
+is `domain-harness-v2`. The Foundation JSON Schema is published separately in
+`docs/foundation-definition.schema.json`. Old incomplete Foundations fail schema
+validation rather than silently acquiring security defaults.
+
+**Reusable contract is not reusable runtime implementation.** This source now
+specifies the runtime foundation's identity, telemetry, memory, evaluation and
+execution obligations. It still implements only admission and compilation; it
+does not create a managed Harness, emit traces, authenticate a role, load memory,
+or run an agent loop. Reuse AgentCore Identity and Observability adapters in the
+future integration; no custom tracing stack or business-specific loop was added.
+
+### Mandatory inherited profiles
+
+| Foundation component | Enforced source contract | Runtime status |
+|---|---|---|
+| Identity | Verified server subject/workspace intent; owner/workspace/session binding; exact approved execution-role, Model/Tool Gateway and outbound-credential-policy refs; mandatory Gateway Policy; no client actor override or JWT-to-IAM conversion | NOT CONNECTED |
+| Observability | AgentCore Observability; mandatory CloudWatch, OTEL and audit; fixed metadata redaction allowlist; audit separate from model reasoning; no raw credentials or full prompts by default; optional Splunk export requires an approved versioned ref plus approval digest | NOT CONNECTED |
+| Memory | Explicit disabled default; namespace derived from owner/workspace/session; no cross-namespace access | NOT CONNECTED; native default must be explicitly disabled |
+| Evaluation | Pinned Foundation baseline dataset/rubric and digests **plus** domain dataset/rubric; release evidence mandatory, never domain-only substitution | NOT CONNECTED; no evaluation result asserted |
+| Execution | Foundation timeout/token/iteration/eval caps; bounded retries only for transient idempotent operations; never retry denials; total timeout includes retries | NOT CONNECTED; source bounds checked only |
+
+`AuthorizationContext` now requires a trusted session record and exact role
+binding. Admission checks that session owner/workspace match the domain and
+trusted subject, and the selected role/model/tool gateways match Foundation
+identity policy. This validates trusted references, **not** JWT signatures, actual
+IAM role permission, credential renewal or session existence. The future adapter
+must obtain this context from verified identity and server-owned session storage;
+business request bodies must never provide it.
+
+Observability's required metadata fields are trace ID, request ID, run ID,
+Foundation/domain version, release binding digest, model/tool/Gateway/Browser
+refs, event type, latency, token usage where available and error/denial categories.
+Mandatory event categories are admission, model call, tool call, Browser
+operation, evaluation, error, denial and completion. Telemetry must carry only
+these structured fields, not arbitrary strings, prompt bodies, credential values
+or model reasoning. No event-emitting or redacting runtime adapter exists yet:
+these are adapter obligations, not a promise that arbitrary logs are safe.
+Splunk configuration cannot add a URL, header or secret via this contract.
+
+The release binding digest includes the complete Foundation, domain, baseline,
+resolved dataset/rubric, model route, tool bindings and skills. Changing any of
+those invalidates the binding; changing only session ID changes memory namespace
+and admission/plan digest but not the release binding. A release binding is **not**
+an evaluation result or a signed approval. Runtime evidence must cite this binding
+before release can be accepted; no compiler path can claim release readiness.
+
+New unconditional blockers: `BLOCKED_IDENTITY_RUNTIME_BINDING`,
+`BLOCKED_OBSERVABILITY_PIPELINE`, `BLOCKED_MEMORY_ISOLATION`,
+`BLOCKED_EVALUATION_RELEASE_EVIDENCE`, and `BLOCKED_EXECUTION_LIMIT_ENFORCEMENT`.
+No config boolean can clear them. Existing Model Gateway auth, Browser, skill,
+Policy and native integration gates remain in force.
+
+Domains can only tighten existing limits; cannot modify retries, disable audit,
+disable telemetry or replace identity/memory/evaluation profiles. Both compositions
+inherit identical immutable profiles. Supported capabilities remain an explicit
+known set (`browser`, `readonly_mcp`) for this slice, **not all possible agent
+capabilities**. Extending that set needs a reviewed schema/catalog contract,
+not another domain-specific Foundation loop.
+
+### Recorded v2 source acceptance
+
+- Compiler/profile test module: **87 tests** (39 added in this follow-up).
+- Complete suite: **443 passed**, 3 existing deprecation warnings, 17.23 seconds,
+  exit 0; socket connections blocked, SDK credential/config files `/dev/null`.
+- Foundation version 2 source SHA-256:
+  `c49be4250d762ced78f321662b6a1c8d3011b29af9cd142b7ea5518a2900bc6e`.
+- A plan: `2b42455b1e8b1524dc094c3698fa675223479f87531452553f6a993b7680921b`.
+- B plan: `c8c64481a2b58cfe230a8960571782aa89bc0ea15c353864613a3c1d80422f69`.
+- Both inherit identical Foundation identity/observability profiles; both report
+  `execution_ready: false`. Source scan: 10 changed/new files, zero bounded
+  account/key-signature findings. No frontend changes or build; no cloud writes,
+  runtime adapter connection, telemetry emission or production acceptance.

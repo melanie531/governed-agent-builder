@@ -6,19 +6,110 @@
         "browser",
         "readonly_mcp"
       ],
+      "evaluation": {
+        "baseline_dataset": {
+          "id": "foundation-safety-cases",
+          "version": 1
+        },
+        "baseline_dataset_digest": "2376f26fca425c94c3a126a30a33ff03ace53550fe17d41381573d6db4d39d61",
+        "baseline_rubric": {
+          "id": "foundation-safety-rubric",
+          "version": 1
+        },
+        "baseline_rubric_digest": "24282d16992949ed8d9cf77b55d5b519ad1344d07468b6b7ed01f260f55a413f",
+        "domain_layer": "baseline_and_domain_rubric",
+        "release_evidence_required": true
+      },
+      "execution": {
+        "max_retries": 1,
+        "retry_on_denial": false,
+        "retry_scope": "transient_idempotent_only",
+        "total_timeout_includes_retries": true
+      },
       "gateway_only": true,
+      "identity": {
+        "client_actor_override": false,
+        "jwt_to_iam_conversion": false,
+        "model_gateways": [
+          {
+            "id": "example-model-gateway",
+            "version": 1
+          }
+        ],
+        "outbound_credentials_policy": {
+          "id": "example-gateway-credential-policy",
+          "version": 1
+        },
+        "policy_enforcement": "gateway_required",
+        "provider": "agentcore_identity",
+        "role_binding": {
+          "id": "example-execution-role",
+          "version": 1
+        },
+        "session_ownership": "owner_workspace_session",
+        "subject_workspace": "verified_server_context",
+        "tool_gateways": [
+          {
+            "id": "example-tool-gateway",
+            "version": 1
+          }
+        ]
+      },
       "limits": {
         "eval_cases": 20,
         "max_iterations": 12,
         "max_tokens": 4096,
         "timeout_seconds": 120
       },
+      "memory": {
+        "cross_namespace_access": false,
+        "default_policy": "disabled",
+        "namespace": "owner_workspace_session"
+      },
       "native_skill_loading_verified": false,
+      "observability": {
+        "audit_required": true,
+        "audit_separate_from_reasoning": true,
+        "cloudwatch_required": true,
+        "event_types": [
+          "admission",
+          "model_call",
+          "tool_call",
+          "browser_operation",
+          "evaluation",
+          "error",
+          "denial",
+          "completion"
+        ],
+        "full_prompt_default": false,
+        "otel_required": true,
+        "provider": "agentcore_observability",
+        "raw_credentials": false,
+        "splunk_export": null,
+        "splunk_export_approval_digest": null,
+        "trace_fields": [
+          "trace_id",
+          "request_id",
+          "run_id",
+          "foundation_version",
+          "domain_version",
+          "release_binding_digest",
+          "model_ref",
+          "tool_ref",
+          "gateway_ref",
+          "browser_ref",
+          "event_type",
+          "latency_ms",
+          "token_usage_when_available",
+          "error_category",
+          "denial_category"
+        ]
+      },
       "ref": {
         "id": "generic-native",
-        "version": 1
+        "version": 2
       },
-      "source_digest": "58597dcfaf8c5e5ef943dbf1e0d343e6d6624db9c1fbb8160eb442e271cffbcf"
+      "source_digest": "c49be4250d762ced78f321662b6a1c8d3011b29af9cd142b7ea5518a2900bc6e"
     }
   ]
 }

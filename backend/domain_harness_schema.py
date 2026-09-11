@@ -26,6 +26,71 @@ class Limits(Frozen):
     eval_cases: Annotated[int, Field(strict=True, ge=1, le=1000)]
 
 
+class IdentityProfile(Frozen):
+    provider: Literal['agentcore_identity'] = 'agentcore_identity'
+    subject_workspace: Literal['verified_server_context'] = 'verified_server_context'
+    session_ownership: Literal['owner_workspace_session'] = 'owner_workspace_session'
+    role_binding: Ref
+    model_gateways: tuple[Ref, ...] = Field(min_length=1)
+    tool_gateways: tuple[Ref, ...] = Field(min_length=1)
+    outbound_credentials_policy: Ref
+    policy_enforcement: Literal['gateway_required'] = 'gateway_required'
+    jwt_to_iam_conversion: Literal[False] = False
+    client_actor_override: Literal[False] = False
+
+
+TRACE_FIELDS = ('trace_id', 'request_id', 'run_id', 'foundation_version',
+                'domain_version', 'release_binding_digest', 'model_ref', 'tool_ref',
+                'gateway_ref', 'browser_ref', 'event_type', 'latency_ms',
+                'token_usage_when_available', 'error_category', 'denial_category')
+EVENT_TYPES = ('admission', 'model_call', 'tool_call', 'browser_operation',
+               'evaluation', 'error', 'denial', 'completion')
+
+
+class ObservabilityProfile(Frozen):
+    provider: Literal['agentcore_observability'] = 'agentcore_observability'
+    cloudwatch_required: Literal[True] = True
+    otel_required: Literal[True] = True
+    audit_required: Literal[True] = True
+    audit_separate_from_reasoning: Literal[True] = True
+    raw_credentials: Literal[False] = False
+    full_prompt_default: Literal[False] = False
+    trace_fields: tuple[str, ...] = TRACE_FIELDS
+    event_types: tuple[str, ...] = EVENT_TYPES
+    splunk_export: Ref | None = None
+    splunk_export_approval_digest: Digest | None = None
+
+    @model_validator(mode='after')
+    def fixed_redaction_contract(self):
+        if self.trace_fields != TRACE_FIELDS or self.event_types != EVENT_TYPES:
+            raise ValueError('Mandatory telemetry allowlist cannot be overridden')
+        if (self.splunk_export is None) != (self.splunk_export_approval_digest is None):
+            raise ValueError('Optional Splunk export requires explicit approval evidence')
+        return self
+
+
+class MemoryProfile(Frozen):
+    default_policy: Literal['disabled'] = 'disabled'
+    namespace: Literal['owner_workspace_session'] = 'owner_workspace_session'
+    cross_namespace_access: Literal[False] = False
+
+
+class EvaluationProfile(Frozen):
+    baseline_dataset: Ref
+    baseline_dataset_digest: Digest
+    baseline_rubric: Ref
+    baseline_rubric_digest: Digest
+    domain_layer: Literal['baseline_and_domain_rubric'] = 'baseline_and_domain_rubric'
+    release_evidence_required: Literal[True] = True
+
+
+class ExecutionProfile(Frozen):
+    max_retries: Annotated[int, Field(strict=True, ge=0, le=3)]
+    retry_scope: Literal['transient_idempotent_only'] = 'transient_idempotent_only'
+    retry_on_denial: Literal[False] = False
+    total_timeout_includes_retries: Literal[True] = True
+
+
 class FoundationDefinition(Frozen):
     ref: Ref
     source_digest: Digest
@@ -34,6 +99,11 @@ class FoundationDefinition(Frozen):
     capabilities: tuple[Literal['browser', 'readonly_mcp'], ...]
     limits: Limits
     native_skill_loading_verified: bool = False
+    identity: IdentityProfile
+    observability: ObservabilityProfile
+    memory: MemoryProfile
+    evaluation: EvaluationProfile
+    execution: ExecutionProfile
 
 
 class FoundationLibrary(Frozen):
@@ -116,9 +186,17 @@ class Grant(Frozen):
     epoch: Annotated[int, Field(strict=True, ge=1)]
 
 
+class TrustedSession(Frozen):
+    id: Id
+    owner: Id
+    workspace: Id
+
+
 class AuthorizationContext(Frozen):
     subject: Id
     workspace: Id
     epoch: Annotated[int, Field(strict=True, ge=1)]
     approved_domain_digest: Digest
     grants: tuple[Grant, ...]
+    session: TrustedSession
+    role_binding: Ref

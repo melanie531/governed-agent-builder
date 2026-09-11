@@ -1,14 +1,14 @@
 {
-  "approved_domain_digest": "7f4d0e54451422e7947a00a4d612b084af589a775aa69543377a25eb1729b050",
+  "approved_domain_digest": "121295484309ed9638827d8adb930afbbc64e6f6efa8132e09939cb9ed71015e",
   "epoch": 1,
   "grants": [
     {
-      "entry_digest": "27cf9f949efc9efe68db6c4238c94108ba1c7af14cc1ba73f9d8892a235ec1cf",
+      "entry_digest": "dbb48e46b219b2a41761828ce759395f2ffb8826f259492fe01bf5e564c5fa0b",
       "epoch": 1,
       "kind": "foundation",
       "ref": {
         "id": "generic-native",
-        "version": 1
+        "version": 2
       }
     },
     {
@@ -57,6 +57,15 @@
       }
     }
   ],
+  "role_binding": {
+    "id": "example-execution-role",
+    "version": 1
+  },
+  "session": {
+    "id": "example-session-b",
+    "owner": "example-owner",
+    "workspace": "example-workspace"
+  },
   "subject": "example-owner",
   "workspace": "example-workspace"
 }
