@@ -54,22 +54,83 @@ def check_archive(path, expected):
     return data
 
 
+RECEIPT_VERSION = 2
+
+
+def execution_identity(execution_id, binding):
+    # Identity belongs to an execution, never to reusable artifact bytes.
+    return hashlib.sha256(json.dumps(
+        [NAME, execution_id, binding], sort_keys=True).encode()).hexdigest()
+
+
+def prepare_execution(a):
+    binding = {'artifact_sha256': a.sha256, 'source_sha': a.source_sha,
+               'region': a.region,
+               'account_sha256': hashlib.sha256(a.expected_account.encode()).hexdigest()}
+    if getattr(a, 'resume', False):
+        proof = json.loads(a.receipt.read_text())
+        if proof.get('receipt_version') != RECEIPT_VERSION:
+            raise ValueError('LEGACY_RECEIPT_REQUIRES_MANUAL_RECONCILIATION')
+        if proof.get('execution_binding') != binding:
+            raise ValueError('EXECUTION_BINDING_MISMATCH')
+        execution_id = proof.get('probe_execution_id', '')
+        if not re.fullmatch(r'[a-f0-9]{32}', execution_id):
+            raise ValueError('INVALID_EXECUTION_ID')
+        if proof.get('client_token') != execution_identity(execution_id, binding):
+            raise ValueError('EXECUTION_TOKEN_MISMATCH')
+        if proof.get('cleanup') == 'DELETED_VERIFIED':
+            raise ValueError('COMPLETED_EXECUTION_REQUIRES_EXPLICIT_NEW_RUN')
+        if not proof.get('runtime_id') or proof.get('cleanup') != 'REQUIRED':
+            # Unknown create outcomes are NOT permission to create with a new token.
+            raise ValueError('UNRESOLVED_EXECUTION_REQUIRES_MANUAL_RECONCILIATION')
+        if proof.get('invokes') not in (0, 1):
+            raise ValueError('INVALID_INVOKE_COUNT')
+        return proof
+    if not getattr(a, 'new_run', False):
+        raise ValueError('EXPLICIT_NEW_RUN_OR_RESUME_REQUIRED')
+    execution_id = uuid.uuid4().hex
+    proof = {'receipt_version': RECEIPT_VERSION, 'probe_execution_id': execution_id,
+             'execution_binding': binding,
+             'client_token': execution_identity(execution_id, binding),
+             'cleanup': 'NO_RUNTIME_CREATED', 'invokes': 0}
+    # Reserve the receipt before AWS activity; never overwrite an older execution.
+    a.receipt.parent.mkdir(parents=True, exist_ok=True)
+    with a.receipt.open('x') as f:
+        a.receipt.chmod(0o600)
+        json.dump(proof, f)
+    return proof
+
+
+def validate_owned_runtime(proof, runtime, tags):
+    if (runtime.get('agentRuntimeId') != proof['runtime_id']
+            or re.sub(r'\b\d{12}\b', '[ACCOUNT]', runtime.get('agentRuntimeArn', ''))
+            != re.sub(r'\b\d{12}\b', '[ACCOUNT]', proof['runtime_arn'])
+            or runtime.get('agentRuntimeName') != NAME
+            or runtime.get('agentRuntimeVersion') != proof['runtime_version']
+            or tags.get('project') != PROJECT
+            or tags.get('purpose') != 'foundation-import-smoke'
+            or tags.get('artifact-sha256') != proof['execution_binding']['artifact_sha256']
+            or tags.get('probe-execution-id') != proof['probe_execution_id']):
+        raise ValueError('OWNED_RUNTIME_MISMATCH')
+
+
 def run(a):
     started = time.monotonic()
     if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != a.source_sha:
         raise ValueError('SOURCE_COMMIT_MISMATCH')
     data = check_archive(a.artifact, a.sha256)
-    proof = {'artifact_sha256': a.sha256, 'source_digest': source_digest(),
+    proof = prepare_execution(a)
+    proof.update({'artifact_sha256': a.sha256, 'source_digest': source_digest(),
              'source_sha': a.source_sha, 'production_ready': False,
              'network': 'PUBLIC explicitly authorized isolated startup only',
              'actual_usage': None, 'actual_cost_usd': None,
              'variable_cost_estimate': '<1 USD engineering estimate, not invoice cap',
              'not_proven': ['admission', 'gateway', 'model', 'Browser', 'eval', 'UI'],
-             'cleanup': 'NO_RUNTIME_CREATED', 'invokes': 0}
+             'result': 'BLOCKED_OR_FAILED'})
     target = StudioTarget(boto3.Session(profile_name=a.profile, region_name=a.region))
     rid = arn = version = None
-    sid = str(uuid.uuid5(uuid.NAMESPACE_URL, NAME + a.sha256))
-    token = hashlib.sha256((NAME + a.sha256 + a.expected_account).encode()).hexdigest()
+    sid = str(uuid.uuid5(uuid.NAMESPACE_URL, NAME + proof['probe_execution_id']))
+    token = proof['client_token']
     def save():
         proof['duration_seconds'] = round(time.monotonic() - started, 2)
         a.receipt.parent.mkdir(parents=True, exist_ok=True)
@@ -122,48 +183,61 @@ def run(a):
         existing = []
         for page in c.get_paginator('list_agent_runtimes').paginate():
             existing += [r for r in page['agentRuntimes'] if r['agentRuntimeName'] == NAME]
-        if existing:
+        if a.resume:
+            runtime = c.get_agent_runtime(agentRuntimeId=proof['runtime_id'],
+                                          agentRuntimeVersion=proof['runtime_version'])
+            tags = c.list_tags_for_resource(resourceArn=runtime['agentRuntimeArn'])['tags']
+            validate_owned_runtime(proof, runtime, tags)
+            if any(r['agentRuntimeId'] != proof['runtime_id'] for r in existing):
+                raise ValueError('UNEXPECTED_ADDITIONAL_PROBE')
+            rid, arn, version = proof['runtime_id'], runtime['agentRuntimeArn'], proof['runtime_version']
+            if proof['invokes']:
+                raise ValueError('INVOKE_ALREADY_ATTEMPTED_CLEANUP_ONLY')
+        elif existing:
             raise ValueError('EXISTING_PROBE_REQUIRES_RECEIPT_RECONCILIATION_NO_DUPLICATE')
-        art = cf.describe_stacks(StackName=PROJECT + '-serverless-artifacts')['Stacks'][0]
-        bucket = {x['OutputKey']: x['OutputValue'] for x in art['Outputs']}['Bucket']
-        s3 = target.client('s3')
-        if not all(s3.get_public_access_block(Bucket=bucket)['PublicAccessBlockConfiguration'].values()):
-            raise ValueError('PRIVATE_BUCKET_REQUIRED')
-        key = 'foundation-import-smoke/' + a.sha256 + '/runtime-base.zip'
-        gate()
-        try:
-            head = s3.head_object(Bucket=bucket, Key=key)
-        except ClientError as e:
-            if e.response['Error']['Code'] not in ('404', 'NoSuchKey'):
-                raise
-            s3.put_object(Bucket=bucket, Key=key, Body=data, ServerSideEncryption='AES256',
-                          ContentType='application/zip', IfNoneMatch='*', Metadata={'sha256': a.sha256})
-            head = s3.head_object(Bucket=bucket, Key=key)
-        version_id = head.get('VersionId')
-        args = {'Bucket': bucket, 'Key': key}
-        if version_id:
-            args['VersionId'] = version_id
-        downloaded = s3.get_object(**args)['Body'].read()
-        if hashlib.sha256(downloaded).hexdigest() != a.sha256:
-            raise ValueError('S3_DOWNLOAD_HASH_MISMATCH')
-        proof['s3'] = {'bucket': bucket, 'key': key, 'version_id': version_id, 'download_hash_verified': True}
-        artifact = {'bucket': bucket, 'prefix': key}
-        if version_id:
-            artifact['versionId'] = version_id
-        gate()
-        save()
-        response = c.create_agent_runtime(agentRuntimeName=NAME,
-            agentRuntimeArtifact={'codeConfiguration': {'code': {'s3': artifact},
-                                  'runtime': 'PYTHON_3_13', 'entryPoint': ['main.py']}},
-            roleArn=role, networkConfiguration={'networkMode': 'PUBLIC'},
-            protocolConfiguration={'serverProtocol': 'HTTP'},
-            lifecycleConfiguration={'idleRuntimeSessionTimeout': 60, 'maxLifetime': 120},
-            clientToken=token, description='Owned isolated base-only import smoke; no admission or inference',
-            tags={'project': PROJECT, 'purpose': 'foundation-import-smoke', 'artifact-sha256': a.sha256})
-        rid, arn = response['agentRuntimeId'], response['agentRuntimeArn']
-        version = response['agentRuntimeVersion']
-        proof.update(runtime_id=rid, runtime_version=version, cleanup='REQUIRED')
-        save()
+        if not a.resume:
+            art = cf.describe_stacks(StackName=PROJECT + '-serverless-artifacts')['Stacks'][0]
+            bucket = {x['OutputKey']: x['OutputValue'] for x in art['Outputs']}['Bucket']
+            s3 = target.client('s3')
+            if not all(s3.get_public_access_block(Bucket=bucket)['PublicAccessBlockConfiguration'].values()):
+                raise ValueError('PRIVATE_BUCKET_REQUIRED')
+            key = 'foundation-import-smoke/' + a.sha256 + '/runtime-base.zip'
+            gate()
+            try:
+                head = s3.head_object(Bucket=bucket, Key=key)
+            except ClientError as e:
+                if e.response['Error']['Code'] not in ('404', 'NoSuchKey'):
+                    raise
+                s3.put_object(Bucket=bucket, Key=key, Body=data, ServerSideEncryption='AES256',
+                              ContentType='application/zip', IfNoneMatch='*', Metadata={'sha256': a.sha256})
+                head = s3.head_object(Bucket=bucket, Key=key)
+            version_id = head.get('VersionId')
+            args = {'Bucket': bucket, 'Key': key}
+            if version_id:
+                args['VersionId'] = version_id
+            downloaded = s3.get_object(**args)['Body'].read()
+            if hashlib.sha256(downloaded).hexdigest() != a.sha256:
+                raise ValueError('S3_DOWNLOAD_HASH_MISMATCH')
+            proof['s3'] = {'bucket': bucket, 'key': key, 'version_id': version_id, 'download_hash_verified': True}
+            artifact = {'bucket': bucket, 'prefix': key}
+            if version_id:
+                artifact['versionId'] = version_id
+            gate()
+            proof['cleanup'] = 'CREATE_OUTCOME_UNKNOWN'
+            save()
+            response = c.create_agent_runtime(agentRuntimeName=NAME,
+                agentRuntimeArtifact={'codeConfiguration': {'code': {'s3': artifact},
+                                      'runtime': 'PYTHON_3_13', 'entryPoint': ['main.py']}},
+                roleArn=role, networkConfiguration={'networkMode': 'PUBLIC'},
+                protocolConfiguration={'serverProtocol': 'HTTP'},
+                lifecycleConfiguration={'idleRuntimeSessionTimeout': 60, 'maxLifetime': 120},
+                clientToken=token, description='Owned isolated base-only import smoke; no admission or inference',
+                tags={'project': PROJECT, 'purpose': 'foundation-import-smoke', 'artifact-sha256': a.sha256,
+                      'probe-execution-id': proof['probe_execution_id']})
+            rid, arn = response['agentRuntimeId'], response['agentRuntimeArn']
+            version = response['agentRuntimeVersion']
+            proof.update(runtime_id=rid, runtime_arn=arn, runtime_version=version, cleanup='REQUIRED')
+            save()
         deadline = time.monotonic() + 300
         while True:
             runtime = c.get_agent_runtime(agentRuntimeId=rid, agentRuntimeVersion=version)
@@ -238,9 +312,12 @@ if __name__ == '__main__':
     p.add_argument('--sha256', required=True)
     p.add_argument('--source-sha', required=True)
     p.add_argument('--receipt', required=True, type=Path)
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--new-run', action='store_true', help='New execution; requires a new receipt path')
+    mode.add_argument('--resume', action='store_true', help='Resume only the receipt-owned runtime; never create')
     a = p.parse_args()
     if not re.fullmatch(r'\d{12}', a.expected_account) or not re.fullmatch(r'[a-f0-9]{64}', a.sha256):
         p.error('Exact account and SHA-256 required')
-    if a.receipt.exists():
-        p.error('Receipt exists: reconcile owned attempt; do not create a duplicate')
+    if a.new_run and a.receipt.exists():
+        p.error('Receipt exists: use --resume or --new-run with a new receipt path')
     raise SystemExit(run(a))
