@@ -126,12 +126,19 @@ def install(store, definition, tmp_path, evidence=False):
     deployment = FoundationDeployment(control, DeploymentPolicy('us-west-2', ACCOUNT,
         frozenset([ROLE]), 'synthetic-artifacts', allow_mutations=True), network)
     def readback(row):
-        return {'run_ref': row['run_ref'], 'definition_digest': definition['digest'],
-                'manifest_digest': saved.stem, 'runtime_version': '3', 'epoch': approved['epoch'], 'policy_version': 1,
-                'dataset_digest': digest(definition['dataset']), 'rubric_digest': digest(definition['rubric']),
-                'trace_readback': True, 'otel_delivery': True, 'trace_ids': ['a'*32],
-                'evaluation_passed': True, 'required_evaluations_complete': True,
-                'evaluation_ids': ['synthetic-evaluation']}
+        from backend.result_evidence import binding
+        evidence = {'binding': binding(row), 'readback': 'SERVER_READBACK_V1',
+                'report': {'text': 'Synthetic report [s1]', 'citations': [{'id': 's1', 'title': 'Synthetic', 'source_id': 'source-1'}]},
+                'source_ids': ['source-1'], 'trace_ids': ['a'*32],
+                'evaluations': [{'id': 'synthetic-evaluation', 'status': 'PASS', 'completed': 1, 'required': 1, 'judge_complete': True}]}
+        from tests.test_result_evidence import attach_receipt
+        attach_receipt(row, evidence)
+        # Simulate a trusted collector registering immutable receipt pins.
+        with store.tx() as db:
+            current = runs.get(db, "foundation-run:" + row["run_ref"])
+            current["evidence_source"] = row["evidence_source"]
+            runs.put(db, "foundation-run:" + row["run_ref"], current)
+        return evidence
     service = FoundationJobs(deployment, runtime, SimpleNamespace(account=ACCOUNT, verify=lambda: None),
         enabled=True, evidence_reader=readback if evidence else None, artifact_reader=lambda approved: None)
     return service, control, runtime
@@ -146,9 +153,9 @@ def test_studio_api_to_sdk_ready_runtime_evidence_gate(cloud, payload, tmp_path,
     service, control, runtime = install(old_app.state.store, definition, tmp_path, evidence)
     if isinstance(evidence, str):
         readback = service.evidence_reader
-        overrides = {'wrong-version': {'runtime_version': '999'},
+        overrides = {'wrong-version': {'binding': {}},
                      'wrong-trace': {'trace_ids': ['b'*32]},
-                     'missing-eval': {'evaluation_ids': []}}
+                     'missing-eval': {'evaluations': []}}
         service.evidence_reader = lambda row: {**readback(row), **overrides[evidence]}
     passed = evidence is True
     app = create_app(repository=old_app.state.store, worker_enabled=False, foundation_jobs=service)

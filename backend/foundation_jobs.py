@@ -6,6 +6,7 @@ reservations and block. READY checks are one step per SQS continuation.
 """
 import json
 import time
+from uuid import uuid4
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -15,12 +16,13 @@ from . import foundation_runs as runs
 
 
 class FoundationJobs:
-    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None, producer=None):
+    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None, producer=None, evidence_collector=None):
         self.deployment, self.runtime_client, self.target = deployment, runtime_client, target
         self.enabled, self.evidence_reader = enabled, evidence_reader
         self.artifact_reader = artifact_reader
         self.policy_evaluator = policy_evaluator
         self.producer = producer
+        self.evidence_collector = evidence_collector
 
     def approve_request(self, db, definition, persona):
         if not self.enabled:
@@ -168,6 +170,13 @@ class FoundationJobs:
             if not self.enabled:
                 raise Denied('LIVE_DISABLED')
             stage = job['stage']
+            if stage == 'EVALUATING':
+                owner_key = 'foundation-evaluating:' + job_id
+                if runs.get(db, owner_key):
+                    return  # another step owns collection AND the outer transition
+                owner = {'token': uuid4().hex, 'stage': stage,
+                         'fence': digest([row['approved'], row.get('collection_grant'), row.get('runtime')])}
+                runs.put(db, owner_key, owner)
             if stage == 'RUNNING':
                 runs.claim_dispatch(db, row)
         approved = row['approved']
@@ -241,10 +250,25 @@ class FoundationJobs:
         elif stage == 'EVALUATING':
             # A trusted reader must fetch persisted trace/evaluation evidence;
             # fields claimed by the Runtime response are never release authority.
-            evidence = self.evidence_reader(row) if self.evidence_reader else None
+            from .evaluation_collector import CollectionInFlight
+            try:
+                if self.evidence_collector is not None:
+                    row = self.evidence_collector.collect(store, job_id)
+                evidence = self.evidence_reader(row) if self.evidence_reader else None
+            except CollectionInFlight:
+                with store.tx() as db:
+                    if runs.get(db, owner_key) == owner:
+                        db.delete('settings', where=[('key', '=', owner_key)])
+                return  # keep the rightful collector's stage and evidence intact
+            except Exception:
+                evidence = None  # Provider failures must not leak or fall back to fixtures.
             with store.tx() as db:
                 row = runs.get(db, 'foundation-run:' + job_id)
                 runs.current(db, row)
+                observed = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
+                if (observed['stage'] != owner['stage'] or runs.get(db, owner_key) != owner
+                        or digest([row['approved'], row.get('collection_grant'), row.get('runtime')]) != owner['fence']):
+                    return
                 row['evidence'] = evidence
                 runs.put(db, 'foundation-run:' + job_id, row)
                 self.transition(db, job_id, 'EVIDENCE_CHECK')
@@ -253,31 +277,24 @@ class FoundationJobs:
                 runs.current(db, row)
                 evidence = row.get('evidence') or {}
                 result = row.get('response') or {}
-                expected = {'run_ref': job_id, 'definition_digest': row['definition_digest'],
-                            'manifest_digest': row['manifest_digest'],
-                            'runtime_version': row['runtime']['runtime_version'],
-                            'policy_version': approved['policy_version'], 'epoch': row['epoch'],
-                            'dataset_digest': approved['config']['evaluation']['dataset']['digest'],
-                            'rubric_digest': approved['config']['evaluation']['rubric']['digest']}
+                from .result_evidence import project
+                projection = project(row, evidence)
                 from .foundation_approval import linux_validation
                 artifact_binding = runs.get(db, 'foundation-artifact:' + row['definition_digest'])
                 target_executed = linux_validation(db, artifact_binding)['status'] == 'PASS'
                 passed = (target_executed and row['state'] == 'FINISHED' and row['settled'] is True
                           and result.get('execution_status') == 'EXECUTION_SUCCEEDED'
-                          and all(evidence.get(k) == v for k, v in expected.items())
-                          and evidence.get('trace_readback') is True
-                          and evidence.get('otel_delivery') is True
-                          and bool(evidence.get('trace_ids'))
-                          and result.get('trace_id') in evidence.get('trace_ids', [])
-                          and evidence.get('evaluation_passed') is True
-                          and evidence.get('required_evaluations_complete') is True
-                          and bool(evidence.get('evaluation_ids')))
+                          and projection['status'] == 'AVAILABLE'
+                          and projection['required_judge_passed']
+                          and projection['quality_status'] == 'PASS'
+                          and all(e['status'] == 'PASS' for e in projection['evaluations']))
                 final = {'passed': bool(passed), 'gate': 'LIVE_PASS' if passed else 'EVIDENCE_INCOMPLETE',
                          'mode': 'live', 'production_ready': False,
                          'execution_status': result.get('execution_status', 'UNKNOWN'),
                          'failure': None if passed else {'code': 'EVIDENCE_INCOMPLETE', 'stage': stage},
-                         'usage': result.get('usage'), 'billing_estimate_usd': None,
-                         'model_route': result.get('model_route'), 'latency_ms': result.get('latency_ms'),
+                         'result_evidence': projection,
+                         'usage': projection['cost']['usage'], 'billing_estimate_usd': None,
+                         'model_route': projection['cost']['model_route'],
                          'actual_invoice_usd': None, 'runtime': row['runtime']}
                 self.transition(db, job_id, 'LIVE_PASS' if passed else 'BLOCKED', final)
 
@@ -315,9 +332,18 @@ def configured_jobs(store, *, worker=False):
         sts = session.client('sts', config=sdk)
         producer = FoundationProducer(session.client('s3', config=sdk),
             lambda: sts.get_caller_identity()['Arn'])
+    from .evaluation_collector import configured_evidence
+    evidence_settings = settings.get('evaluation_collector', {})
+    collector, reader = (None, None)
+    if worker and evidence_settings.get('enabled') is True:
+        collector, reader = configured_evidence(evidence_settings,
+            agentcore=session.client('bedrock-agentcore', config=sdk),
+            control=session.client('bedrock-agentcore-control', config=sdk),
+            s3=session.client('s3', config=sdk), cloudwatch=session.client('logs', config=sdk))
     return FoundationJobs(FoundationDeployment(session.client('bedrock-agentcore-control', config=sdk),
                           policy, settings['network']), session.client('bedrock-agentcore', config=sdk),
                           StudioTarget(session), enabled=True, producer=producer,
+                          evidence_collector=collector, evidence_reader=reader,
                           artifact_reader=ArtifactReadback(session.client('s3', config=sdk), settings['bucket']))
 
 

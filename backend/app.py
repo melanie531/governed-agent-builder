@@ -494,6 +494,19 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             agent = agent_access(db, who(request), row["agent"])
             events = [{**dict(r), "detail": json.loads(r["detail"])} for r in db.select('events', where=[('job', '=', job_id)], order='id')]
             result = json.loads(row["result"]) if row["result"] else None
+            from .foundation_runs import get as get_run
+            from .result_evidence import project
+            live = get_run(db, 'foundation-run:' + job_id)
+            if live:
+                if (live['owner'], live['workspace'], live['agent'], live['version']) != (agent['owner'], agent['workspace'], agent['id'], row['version']):
+                    raise HTTPException(404, "Job not found")
+                # Protected detail only; never expose stored_input, raw logs or SDK payloads.
+                projection = project(live, live.get('evidence'))
+                result = {k: v for k, v in (result or {}).items() if k in ('passed', 'gate', 'mode', 'production_ready', 'failure')}
+                result.update(mode='live', gate=result.get('gate', 'EVIDENCE_UNAVAILABLE'), result_evidence=projection,
+                              runtime={k: live['runtime'][k] for k in ('runtime_version',) if live.get('runtime') and k in live['runtime']},
+                              usage=projection['cost']['usage'], billing_estimate_usd=None, actual_invoice_usd=None)
+                events = [{**e, 'detail': {'mode': 'live', 'stage': e['stage']}} for e in events]
             return {**dict(row), "result": result, "events": events, "current_version": agent["current_version"], "stale": row["version"] != agent["current_version"], "mode": mode_label}
 
     @app.post("/api/agents/{agent_id}/invoke")
