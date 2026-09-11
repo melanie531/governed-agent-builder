@@ -53,6 +53,13 @@ from tests.test_serverless import cloud, sign_in
 
 
 class LiveControl(Control):
+    def get_agent_runtime_endpoint(self, **kw):
+        validate_parameters(kw, Session().get_service_model('bedrock-agentcore-control').operation_model('GetAgentRuntimeEndpoint').input_shape)
+        self.calls.append(('GetAgentRuntimeEndpoint', kw))
+        from tests.test_runtime_deployment import ARN
+        return {'name': 'DEFAULT', 'status': 'READY', 'agentRuntimeArn': ARN,
+                'liveVersion': '3', 'targetVersion': '3'}
+
     def get_agent_runtime(self, **kw):
         response = super().get_agent_runtime(**kw)
         return {**response, 'environmentVariables': self.calls[0][1]['environmentVariables']}
@@ -164,7 +171,9 @@ def test_studio_api_to_sdk_ready_runtime_evidence_gate(cloud, payload, tmp_path,
             assert response['stage'] == stage, response
         assert control.calls[0][0] == 'CreateAgentRuntime'
         assert control.calls[1][1]['agentRuntimeVersion'] == '3'
-        assert runtime.calls[0]['qualifier'] == '3'
+        assert runtime.calls[0]['qualifier'] == 'DEFAULT'
+        assert response['result']['runtime']['runtime_version'] == '3'
+        assert sum(name == 'GetAgentRuntimeEndpoint' for name, _ in control.calls) == 2
         assert response['result']['passed'] is passed
         assert response['result']['billing_estimate_usd'] is None
         app.state.step_job(job)

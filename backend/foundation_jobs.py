@@ -76,6 +76,24 @@ class FoundationJobs:
                     raise HTTPException(403, 'DEDICATED_RUNTIME_ROLE_REQUIRED')
         return approved
 
+    def invocation_endpoint(self, runtime):
+        """qualifier is an endpoint NAME, never the immutable numeric version.
+
+        DEFAULT is used only after exact control-plane readback. Recheck immediately
+        before invocation so a retarget observed after readiness fails closed.
+        Runtime response and evidence still independently bind runtime_version.
+        """
+        name = 'DEFAULT'
+        endpoint = self.deployment.adapter.client.get_agent_runtime_endpoint(
+            agentRuntimeId=runtime['runtime_id'], endpointName=name)
+        if (endpoint.get('name') != name or endpoint.get('status') != 'READY'
+                or endpoint.get('agentRuntimeArn') != runtime['runtime_arn']
+                or endpoint.get('liveVersion') != runtime['runtime_version']
+                or endpoint.get('targetVersion') != runtime['runtime_version']):
+            raise Denied('RUNTIME_ENDPOINT_VERSION_NOT_READY')
+        return {'name': name, 'runtime_arn': runtime['runtime_arn'],
+                'live_version': endpoint['liveVersion'], 'target_version': endpoint['targetVersion']}
+
     def enqueue(self, db, job_id, definition, persona, deadline):
         existing = runs.get(db, 'foundation-run:' + job_id)
         if existing:
@@ -171,13 +189,20 @@ class FoundationJobs:
                 self.transition(db, job_id, 'WAIT_RUNTIME')
         elif stage == 'WAIT_RUNTIME':
             ready = self.deployment.readiness(row['runtime'])
+            endpoint = self.invocation_endpoint(row['runtime']) if ready['status'] == 'READY' else None
             with store.tx() as db:
                 runs.current(db, row)
+                if endpoint:
+                    row['invocation_endpoint'] = endpoint
+                    runs.put(db, 'foundation-run:' + job_id, row)
                 self.transition(db, job_id, 'RUNNING' if ready['status'] == 'READY' else 'WAIT_RUNTIME')
         elif stage == 'RUNNING':
             runtime = row['runtime']
+            endpoint = self.invocation_endpoint(runtime)
+            if endpoint != row.get('invocation_endpoint'):
+                raise Denied('RUNTIME_ENDPOINT_BINDING_CHANGED')
             response = self.runtime_client.invoke_agent_runtime(
-                agentRuntimeArn=runtime['runtime_arn'], qualifier=runtime['runtime_version'],
+                agentRuntimeArn=runtime['runtime_arn'], qualifier=endpoint['name'],
                 runtimeSessionId=job_id.ljust(33, '0'), contentType='application/json',
                 accept='application/json', payload=json.dumps({'run_ref': job_id}).encode())
             stream = response['response']
