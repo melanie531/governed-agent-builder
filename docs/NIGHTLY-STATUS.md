@@ -1025,3 +1025,57 @@ Final source verification: **687 passed, 3 existing warnings, 46.04s** (full sui
 including all original 669 tests); **18 focused passed, 2 existing warnings, 7.30s**.
 `git diff --check` passed. Initial remote fetch confirmed the supplied clean base
 `6a9c14847b3a316349d251d04a65a776325058eb` was also the remote feature-branch tip.
+
+## Model Gateway interceptor candidate — 2026-09-12 bounded continuation
+
+Preserved newer producer baseline **1bd935853e04919ad20d4a39bb7b386e097fd7f3**;
+no reset or producer/admin/runtime/UI edits. Enforcement implementation fixed SHA
+**845051955edb0c78219f425eaae07bea7f960df0** published on private
+`feat/live-capabilities`; detailed receipt commit
+**a3812cd4c049342546a997e1495f8e0c3ed63910**. Direct worker, no nested agents/CC.
+
+Implemented HTTP REQUEST/base64 interceptor for exact target-qualified Haiku,
+non-streaming text only, <=1744 raw/canonical bytes plus 256-byte budget allowance,
+max_tokens 1..256. Strict duplicate/bad JSON/base64/control/model/path validation,
+constant safe 403 response, no forged caller-header identity. Exact Lambda/log
+role and seven-day log group overlay; no regeneration of live foundation stack.
+Platform current-user authorization remains separate from Gateway IAM admission.
+
+Tests: **48 targeted passed; 735 full passed once, 3 baseline warnings, 49.69s**.
+Full log `/tmp/gab-model-gate-full.log`. No new browser/hosted UI test; earlier peer
+669/107/8 results are earlier-baseline evidence, not this slice's live acceptance.
+
+Actual AWS: Studio STS/CFN/CloudFront/Cognito target matched privately. One
+CreateChangeSet `model-gate-1789149160`, request
+`c58dc171-9b67-4a7d-8372-dca54ed9916d`; CREATE_COMPLETE / AVAILABLE, **NOT EXECUTED**.
+Guard blocked extra non-replacing dependencies FoundationRole.Policies from
+ModelGateway.GatewayArn and ToolPolicy.Definition from FoundationRole.Arn.
+Both entire resources compare byte-structurally equal in templates; resolved
+IAM/Cedar invariants still need explicit reviewed execution guard. No exception
+silently introduced. Stack UPDATE_COMPLETE is previous state, not new deployment.
+Deployed interceptor count **0**, no new Lambda/role/log resources created.
+
+Live target metadata READY confirms claude / anthropic.claude-haiku-4-5 and
+/v1/messages -> /anthropic/v1/messages. One actual operator-signed unknown-model
+Gateway HTTP attempt returned **404**, request
+`f2c3afe0-8cdc-4bc5-a053-b8aa24191315`. This is baseline routing evidence ONLY,
+not interceptor enforcement, provider non-invocation, workload identity, or
+human authorization proof. One initial GetGatewayTarget metadata validation
+failure used CFN composite ID; corrected to the target component, no provider retry.
+
+Counts: ChangeSet create=1, execute=0; Gateway HTTP=1; positive inference=0;
+provider grants=0; Runtime/tool/Browser/eval=0; service-fault injections=0.
+Metadata read count not instrumented; actual cost/remaining spend unknown.
+No provider CloudTrail data access, credentials/SSM/user-data writes, QA identity,
+Cognito/website changes or inference Deny removal. No background worker/timer.
+
+**Immediate blocker:** explicitly review the two unchanged CFN dependencies,
+then deploy and prove HTTP/inference Lambda error/timeout/throttle fail-closed
+behavior under retained provider Deny. Only after actual correlated evidence and
+peer review consider exact inference Allow and one reserved positive test.
+Both ENFORCE attachments and CreateInference Deny remain intact. No positive-call
+permission request is warranted yet. Full journey remains NOT_READY.
+
+Detailed scope, contract, six-pillar review and continuation:
+`docs/MODEL-GATE-READINESS.md`; private ignored receipt
+`artifacts/model-gate/proof.json`. Memory recall timed out; source/live evidence used.
