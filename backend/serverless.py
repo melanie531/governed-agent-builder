@@ -132,16 +132,24 @@ def worker_handler(event, context):
 def foundation_exchange_handler(event, context):
     """Dedicated AWS_IAM route only. Do not attach to Cognito/browser routes.
 
-    Deployment is intentionally not enabled by this code increment: exact route
-    Lambda resource policy and per-Runtime execution roles need independent review.
+    The template isolates this handler behind AWS_IAM and exact API invocation
+    permission. Per-Runtime role and deployed policy still need cloud review.
     """
     from foundation_harness.context import Denied
     from .foundation_runs import exchange
-    if (os.getenv('FOUNDATION_LIVE_ENABLED', '0') != '1'
+    if (os.getenv('FOUNDATION_ADMISSION_ENABLED', '0') != '1'
             or event.get('routeKey') != 'POST /internal/foundation/exchange'):
         return {'statusCode': 403, 'body': '{"code":"LIVE_DISABLED"}'}
     try:
-        iam = event.get('requestContext', {}).get('authorizer', {}).get('iam', {})
+        request = event.get('requestContext', {})
+        if (not os.getenv('FOUNDATION_API_ID')
+                or request.get('apiId') != os.environ['FOUNDATION_API_ID']
+                or request.get('stage') != '$default'
+                or request.get('http', {}).get('method') != 'POST'
+                or event.get('rawPath') != '/internal/foundation/exchange'
+                or event.get('version') != '2.0'):
+            raise Denied('EXCHANGE_NAMESPACE_DENIED')
+        iam = request.get('authorizer', {}).get('iam', {})
         if not isinstance(iam, dict) or not isinstance(iam.get('userArn'), str):
             raise Denied('VERIFIED_IAM_PRINCIPAL_REQUIRED')
         raw = event.get('body', '')

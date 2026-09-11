@@ -1,6 +1,7 @@
 # First custom foundation slice — 2026-09-12
 
-Current: owned stack **UPDATE_COMPLETE**; reusable executor implemented.
+Current (admission follow-through): **source reviewed; backend IAM route not yet deployed**.
+Existing owned foundation stack was previously **UPDATE_COMPLETE**; reusable executor implemented.
 Live M0A / user journey **BLOCKED**, no inference attempted.
 On `feat/live-capabilities`, initial clean HEAD `d0612a6`.
 One implementer; no coding agents/workers. Current user implementation authority
@@ -8,8 +9,9 @@ supersedes historical plan-only notes within the requested scope.
 
 ## Latest verified result
 
-- **491 tests passed**, 3 unchanged baseline warnings, 16.71s; focused target/
-  executor/delivery suite **88 passed**. Diff checks pass.
+- Latest source verification: **534 passed**, 3 baseline warnings, 30.55s
+  (`/tmp/gab-admission-final.log`); unchanged implementation retained after self-review.
+  Earlier 491/88 results below describe the preceding milestone.
 - Owned stack `governed-agent-builder-foundation-m0`: **UPDATE_COMPLETE**;
   both Gateways/targets **READY**, AWS_IAM + Policy **ENFORCE**.
   Tool policy `synthetic_lookup-2sb3g0fbhn`: **ACTIVE**.
@@ -440,3 +442,56 @@ git diff --check HEAD^ HEAD
 `origin/main` is absent in this clone; publication checks use the exact saved
 base and `origin/feat/live-capabilities..HEAD`. Only the requested source increment
 and this appended status are intended for publication on that feature branch.
+
+
+## Milestone 12: admission source publication, 2026-09-12
+
+Resumed exactly `c684c53af2b8e91169f7fc29ffa637aa4ae5192b`; existing legitimate
+changes preserved. Process inspection found no project-specific writer (other
+interactive coding sessions belong to other directories). No nested workers/CC.
+Private GitHub repository and remote feature tip verified at that exact base.
+`origin/main` is absent; compare approved base, actual default
+`origin/feat/local-first`, and remote feature branch instead.
+
+Self-review covers dedicated AWS_IAM HTTP API route, exact API/stage/method/path
+and payload-v2 namespace, trusted `authorizer.iam.userArn` rather than headers,
+server-owned role/manifest binding, current session/owner/workspace/version/epoch
+revalidation, capability/resource allowlist, replay claims, immutable
+agent-version Runtime reuse, and response Runtime/version binding.
+All IAM event fixtures are OFFLINE tests, not proof of real gateway context.
+The Lambda resource-policy Allow is scoped to the exact API/stage/POST ARN and
+source account. It alone does NOT prohibit same-account IAM principals with
+identity-based direct Lambda Invoke permission from synthesizing an event;
+workload role explicit direct-invoke denial and actual signed route verification
+remain mandatory before production admission. No end-to-end per-session
+workload identity isolation is claimed from the unit fixtures.
+
+534 tests passed in 30.55s with 3 baseline warnings in the previous worker's
+final log; implementation unchanged during this review, so no redundant full
+rerun. Diff whitespace check PASS. Previously recorded frontend build and 2
+local intercepted browser regressions are not fresh hosted acceptance.
+
+Deterministic locked Linux ARM64 Python 3.13 dependency ZIP:
+`artifacts/foundation-admission/runtime-final.zip` and `runtime-final-repeat.zip`.
+SHA-256 `3821b5ca17b76b1801c225723b45f14b691dacb55bd4c6c572a5e404b1a2ae82`.
+Source digest `6bbeaf313321abc9da4861d539fa1ffd979140dd379b30e2e6efb3e9817a86ca`.
+Manifest `85e417cfa752684cc508d7e8698284a0202f17b1f93930454aec948371479c07`.
+Proof: `artifacts/foundation-admission/package-proof-final.json`; packaging log:
+`/tmp/gab-runtime-package-final.log`. Host entrypoint PASS is host Python only.
+Linux execution UNVERIFIED: Docker container start returned PID 0. Peer Linux
+ARM64 import/entry verification is required; no actual Runtime acceptance.
+Artifacts are private local ignored files, not remotely available via git.
+
+At this publication: cloud admission route NOT_DEPLOYED/NOT_VERIFIED; no cloud
+write in this follow-through yet. No model calls, Runtime create/invoke, new
+accounts, password/SSM reads, Cognito changes, UI live enablement, PR or merge.
+CreateInference Deny preserved. Existing fixture journey stays unchanged.
+Cloud live catalog, evaluator/evidence reader, UI and Browser are next slices,
+not delivered by admission source.
+
+Well-Architected: Security gated by real IAM/direct-invoke checks; Reliability
+offline-tested with durable holds, live unverified; Performance live unmeasured;
+Cost no paid calls and no invoice claim; Operations source/log/package evidence
+available but cloud admission unverified; Sustainability bounded serverless
+scope, no new always-on resource. Memory recall service timed out; this record
+uses the repository and supplied on-disk evidence, not recalled status.

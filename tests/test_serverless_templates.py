@@ -23,6 +23,10 @@ def test_business_authorizer_and_separate_auth_routes():
     for route in routes:
         if "/api" in route["RouteKey"]:
             assert route["AuthorizationType"] == "CUSTOM"
+        elif route["RouteKey"] == "POST /internal/foundation/exchange":
+            assert route["AuthorizationType"] == "AWS_IAM"
+            assert "FoundationExchangeIntegration" in str(route["Target"])
+            assert "AuthorizerId" not in route
         else:
             assert route["RouteKey"] in ("GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify")
             assert "AuthIntegration" in str(route["Target"])

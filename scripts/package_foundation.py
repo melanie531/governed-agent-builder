@@ -3,6 +3,8 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
+import tempfile
 from pathlib import Path
 import zipfile
 
@@ -47,7 +49,49 @@ def save_config(raw, directory):
     return path
 
 
-def package(saved, destination, *, admission=None):
+def dependency_command(target):
+    return ['uv', 'pip', 'install', '--target', str(target), '--python-version', '3.13',
+            '--python-platform', 'aarch64-manylinux2014', '--only-binary', ':all:',
+            '--require-hashes', '--no-deps', '--link-mode', 'copy', '-r',
+            str(ROOT / 'runtime/custom_foundation/requirements.lock')]
+
+
+def dependency_files(directory):
+    """Only wheel RECORD-listed files; discard installer-local paths/scripts."""
+    import csv
+    import io
+    root = Path(directory)
+    allowed = set()
+    for record in root.glob('*.dist-info/RECORD'):
+        for row in csv.reader(io.StringIO(record.read_text())):
+            name = row[0]
+            if '..' not in Path(name).parts and not Path(name).is_absolute():
+                allowed.add(name)
+    result = {}
+    for path in sorted(root.rglob('*')):
+        if path.is_symlink():
+            raise ValueError('UNEXPECTED_DEPENDENCY_SYMLINK')
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if relative.as_posix() == '.lock':
+            continue
+        if relative.parts[0] == 'bin' or '__pycache__' in relative.parts or path.suffix == '.pyc':
+            continue
+        if relative.name in {'RECORD', 'INSTALLER', 'REQUESTED', 'direct_url.json', 'uv_cache.json'} and relative.parent.name.endswith('.dist-info'):
+            continue
+        name = relative.as_posix()
+        if name not in allowed or name.startswith('.'):
+            raise ValueError('UNEXPECTED_DEPENDENCY_FILE')
+        result[name] = path.read_bytes()
+    required = {'bedrock_agentcore/runtime/app.py', 'pydantic_core/__init__.py',
+                'opentelemetry/sdk/trace/__init__.py', 'boto3/__init__.py'}
+    if not required <= result.keys():
+        raise ValueError('LOCKED_RUNTIME_DEPENDENCIES_REQUIRED')
+    return result
+
+
+def package(saved, destination, *, admission=None, dependencies=None):
     path = Path(saved)
     raw = json.loads(path.read_bytes())
     load_config(raw, path.stem)
@@ -61,7 +105,12 @@ def package(saved, destination, *, admission=None):
             raise ValueError('IMMUTABLE_ADMISSION_BINDING_REQUIRED')
         BackendExchange(None, admission['endpoint'], admission['manifest_digest'])
         files['runtime/custom_foundation/admission.json'] = canonical(admission)
-    files['main.py'] = b'from runtime.custom_foundation.main import create_app\ncreate_app().run()\n'
+    if dependencies is not None:
+        installed = dependency_files(dependencies)
+        if files.keys() & installed.keys():
+            raise ValueError('DEPENDENCY_SOURCE_COLLISION')
+        files.update(installed)
+    files['main.py'] = b'from runtime.custom_foundation.main import create_app\nif __name__ == \"__main__\":\n    create_app().run()\n'
     files['runtime/custom_foundation/harness.json'] = canonical(raw)
     fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, 'wb') as output:
@@ -73,7 +122,8 @@ def package(saved, destination, *, admission=None):
                 archive.writestr(info, data)
     return {'source_digest': source, 'manifest_digest': path.stem,
             'package_digest': hashlib.sha256(Path(destination).read_bytes()).hexdigest(),
-            'artifact_kind': 'source-only; install locked Linux ARM64 dependencies before deployment',
+            'artifact_kind': ('linux-arm64-python3.13-locked' if dependencies is not None else
+                              'source-only; install locked Linux ARM64 dependencies before deployment'),
             'runtime_created': False, 'production_ready': False}
 
 
@@ -82,5 +132,10 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--store', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--linux-dependencies', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(package(save_config(json.loads(args.config.read_text()), args.store), args.output)))
+    saved = save_config(json.loads(args.config.read_text()), args.store)
+    with tempfile.TemporaryDirectory(prefix='foundation-deps-') as deps:
+        if args.linux_dependencies:
+            subprocess.run(dependency_command(deps), check=True)
+        print(json.dumps(package(saved, args.output, dependencies=deps if args.linux_dependencies else None)))

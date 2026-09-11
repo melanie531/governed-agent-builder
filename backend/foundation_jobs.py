@@ -65,11 +65,20 @@ class FoundationJobs:
         for record in db.select('settings'):
             if record['key'].startswith('foundation-run:'):
                 run = json.loads(record['body'])
-                if run['runtime_role'] == approved['role']:
+                if run['runtime_role'] == approved['role'] and (
+                        run['agent'] != definition['agent_id']
+                        or run['version'] != definition['version']
+                        or run['manifest_digest'] != approved['manifest_digest']):
                     raise HTTPException(403, 'DEDICATED_RUNTIME_ROLE_REQUIRED')
         return approved
 
     def enqueue(self, db, job_id, definition, persona, deadline):
+        existing = runs.get(db, 'foundation-run:' + job_id)
+        if existing:
+            if (existing['definition_digest'], existing['owner'], existing['workspace']) != (
+                    definition['digest'], persona['id'], persona['workspace']):
+                raise Denied('RESERVATION_IDEMPOTENCY_CONFLICT')
+            return
         approved = self.approve_request(db, definition, persona)
         row = runs.reserve(db, job_id=job_id, definition=definition, persona=persona,
                            approved=approved, epoch=approved['epoch'], deadline=deadline)
@@ -99,6 +108,13 @@ class FoundationJobs:
             if self.artifact_reader is None:
                 raise Denied('ARTIFACT_READBACK_REQUIRED')
             self.artifact_reader(approved)
+            with store.tx() as db:
+                existing = runs.get(db, 'foundation-runtime:' + definition_key(row))
+                runs.current(db, row)
+                if existing:
+                    runs.bind_runtime(db, row, existing)
+                    self.transition(db, job_id, 'WAIT_RUNTIME')
+                    return
             import tempfile
             from foundation_harness.config import canonical
             with tempfile.TemporaryDirectory(prefix='foundation-manifest-') as directory:
@@ -109,7 +125,7 @@ class FoundationJobs:
                     artifact_version=approved['artifact_version'],
                     artifact_manifest_digest=approved['manifest_digest'],
                     artifact_source_digest=approved['artifact_source_digest'],
-                    network=approved['network'], deployment_key=job_id)
+                    network=approved['network'], deployment_key=definition_key(row))
             with store.tx() as db:
                 row = runs.get(db, 'foundation-run:' + job_id)
                 runs.current(db, row)
@@ -250,3 +266,7 @@ class ArtifactReadback:
             # A source-only ZIP is not a deployable Linux dependency package.
             if not {'main.py', 'bedrock_agentcore/runtime/app.py', 'opentelemetry/sdk/trace/__init__.py'} <= set(archive.namelist()):
                 raise Denied('LOCKED_RUNTIME_DEPENDENCIES_REQUIRED')
+
+
+def definition_key(row):
+    return digest([row['workspace'], row['owner'], row['agent'], row['version'], row['manifest_digest']])

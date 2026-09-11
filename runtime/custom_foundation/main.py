@@ -11,8 +11,8 @@ class RuntimeHandler:
     """Integration seam for supported server-authenticated entry resolution.
 
     The resolver returns canonical Binding + stored input from the backend; it
-    must not deserialize caller identity from payload. No production resolver is
-    installed in this slice. The supplied Engine executes the same generic loop.
+    must not deserialize caller identity from payload. Production uses the dedicated IAM BackendExchange below. The supplied Engine
+    executes the same generic loop.
     """
     def __init__(self, engine, resolve_authenticated_entry):
         self.engine, self.resolve = engine, resolve_authenticated_entry

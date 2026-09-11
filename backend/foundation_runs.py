@@ -94,6 +94,12 @@ def current(db, row):
 def bind_runtime(db, row, runtime):
     if row['runtime'] and row['runtime'] != runtime:
         raise Denied('RUNTIME_REBIND_DENIED')
+    from .foundation_jobs import definition_key
+    key = 'foundation-runtime:' + definition_key(row)
+    existing = get(db, key)
+    if existing and existing != runtime:
+        raise Denied('AGENT_VERSION_RUNTIME_REBIND_DENIED')
+    put(db, key, runtime)
     row['runtime'] = runtime
     put(db, 'foundation-run:' + row['run_ref'], row)
 
@@ -115,10 +121,12 @@ def exchange(db, *, principal_arn, body):
     must be limited to the exact API/stage/POST route before enabling live mode.
     """
     import re
-    allowed = {'run_ref', 'manifest_digest', 'operation', 'call_id', 'usage'}
+    allowed = {'run_ref', 'manifest_digest', 'operation', 'call_id', 'usage', 'capability', 'resource'}
     if not isinstance(body, dict) or set(body) - allowed:
         raise Denied('EXCHANGE_SHAPE_DENIED')
-    row = get(db, 'foundation-run:' + body.get('run_ref', ''))
+    if not isinstance(body.get('run_ref'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', body['run_ref']):
+        raise Denied('EXCHANGE_SHAPE_DENIED')
+    row = get(db, 'foundation-run:' + body['run_ref'])
     if not row or not row['runtime']:
         raise Denied('RUN_NOT_FOUND')
     match = re.fullmatch(r'arn:aws:sts::(\d{12}):assumed-role/([^/]+)/[^/]+', principal_arn or '')
@@ -158,7 +166,13 @@ def exchange(db, *, principal_arn, body):
         row.update(state='FINISHED', usage=usage, settled=True)
         # Tokens alone do not price Gateway/Runtime/OTel. Hold the full reserve
         # until an independently measured all-service cost reconciliation exists.
-    elif operation != 'authorize':
+    elif operation == 'authorize':
+        cfg = row['approved']['config']
+        allowed = {('model', cfg['model']['route']), ('finish', '')}
+        allowed.update(('tool', t['name']) for t in cfg['tools'])
+        if (body.get('capability'), body.get('resource')) not in allowed:
+            raise Denied('CAPABILITY_RESOURCE_DENIED')
+    else:
         raise Denied('OPERATION_DENIED')
     put(db, 'foundation-run:' + row['run_ref'], row)
     runtime = row['runtime']

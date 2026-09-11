@@ -30,6 +30,8 @@ class BackendExchange:
             'operation': operation, **extra}), {'Accept': 'application/json'}, 5, 'execute-api')
         if not isinstance(value, dict) or value.get('reservation_handle') != run_ref:
             raise Denied('BACKEND_RESPONSE_BINDING_DENIED')
+        if self.entry is not None and Binding(**value['binding']) != self.entry:
+            raise Denied('BACKEND_RESPONSE_BINDING_DENIED')
         return value
 
     def resolve(self, run_ref, context):
@@ -50,7 +52,7 @@ class BackendExchange:
     def authorize(self, binding, operation, resource):
         if binding != self.entry:
             raise Denied('RESOLVED_ENTRY_REQUIRED')
-        self.request(binding.run_ref, 'authorize')
+        self.request(binding.run_ref, 'authorize', capability=operation, resource=resource)
 
     def claim(self, operation, call_id):
         self.request(self.handle, operation, call_id=call_id)

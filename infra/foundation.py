@@ -131,3 +131,13 @@ def template():
                 'FoundationRole': {'Value': arn('FoundationRole')},
                 'EvidenceBucket': {'Value': {'Ref': 'Evidence'}},
                 'ModelPolicyCoverage': {'Value': 'BLOCKED_INFERENCE_SCHEMA_UNVERIFIED'}}}
+
+
+def admission_statement(api_id):
+    """Attach only to an independently reviewed dedicated immutable package role."""
+    import re
+    if not re.fullmatch(r'[a-z0-9]+', api_id):
+        raise ValueError('EXACT_ADMISSION_API_REQUIRED')
+    return statement(['execute-api:Invoke'], sub(
+        'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:'
+        + api_id + '/$default/POST/internal/foundation/exchange'))

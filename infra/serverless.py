@@ -25,7 +25,7 @@ def artifacts_template():
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Private retained serverless release artifacts only", "Resources": {"Releases": bucket(), "ReleaseTLS": tls_policy("Releases")}, "Outputs": {"Bucket": {"Value": ref("Releases")}}}
 
 
-def template():
+def template(*, foundation_deployment=None):
     resources = {"Web": bucket(), "Exports": bucket(), "ExportTLS": tls_policy("Exports"),
         "State": {"Type": "AWS::DynamoDB::Table", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain", "Properties": {
             "BillingMode": "PAY_PER_REQUEST", "AttributeDefinitions": [{"AttributeName": k, "AttributeType": "S"} for k in ("pk", "sk")],
@@ -91,13 +91,49 @@ def template():
                 statements.append(scoped)
         if name == "Auth": statements.append({"Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"], "Resource": attr("Verification")})
         if name == "Business": statements.append({"Effect": "Allow", "Action": ["s3:PutObject"], "Resource": sub("${Exports.Arn}/exports/*")})
-        if name == "Worker": statements.append({"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], "Resource": attr("Jobs")})
+        if name == "Worker" and foundation_deployment is not None:
+            statements.extend(foundation_worker_statements(**foundation_deployment))
+        if name == "Worker": statements.append({"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:SendMessage"], "Resource": attr("Jobs")})
         if name == "Dispatcher": statements.extend([
             {"Effect": "Allow", "Action": ["dynamodb:DescribeStream", "dynamodb:GetRecords", "dynamodb:GetShardIterator"], "Resource": attr("State", "StreamArn")},
             {"Effect": "Allow", "Action": "dynamodb:ListStreams", "Resource": attr("State", "StreamArn")},
             {"Effect": "Allow", "Action": "sqs:SendMessage", "Resource": [attr("Jobs"), attr("DispatchFailures")]}])
         resources[name+"Role"] = {"Type": "AWS::IAM::Role", "Properties": {"AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}, "Policies": [{"PolicyName": "ScopedRuntime", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
         resources[name] = {"Type": "AWS::Lambda::Function", "Properties": {"Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless."+handler, "Role": attr(name+"Role"), "MemorySize": 512, "Timeout": timeout, "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")}, "Environment": {"Variables": {**env, **({"VERIFICATION_TABLE": ref("Verification")} if name == "Auth" else {})} if name != "Dispatcher" else {"JOB_QUEUE_URL": ref("Jobs")}}, "LoggingConfig": {"LogGroup": ref(logs)}}}
+    # Dedicated workload integration, deliberately outside /api and CloudFront.
+    # Uses the existing authority table; no session auth or model permission.
+    exchange_keys = ["_revision", "components", "foundations", "grants", "agents", "versions",
+                     "settings", "hosted_sessions", "principals", "job_authority"]
+    exchange_read = copy.deepcopy(read)
+    exchange_read["Condition"] = {"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": exchange_keys}}
+    exchange_write = copy.deepcopy(write)
+    exchange_write["Action"] = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
+    exchange_write["Condition"] = {"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["_revision", "settings"]}}
+    resources["FoundationExchangeLogs"] = {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain",
+        "Properties": {"LogGroupName": "/governed-agent-builder-serverless/foundation-exchange", "RetentionInDays": 14}}
+    resources["FoundationExchangeRole"] = {"Type": "AWS::IAM::Role", "Properties": {
+        "AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
+            "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]},
+        "Policies": [{"PolicyName": "FoundationAdmissionOnly", "PolicyDocument": {"Version": "2012-10-17",
+            "Statement": [exchange_read, exchange_write, {"Effect": "Allow",
+                "Action": ["logs:CreateLogStream", "logs:PutLogEvents"], "Resource": attr("FoundationExchangeLogs")} ]}}]}}
+    resources["FoundationExchange"] = {"Type": "AWS::Lambda::Function", "Properties": {
+        "Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless.foundation_exchange_handler",
+        "Role": attr("FoundationExchangeRole"), "MemorySize": 512, "Timeout": 15,
+        "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")},
+        "Environment": {"Variables": {"STATE_TABLE": ref("State"), "FOUNDATION_API_ID": ref("Api"),
+                                      "FOUNDATION_ADMISSION_ENABLED": "1"}},
+        "LoggingConfig": {"LogGroup": ref("FoundationExchangeLogs")}}}
+    resources["FoundationExchangeIntegration"] = {"Type": "AWS::ApiGatewayV2::Integration", "Properties": {
+        "ApiId": ref("Api"), "IntegrationType": "AWS_PROXY", "IntegrationMethod": "POST",
+        "IntegrationUri": attr("FoundationExchange"), "PayloadFormatVersion": "2.0", "TimeoutInMillis": 15000}}
+    resources["FoundationExchangeRoute"] = {"Type": "AWS::ApiGatewayV2::Route", "Properties": {
+        "ApiId": ref("Api"), "RouteKey": "POST /internal/foundation/exchange", "AuthorizationType": "AWS_IAM",
+        "Target": {"Fn::Join": ["/", ["integrations", ref("FoundationExchangeIntegration")]]}}}
+    resources["FoundationExchangePermission"] = {"Type": "AWS::Lambda::Permission", "Properties": {
+        "FunctionName": ref("FoundationExchange"), "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com", "SourceAccount": ref("AWS::AccountId"),
+        "SourceArn": sub("arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/$default/POST/internal/foundation/exchange")}}
     resources["StreamMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("State", "StreamArn"), "FunctionName": ref("Dispatcher"), "StartingPosition": "TRIM_HORIZON", "BatchSize": 10, "MaximumBatchingWindowInSeconds": 1, "BisectBatchOnFunctionError": True, "FunctionResponseTypes": ["ReportBatchItemFailures"], "MaximumRetryAttempts": 10, "MaximumRecordAgeInSeconds": 86400, "DestinationConfig": {"OnFailure": {"Destination": attr("DispatchFailures")}}, "FilterCriteria": {"Filters": [{"Pattern": '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"pk":{"S":["jobs"]}}}}'}]}}}
     resources["WorkerMapping"] = {"Type": "AWS::Lambda::EventSourceMapping", "Properties": {"EventSourceArn": attr("Jobs"), "FunctionName": ref("Worker"), "BatchSize": 1, "FunctionResponseTypes": ["ReportBatchItemFailures"], "ScalingConfig": {"MaximumConcurrency": 2}}}
     resources["SessionAuthorizer"] = {"Type": "AWS::ApiGatewayV2::Authorizer", "Properties": {"ApiId": ref("Api"), "Name": "server-session", "AuthorizerType": "REQUEST", "AuthorizerPayloadFormatVersion": "2.0", "EnableSimpleResponses": True, "AuthorizerResultTtlInSeconds": 0, "IdentitySource": ["$request.header.Cookie"], "AuthorizerUri": sub("arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Authorizer.Arn}/invocations")}}
@@ -115,3 +151,31 @@ def template():
     for name in ("DeadLetters", "DispatchFailures"):
         resources[name+"Alarm"] = {"Type": "AWS::CloudWatch::Alarm", "Properties": {"AlarmDescription": "Operator recovery required; do not discard queued evidence", "Namespace": "AWS/SQS", "MetricName": "ApproximateNumberOfMessagesVisible", "Dimensions": [{"Name": "QueueName", "Value": attr(name, "QueueName")}], "Statistic": "Maximum", "Period": 60, "EvaluationPeriods": 1, "Threshold": 1, "ComparisonOperator": "GreaterThanOrEqualToThreshold", "TreatMissingData": "notBreaching"}}
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Isolated private S3 OAC + managed HTTPS API Cognito Lambda DynamoDB SQS; no VPC dependencies", "Parameters": {"ArtifactBucket": {"Type": "String"}, "ArtifactKey": {"Type": "String"}}, "Resources": resources, "Outputs": {"ApplicationOrigin": {"Value": sub("https://${Distribution.DomainName}")}, "ApiEndpoint": {"Value": attr("Api", "ApiEndpoint")}, "DistributionId": {"Value": ref("Distribution")}, "FrontendBucket": {"Value": ref("Web")}, "StateTable": {"Value": ref("State")}, "UserPoolId": {"Value": ref("Pool")}, "ClientId": {"Value": ref("Client")}, "CognitoDomain": {"Value": sub("https://${Domain}.auth.${AWS::Region}.amazoncognito.com")}, "WorkerFunction": {"Value": ref("Worker")}}}
+
+
+def foundation_worker_statements(*, role, artifact, runtime_name, subnets, groups):
+    """Explicit per-package allowlist. No IAM mutation, update, delete or discovery.
+
+    CreateAgentRuntime has no resource-level IAM support (AWS SAR); constrain its
+    request using mandatory VPC keys plus an exact PassRole. Never attach by default.
+    """
+    import re
+    match = re.fullmatch(r'arn:aws:iam::(\d{12}):role/([A-Za-z0-9_+=,.@-]+)', role)
+    if (not match or not re.fullmatch(r'gab_foundation_[a-f0-9]{24}', runtime_name)
+            or not re.fullmatch(r'arn:aws:s3:::[a-z0-9.-]+/approved/[A-Za-z0-9/_.-]+\.zip', artifact)
+            or not subnets or not groups
+            or any(not re.fullmatch(r'subnet-[a-z0-9]+', x) for x in subnets)
+            or any(not re.fullmatch(r'sg-[a-z0-9]+', x) for x in groups)):
+        raise ValueError('EXACT_PACKAGE_IAM_BINDINGS_REQUIRED')
+    scope = f'arn:aws:bedrock-agentcore:us-west-2:{match[1]}:runtime/{runtime_name}-*'
+    return [
+        {"Effect": "Allow", "Action": ["bedrock-agentcore:CreateAgentRuntime"], "Resource": "*",
+         "Condition": {"ForAllValues:StringEquals": {"bedrock-agentcore:subnets": subnets,
+                         "bedrock-agentcore:securityGroups": groups},
+                       "Null": {"bedrock-agentcore:subnets": "false", "bedrock-agentcore:securityGroups": "false"}}},
+        {"Effect": "Allow", "Action": ["bedrock-agentcore:CreateAgentRuntimeEndpoint",
+            "bedrock-agentcore:GetAgentRuntime", "bedrock-agentcore:InvokeAgentRuntime"],
+         "Resource": [scope, scope + '/runtime-endpoint/DEFAULT']},
+        {"Effect": "Allow", "Action": ["iam:PassRole"], "Resource": role,
+         "Condition": {"StringEquals": {"iam:PassedToService": "bedrock-agentcore.amazonaws.com"}}},
+        {"Effect": "Allow", "Action": ["s3:GetObjectVersion"], "Resource": artifact}]

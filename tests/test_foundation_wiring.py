@@ -257,12 +257,15 @@ def test_exchange_ignores_forged_identity_headers(cloud, payload, tmp_path, monk
     from backend import serverless
     store, _, row = reserved(cloud, payload, tmp_path)
     monkeypatch.setattr(serverless, 'store', lambda: store)
-    monkeypatch.setenv('FOUNDATION_LIVE_ENABLED', '1')
+    monkeypatch.setenv('FOUNDATION_ADMISSION_ENABLED', '1')
+    monkeypatch.setenv('FOUNDATION_API_ID', 'synthetic')
     event = {'routeKey': 'POST /internal/foundation/exchange', 'requestContext': {},
              'headers': {'userArn': f'arn:aws:sts::{ACCOUNT}:assumed-role/synthetic-runtime/session'},
              'body': json.dumps({'run_ref': 'synthetic-run', 'manifest_digest': row['manifest_digest'], 'operation': 'redeem'})}
     assert serverless.foundation_exchange_handler(event, None)['statusCode'] == 403
-    event['requestContext'] = {'authorizer': {'iam': {'userArn': event['headers']['userArn']}}}
+    event.update(version='2.0', rawPath='/internal/foundation/exchange')
+    event['requestContext'] = {'apiId': 'synthetic', 'stage': '$default', 'http': {'method': 'POST'},
+                               'authorizer': {'iam': {'userArn': event['headers']['userArn']}}}
     assert serverless.foundation_exchange_handler(event, None)['statusCode'] == 200
     assert serverless.foundation_exchange_handler(event, None)['statusCode'] == 403
 
@@ -366,7 +369,8 @@ def test_runtime_handler_rejects_missing_or_cross_run_reservation(handle):
 @pytest.mark.parametrize('iam', [None, [], {'userArn': 123}, {'userArn': {'role': 'forged'}}])
 def test_exchange_malformed_verified_principal_fails_closed(iam, monkeypatch):
     from backend.serverless import foundation_exchange_handler
-    monkeypatch.setenv('FOUNDATION_LIVE_ENABLED', '1')
+    monkeypatch.setenv('FOUNDATION_ADMISSION_ENABLED', '1')
+    monkeypatch.setenv('FOUNDATION_API_ID', 'synthetic')
     event = {'routeKey': 'POST /internal/foundation/exchange',
              'requestContext': {'authorizer': {'iam': iam}}, 'body': '{}'}
     assert foundation_exchange_handler(event, None)['statusCode'] == 403
