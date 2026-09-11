@@ -1,6 +1,6 @@
 # First custom foundation slice — 2026-09-12
 
-Current (admission follow-through): **source reviewed; backend IAM route not yet deployed**.
+Current (admission follow-through): **source published; additive backend IAM route UPDATE_COMPLETE; production admission NOT_READY**.
 Existing owned foundation stack was previously **UPDATE_COMPLETE**; reusable executor implemented.
 Live M0A / user journey **BLOCKED**, no inference attempted.
 On `feat/live-capabilities`, initial clean HEAD `d0612a6`.
@@ -495,3 +495,81 @@ Cost no paid calls and no invoice claim; Operations source/log/package evidence
 available but cloud admission unverified; Sustainability bounded serverless
 scope, no new always-on resource. Memory recall service timed out; this record
 uses the repository and supplied on-disk evidence, not recalled status.
+
+
+## Milestone 13: additive backend admission deployment receipt
+
+Implementation SHA **`28c53db6e545f82931fe3fb3b5fe577da6390358`** verified on private
+`origin/feat/live-capabilities`. This receipt changes documentation only.
+Source/package verification repeated using project Python: both final Runtime
+ZIP hashes match, source digest matches, and all embedded foundation source
+files match the committed tree. An initial system-Python digest import failed
+with missing pydantic; project `.venv/bin/python` verification succeeded.
+No implementation changed after the recorded 534-test run.
+
+Cloud target was verified live before mutations and after completion: approved
+profile, us-west-2, STS account equals existing CloudFormation/CloudFront/Cognito
+identities, exact Studio domain. No account IDs or credentials were printed.
+`governed-agent-builder-serverless-app`: **UPDATE_COMPLETE**.
+ChangeSet `foundation-admission-1789143495` reviewed with exactly six **Add**
+entries: FoundationExchange, FoundationExchangeRole, FoundationExchangeLogs,
+FoundationExchangeIntegration, FoundationExchangeRoute, FoundationExchangePermission.
+No Modify/Remove/replacement/dependency exception; original resources and all
+stack outputs remain unchanged. Existing app Lambda code and WorkerRole were
+NOT updated: the narrow update overlays only six new resources onto the actual
+live template, with a dedicated content-addressed Code value. The complete
+generated source template is therefore NOT what was deployed wholesale.
+
+Backend artifact SHA-256:
+`690a997cf61fbc0078edb3cd53c3e47cde36868bae88e0a4a6ce1302d098b2c7`.
+Uploaded only to the existing project's retained private release bucket at
+`releases/<backend-sha256>/foundation-admission.zip`; S3 bytes read back and
+hash matched. Lambda CodeSha256 matched, State Active, LastUpdateStatus
+Successful. Runtime ZIP was NOT uploaded or executed. BPA checked true and
+unchanged. No identity/data/user/credential/website resource mutation.
+
+Actual route: `POST /internal/foundation/exchange`, AWS_IAM, on the existing
+API Gateway endpoint (not a new CloudFront path). Lambda resource policy read
+back as one Allow for apigateway.amazonaws.com, source account exact and
+source ARN exact API /$default/POST/internal/foundation/exchange. No broad
+Lambda invoke permission was added.
+
+HTTP probes (no human login, no password):
+- Existing Studio `/`: **200**.
+- Existing Studio `/api/agents`, anonymous: **401**.
+- New exchange, anonymous: **403**, not requested 401; preserve actual AWS_IAM
+  behavior rather than replacing IAM or adding a permissive anonymous route.
+- New exchange, unsigned spoofed principal/context headers: **403**.
+- New exchange, existing operator SigV4 identity and nonexistent run: **403**,
+  response `ADMISSION_DENIED`. This proves a signed request reached the
+  handler denial surface, NOT successful redemption or a verified workload
+  principal/unknown-run branch (the handler intentionally shares denial codes).
+- Existing foundation role direct lambda:InvokeFunction policy simulation:
+  **implicitDeny**. This is simulation only, not an actual workload invocation
+  denial, and not an explicit Deny.
+
+Concrete acceptance blockers: existing FoundationRole trusts only
+`bedrock-agentcore.amazonaws.com`, has no exact exchange Invoke grant, and
+there is no admitted Runtime/approved workload credential to perform the
+requested signed workload probe. Do not manufacture requestContext, create
+new test accounts, widen its trust to the operator, or treat operator signing
+as workload proof. Workload direct-invoke hardening/exact role grant remains
+a next bounded IAM step. Per-run/session/runtime/version binding is offline
+verified only; cloud end-to-end acceptance remains **NOT_READY**.
+Linux ARM64 runtime execution still UNVERIFIED (Docker PID 0), peer required.
+CreateInference Deny and disabled live UI remain intact. No paid inference,
+Runtime creation/invocation, evidence-reader/live-catalog/evaluator/Browser
+acceptance performed. Existing fixture assets/backend were not replaced;
+authenticated fixture journey was not rerun without human session access.
+
+Private local proof: `artifacts/foundation-admission/cloud-update-proof.json`,
+`cloud-inspection.json`, `package-proof-final.json`; logs:
+`/tmp/gab-admission-cloud-update.log`, `/tmp/gab-admission-backend-package.log`.
+The bounded executed driver is `/tmp/gab-admission-cloud-update.py`; no timer
+or background worker remains scheduled. Proof directory is ignored by git.
+Well-Architected delta: Security now has actual IAM route/resource-policy
+readback but workload acceptance blocked; Reliability stack complete/old
+resources unchanged; Performance no live workload measurements; Cost no model
+calls, infrastructure/API probe charges unknown; Operations has deployed-code
+hash and negative HTTP evidence; Sustainability six bounded serverless
+resources, no new always-on service.
