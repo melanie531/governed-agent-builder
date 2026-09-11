@@ -196,3 +196,27 @@ def test_dynamo_pending_flow_uses_separate_table(cloud,monkeypatch):
     assert c.post('/auth/verification/verify',json={'code':'123456'}).status_code == 200
     assert c.get('/api/me').status_code == 200
     assert resource.Table("synthetic-verification").scan()['Items'] == []
+
+
+def test_catalog_request_durable_dynamo_approval_and_revocation(cloud):
+    """Moto only: existing DDB transaction and hosted auth contract."""
+    app, client, _ = cloud
+    sign_in(cloud)
+    requested = client.post('/api/requests', json={'component_id': 'restricted-insights', 'reason': 'Research request persistence test'})
+    assert requested.status_code == 201
+    request_id = requested.json()['id']
+    fresh = DynamoStore('synthetic-state')
+    with fresh.tx() as db:
+        row = db.select('requests', where=[('id', '=', request_id)]).fetchone()
+        assert row['requester'] == 'subject-a' and row['workspace'] == 'research'
+    sign_in(cloud, 'subject-admin', 'studio-admin')
+    assert client.post('/api/admin/requests/'+request_id+'/decision', json={'approve': True, 'reason': 'Approved scoped research purpose'}).status_code == 200
+    sign_in(cloud)
+    assert client.get('/api/catalog/restricted-insights').json()['usable']
+    sign_in(cloud, 'subject-admin', 'studio-admin')
+    assert client.post('/api/admin/grants', json={'persona_id': 'subject-a', 'component_id': 'restricted-insights', 'enabled': False}).status_code == 200
+    sign_in(cloud)
+    assert not client.get('/api/catalog/restricted-insights').json()['usable']
+    with fresh.tx() as db:
+        assert db.select('requests', where=[('id', '=', request_id)]).fetchone()['status'] == 'APPROVED'
+        assert any('Approved scoped research purpose' in r['detail'] for r in db.select('audit'))

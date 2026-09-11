@@ -66,6 +66,7 @@ class Decision(Strict):
     reason: str = Field(min_length=5, max_length=1000)
 
 class Grant(Strict):
+    reason: str | None = Field(default=None, max_length=1000)
     persona_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     component_id: str
     enabled: bool

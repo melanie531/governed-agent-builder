@@ -21,6 +21,7 @@ from .harness import evaluate, run_case
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
 from .hosted_auth import HostedAuth
+from .live_catalog import projection, visibility, has_grant, grant_scope
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = {"PASS", "NEEDS_CHANGES"}
@@ -58,9 +59,9 @@ def resource(db, table, resource_id):
 
 def allowed(db, persona, component, foundation):
     kind = component["kind"] + "s"
-    return (component["approved"] and component["id"] in foundation[kind]
+    return (visibility(component, persona) and component.get("integration_ready", True) and component["id"] in foundation.get(kind, [])
             and (not component["external"] or persona["external_allowed"])
-            and db.select('grants', where=[('persona', '=', persona['id']), ('component', '=', component['id'])]).fetchone() is not None)
+            and has_grant(db, persona, component))
 
 
 def validate_definition(db, persona, definition):
@@ -95,7 +96,32 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None):
+    catalog_mode = os.getenv("CATALOG_MODE", "fixture")
+    if catalog_mode not in ("fixture", "live"):
+        raise RuntimeError("CATALOG_MODE must be fixture or live")
+    # No automatic SDK construction/discovery: operator must wire verified resources.
+    def catalog_records(db):
+        if catalog_mode == "live":
+            if catalog_provider is None:
+                raise HTTPException(503, "Live catalog integration is not configured; no fixture fallback")
+            try:
+                return catalog_provider.records()
+            except Exception:
+                raise HTTPException(503, 'Live catalog unavailable; no fixture fallback') from None
+        return [json.loads(r[0]) for r in db.select('components', columns=['body'])]
+
+    def catalog_resource(db, persona, component_id):
+        item = next((c for c in catalog_records(db) if c['id'] == component_id), None)
+        if not item or not visibility(item, persona):
+            raise HTTPException(404, "Capability not found")
+        return item
+
+    def validate_current(db, persona, definition):
+        if catalog_mode == "live":
+            raise HTTPException(503, "Live execution is not integrated; fixture execution is forbidden in live catalog mode")
+        return validate_definition(db, persona, definition)
+
     hosted = os.getenv("HOSTED_PREVIEW") == "1"
     demo = os.getenv("DEMO_MODE") == "1" if demo_mode is None else demo_mode
     if hosted and demo:
@@ -312,7 +338,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             foundations = [json.loads(r[0]) for r in db.select('foundations', columns=['body'])]
             foundations = [f for f in foundations if f["approved"]]
+            # Foundation compatibility IDs must not reveal hidden resources either.
+            visible_ids = {json.loads(r[0])['id'] for r in db.select('components', columns=['body']) if visibility(json.loads(r[0]), persona)} if catalog_mode == 'fixture' else set()
+            foundations = [{**f, **{k: [cid for cid in f[k] if cid in visible_ids] for k in ('models', 'tools', 'skills')}} for f in foundations]
             choices = {"models": [], "tools": [], "skills": []}
+            if catalog_mode == "live":
+                catalog_records(db)  # Fail closed, never return seeded build choices.
+                return {"foundations": [], "choices": choices, "sample_dataset": [], "policy": policy(db), "integration_status": "Live composition/execution not yet enabled"}
             if foundation_id:
                 foundation = resource(db, "foundations", foundation_id)
                 if not foundation["approved"]:
@@ -329,7 +361,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         if persona["role"] != "business":
             raise HTTPException(403, "A business workspace membership is required to create agents")
         payload = data.model_dump(exclude={"base_version"})
-        foundation = validate_definition(db, persona, payload)
+        foundation = validate_current(db, persona, payload)
         if agent_id:
             agent = agent_access(db, persona, agent_id)
             if data.base_version != agent["current_version"]:
@@ -388,7 +420,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if agent["current_version"] != data.version:
                 raise HTTPException(409, "Only the current definition can be tested")
             definition = get_version(db, agent_id, data.version)
-            validate_definition(db, persona, definition)
+            validate_current(db, persona, definition)
             existing = db.select('jobs', where=[('agent', '=', agent_id), ('requester', '=', persona['id']), ('idem', '=', data.idempotency_key)]).fetchone()
             if existing:
                 if existing["version"] != data.version:
@@ -429,7 +461,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if data.version != agent["current_version"]:
                 raise HTTPException(409, "Current version required; revise and retest")
             definition = get_version(db, agent_id, data.version)
-            validate_definition(db, persona, definition)
+            validate_current(db, persona, definition)
             job = db.select('jobs', where=[('agent', '=', agent_id), ('version', '=', data.version)], order='created', descending=True, limit=1).fetchone()
             if not job or job["stage"] != "PASS":
                 raise HTTPException(409, "Current version has not passed local checks")
@@ -468,12 +500,28 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             boto3.client("s3").put_object(Bucket=os.environ["EXPORT_BUCKET"], Key=key, Body=buffer.getvalue(), ContentType="application/zip", ServerSideEncryption="AES256")
         return Response(buffer.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="agent-{agent_id}-v{agent["current_version"]}.zip"'})
 
-    @app.get("/api/capabilities")
-    def capabilities(request: Request):
+    @app.get("/api/catalog")
+    def ai_catalog(request: Request, kind: str | None = None, q: str = ""):
         persona = who(request)
         with store.tx() as db:
-            grants = {r[0] for r in db.select('grants', columns=['component'], where=[('persona', '=', persona['id'])])}
-            return [{**json.loads(r[0]), "granted": json.loads(r[0])["id"] in grants, "data_policy_allowed": not json.loads(r[0])["external"] or persona["external_allowed"]} for r in db.select('components', columns=['body'])]
+            items = [p for c in catalog_records(db) if (p := projection(db, persona, c)) is not None]
+            items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
+            return {"items": items, "count": len(items), "mode": catalog_mode,
+                    "agent_listing_implemented": catalog_mode == "live",
+                    "execution_ready": False if catalog_mode == "live" else None}
+
+    @app.get("/api/catalog/{component_id}/versions/{version}")
+    @app.get("/api/catalog/{component_id}")
+    def catalog_detail(component_id: str, request: Request, version: str | None = None):
+        with store.tx() as db:
+            item = catalog_resource(db, who(request), component_id)
+            if version is not None and version != item['version']:
+                raise HTTPException(404, "Capability not found")
+            return projection(db, who(request), item)
+
+    @app.get("/api/capabilities")
+    def capabilities(request: Request):
+        return ai_catalog(request)['items']
 
     @app.get("/api/requests")
     def requests(request: Request):
@@ -489,11 +537,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         if persona["role"] != "business":
             raise HTTPException(403, "Business identity required")
         with store.tx() as db:
-            resource(db, "components", data.component_id)
+            component = catalog_resource(db, persona, data.component_id)
+            if not projection(db, persona, component)['requestable']:
+                raise HTTPException(403, "Capability is not requestable")
+            if not data.reason.strip() or len(data.reason.strip()) < 5:
+                raise HTTPException(422, "A substantive business purpose is required")
             if db.select('requests', where=[('requester', '=', persona['id']), ('component', '=', data.component_id), ('status', '=', 'PENDING')]).fetchone():
                 raise HTTPException(409, "A request is already pending")
+            if db.select('requests', count=True, where=[('requester', '=', persona['id']), ('created', '>', time.time() - 3600)]).fetchone()[0] >= 30:
+                raise HTTPException(429, 'Access request budget: 30 per identity per hour')
             request_id = uid()
             db.insert('requests', {'id': request_id, 'requester': persona['id'], 'workspace': persona['workspace'], 'component': data.component_id, 'reason': data.reason, 'status': 'PENDING', 'decision': None, 'created': time.time()})
+            db.insert('settings', {'key': 'request-version:' + request_id, 'body': json.dumps({'version': component['version']})})
             audit(db, persona["id"], "capability_requested", request_id, data.component_id)
         return {"id": request_id}
 
@@ -501,22 +556,27 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def admin_catalog(request: Request):
         who(request, True)
         with store.tx() as db:
-            return {"foundations": [json.loads(r[0]) for r in db.select('foundations', columns=['body'])], "components": [json.loads(r[0]) for r in db.select('components', columns=['body'])], "grants": [dict(r) for r in db.select('grants')], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.select('catalog_history', order='id', descending=True, limit=100)]}
+            return {"foundations": [json.loads(r[0]) for r in db.select('foundations', columns=['body'])], "components": catalog_records(db), "grants": [dict(r) for r in db.select('grants')], "personas": principal_list(db), "policy": policy(db), "history": [dict(r) for r in db.select('catalog_history', order='id', descending=True, limit=100)]}
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):
         persona = who(request, True)
         with store.tx() as db:
-            component = resource(db, "components", data.component_id)
+            if catalog_mode == "live" and (not data.reason or len(data.reason.strip()) < 5):
+                raise HTTPException(422, "A substantive grant or revocation reason is required")
+            subject = principal(db, data.persona_id)
+            component = catalog_resource(db, subject, data.component_id) if data.enabled else {'id': data.component_id, 'approved': True, 'external': False}
             if principal(db, data.persona_id)["role"] != "business":
                 raise HTTPException(403, "Business identity required")
             if data.enabled and (not component["approved"] or component["external"] and not principal(db, data.persona_id)["external_allowed"]):
                 raise HTTPException(403, "Approval or workspace data policy blocks this grant")
             if data.enabled:
                 db.insert('grants', {'persona': data.persona_id, 'component': data.component_id}, ignore=True)
+                db.insert('settings', {'key': grant_scope(subject, data.component_id), 'body': 'true'}, upsert=True)
             else:
                 db.delete('grants', where=[('persona', '=', data.persona_id), ('component', '=', data.component_id)])
-            audit(db, persona["id"], "grant" if data.enabled else "revoke", data.persona_id, data.component_id)
+                db.delete('settings', where=[('key', '=', grant_scope(subject, data.component_id))])
+            audit(db, persona["id"], "grant" if data.enabled else "revoke", data.persona_id, json.dumps({"component": data.component_id, "reason": data.reason}))
         return {"ok": True}
 
     @app.post("/api/admin/requests/{request_id}/decision")
@@ -530,18 +590,29 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(403, "Self-approval prohibited")
             if row["status"] != "PENDING":
                 raise HTTPException(409, "Request already decided")
-            component = resource(db, "components", row["component"])
+            if len(data.reason.strip()) < 5:
+                raise HTTPException(422, "A substantive decision reason is required")
             if data.approve:
+                subject = principal(db, row['requester'])
+                if subject['workspace'] != row['workspace']:
+                    raise HTTPException(403, "Requester workspace changed; submit a new request")
+                component = catalog_resource(db, subject, row['component'])
+                pinned = db.select('settings', where=[('key', '=', 'request-version:' + request_id)]).fetchone()
+                if pinned and json.loads(pinned['body'])['version'] != component['version']:
+                    raise HTTPException(409, 'Capability version changed; reject and request the current version')
                 if not component["approved"] or component["external"] and not principal(db, row["requester"])["external_allowed"]:
                     raise HTTPException(403, "Approval or data policy blocks this capability")
                 db.insert('grants', {'persona': row['requester'], 'component': row['component']}, ignore=True)
+                db.insert('settings', {'key': grant_scope(subject, row['component']), 'body': 'true'}, upsert=True)
             db.update('requests', {'status': 'APPROVED' if data.approve else 'REJECTED', 'decision': data.reason}, where=[('id', '=', request_id)])
-            audit(db, persona["id"], "request_decided", request_id, "approved" if data.approve else "rejected")
-        return {"ok": True, "notice": "Existing seeded capability grant updated; no connector was created"}
+            audit(db, persona["id"], "request_decided", request_id, json.dumps({"decision": "approved" if data.approve else "rejected", "reason": data.reason, "workspace": row["workspace"]}))
+        return {"ok": True, "notice": "Existing capability grant updated; no connector was created"}
 
     @app.post("/api/admin/catalog/{authority}/{resource_id}")
     def update_catalog(authority: str, resource_id: str, data: CatalogUpdate, request: Request):
         persona = who(request, True)
+        if catalog_mode == "live":
+            raise HTTPException(409, "Live provider approvals are operator-managed; this endpoint cannot onboard connectors")
         if authority not in ("components", "foundations"):
             raise HTTPException(404, "Unknown catalog authority")
         with store.tx() as db:
@@ -591,7 +662,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 if agent["current_version"] != job["version"]:
                     raise HTTPException(409, "Definition changed during test; retest current version")
                 definition = get_version(db, job["agent"], job["version"])
-                validate_definition(db, persona, definition)
+                validate_current(db, persona, definition)
                 stage = job["stage"]
                 if stage == "EVALUATING":
                     result = evaluate(definition, policy(db))

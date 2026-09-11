@@ -145,12 +145,15 @@ def test_capability_request_admin_approve_and_revoke(client):
     assert 'restricted-insights' not in {t['id'] for t in client.get('/api/build-options?foundation_id=knowledge').json()['choices']['tools']}
 
 def test_rejection_reason_and_external_data_policy(client):
-    login(client,'sam');r=client.post('/api/requests',json={'component_id':'external-gemini','reason':'Try external model route'}).json()
+    # Tightened catalog contract: forbidden metadata/request IDs are not discoverable.
+    login(client,'sam')
+    assert client.post('/api/requests',json={'component_id':'external-gemini','reason':'Try external model route'}).status_code == 404
+    assert not any(c['id']=='external-gemini' for c in client.get('/api/capabilities').json())
+    r=client.post('/api/requests',json={'component_id':'restricted-insights','reason':'Review strategy insights'}).json()
     login(client,'admin')
     path='/api/admin/requests/'+r['id']+'/decision'
-    assert client.post(path,json={'approve':True,'reason':'Attempt data-policy override'}).status_code==403
-    assert client.post('/api/admin/grants',json={'persona_id':'sam','component_id':'external-gemini','enabled':True}).status_code==403
-    assert client.post(path,json={'approve':False,'reason':'Workspace forbids external data egress'}).status_code==200
+    assert client.post('/api/admin/grants',json={'persona_id':'sam','component_id':'external-gemini','enabled':True}).status_code in (403,404)
+    assert client.post(path,json={'approve':False,'reason':'Workspace forbids this capability'}).status_code==200
     login(client,'sam');assert 'forbids' in client.get('/api/requests').json()[0]['decision']
 
 def test_catalog_versioning_and_policy_minimum(app,client,payload):

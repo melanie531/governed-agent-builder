@@ -1,5 +1,9 @@
 # Governed Agent Builder
 
+## New source-only AI Catalog milestone
+
+See [Live capabilities](docs/LIVE-CAPABILITIES.md) for the permission-aware catalog, durable access requests, SDK-validated metadata/deployment adapter boundaries, and explicit remaining live integration work. **Not deployed / live untested.** Existing Studio authentication and deployed fixture versions are unchanged.
+
 ## Portable cloud source handoff
 
 For the current guarded serverless deployment, start with
