@@ -35,6 +35,24 @@ Changed backend source SHA-256 values:
 
 Readback confirmed unchanged Pool configuration/identity and client callback/logout URLs, the added client scope, active encrypted Verification table with TTL enabled and no stream/backups, actual Auth-only table IAM access, and auth routes/Lambda permissions. The published index matched the local build. Public login returned scoped PKCE S256; verification status and both POST routes returned 401 without a cookie, including invalid POST bodies. GET/POST smoke checks of `/api`, me, agents, admin catalog, jobs, exports, and unknown API paths all returned 401. Pending-cookie enforcement is covered offline; no pending user session was created in the cloud.
 
+### Independent continuation readback
+
+The continuation recovered the prior successful update instead of executing a duplicate change set. Fresh validation again passed 178 backend tests, six Chrome browser tests, and the TypeScript/Vite build. Source implementation commit: `e215d1e82364bb382a54fe9fc10b210d22862bd5`.
+
+All 58 pre-existing resource physical IDs match their original creation events; no delete events occurred. BPA remains `block-ingress`. The saved evaluated change set has seven additions and ten non-replacing modifications, no Pool modification. The three dependency effects are narrowly constrained: `AuthIntegration.IntegrationUri` from `Auth.Arn`, `BusinessIntegration.IntegrationUri` from `Business.Arn`, and `SessionAuthorizer.AuthorizerUri` from `Authorizer.Arn`, all ResourceAttribute / RequiresRecreation Never. No guard was loosened during continuation.
+
+All five downloaded Lambda packages and their backend source members were independently rechecked. The local package dependency lock matches `uv.lock`. Every file fetched through CloudFront matches the fresh build byte-for-byte:
+
+| Served file | SHA-256 |
+| --- | --- |
+| `index.html` | `938362ddf9bc652fbc8b82e83207935b14ea14ca7c0f94caebcf6448b4a03632` |
+| `assets/index-CnzF-Efe.js` | `f361f0abeb2987d375b0a1cf67b14ab816614786d1f34aa607f1e64da77a56f3` |
+| `assets/index-CxpBgIk2.css` | `5c84df3bbbcbe2732de233ecd74b29de31e62a21acc036ed9a4f28138d42c956` |
+
+The actual public browser renders **Sign in / Open Studio**, without a persona selector. Public HTTP verification and business 401 checks were repeated successfully. The UI pending/send/complete flow remains mock-tested, not human-accepted. `work/` and `artifacts/` are ignored; provisioning metadata is preserved and not committed. Local repeat evidence: `artifacts/verification-backend-tests.txt`, `verification-build.txt`, `verification-browser-tests.txt`, `verification-cloud-readback.json`, and `verification-assets-preservation.json`.
+
+Security-first / Well-Architected review: security uses isolated scoped state and fail-closed checks; reliability uses atomic limits, consumption and expiry; operational excellence has repeat tests and downloaded-artifact proof; performance has bounded provider timeouts but is not load-tested; cost and sustainability retain pay-per-request serverless resources without new always-on infrastructure. Non-blocking test dependency deprecations and the existing build chunk-size warning remain.
+
 ## Pending human acceptance and limits
 
 Open https://de32ssfw7gsad.cloudfront.net, select **Sign in / Open Studio**, and use the credentials already stored securely. Complete any first-password setup, select **Send verification code**, and type the emailed code only into the UI. Successful verification should load the workspace. Do not send credentials or OTPs to an agent.

@@ -8,5 +8,6 @@ __pycache__/
 *.sqlite*
 .env*
 artifacts/
+work/
 playwright-report/
 test-results/
