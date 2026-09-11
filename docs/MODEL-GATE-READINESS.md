@@ -176,3 +176,50 @@ are edited. Existing Well-Architected caveats above remain in force.
 Validation: 64 focused tests passed; full suite run once, 751 passed with
 3 baseline deprecation warnings. Final preparation-receipt cleanup rechecked
 with the 64 focused tests. Cloud execution still pending at this source commit.
+
+## Deployed candidate receipt, continuation
+
+Fixed source `d8e85daad337edbccc1c2afac8c20b44c23b94cc` pushed before execution. Existing ChangeSet
+`model-gate-1789149160` executed exactly once, request
+`0a7e30c1-1abd-4d20-bd0b-18fd48b0fa8f`. Stack reached UPDATE_COMPLETE with exact desired
+template readback. Subsequent DescribeChangeSet returned ChangeSetNotFound,
+so no post-execution ChangeSet status is claimed and no retry was attempted.
+
+Only ModelGate, ModelGateRole and ModelGateLogs added. All preexisting physical
+IDs and stack outputs unchanged. Fully resolved IAM policies/trust match actual
+roles, with only the reviewed exact ModelRole Lambda invoke addition.
+FoundationRole IAM and ToolPolicy Cedar digests unchanged, including actual
+principals/resources. Both ENFORCE attachments and CreateInference Deny remain.
+Studio account/CFN/CloudFront privately verified before execution and after probes.
+No Studio/Cognito/users/data/SSM, trust, BPA, runtime or UI-fixture mutations.
+
+Lambda ZIP SHA256 `f154b8b37dd88a266a1dcb1837fd7bfcafc56dba2a7c3c1334a6701827ed8044` matches CodeSha256.
+Sole index.py bytes match template/source SHA256
+`84718a6d19b39659a420db0811990a9d0f2ce0ea6bf79ed0ccec00a091632669`.
+Actual interceptor config exactly REQUEST, same Lambda ARN, no request headers.
+
+| Actual inference-route negative | HTTP/code | Correlated request ID |
+|---|---|---|
+| unknown_model | 403 / MODEL_GATE_DENIED | `c06a3251-5087-4266-ad10-3f2da776c638` |
+| bad_json | 403 / MODEL_GATE_DENIED | `41b666bd-b613-4704-9d6b-61c1638dd453` |
+| stream_true | 403 / MODEL_GATE_DENIED | `179fc84d-43ac-4059-ae93-325e62f84c51` |
+| excessive_max_tokens | 403 / MODEL_GATE_DENIED | `f3909605-b881-4ab0-a6ba-2b5f9cd72b13` |
+
+All four request IDs matched safe MODEL_GATE_DENIED interceptor logs. The first
+read had two; one delayed metadata-only read found all four. A log continuation
+token remained, so unrelated log completeness is not claimed. No pre-interceptor
+ENFORCE block observed for these four requests. Documented short-circuit contract
+plus correlated decisions supports interceptor rejection; independent provider/
+target non-invocation telemetry remains UNPROVEN, not inferred from 403 or tokens.
+
+This slice: one execute, four negative Gateway requests, zero positive requests,
+zero inference grants, zero fault-injection mutations, zero unknown-outcome
+retries. Cumulative five Gateway requests includes prior undeployed 404 baseline.
+Actual billed cost and remaining budget unknown.
+
+Remaining exact evidence: Lambda timeout, throttling and malformed-service
+response fail-closed experiments through actual inference route; independent
+target/provider non-invocation evidence; applicable approval/peer review before
+any inference Allow diff. None prepared. Candidate enforcement progress only,
+NOT whole-platform acceptance. Private artifacts/model-gate/proof.json retains
+write states and detailed sanitized evidence.
