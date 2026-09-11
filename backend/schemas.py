@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -24,6 +24,20 @@ class Rubric(Strict):
     criteria: str = Field(default="Answers are accurate, concise, and grounded in evidence.", max_length=4000)
     minimum_score: float = Field(default=1, ge=0, le=1)
 
+class ResearchInput(Strict):
+    question: str = Field(min_length=5, max_length=2000)
+    urls: list[str] = Field(min_length=1, max_length=5)
+    report_format: Literal["text", "json"] = "text"
+
+    @field_validator("urls")
+    @classmethod
+    def public_urls(cls, values):
+        from tools.web_fetch.handler import normalize_url
+        normalized = [normalize_url(value) for value in values]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Duplicate source URL")
+        return normalized
+
 class DefinitionInput(Strict):
     name: str = Field(min_length=1, max_length=100)
     foundation_id: str
@@ -36,8 +50,18 @@ class DefinitionInput(Strict):
     output_format: Literal["text", "json"] = "text"
     dataset: list[Case] = Field(min_length=1, max_length=20)
     rubric: Rubric
-    source: Literal["synthetic-local-only"] = "synthetic-local-only"
+    source: Literal["synthetic-local-only", "approved-public-web"] = "synthetic-local-only"
+    research: ResearchInput | None = None
     base_version: int | None = None
+
+    @model_validator(mode="after")
+    def research_boundary(self):
+        if self.foundation_id == "web-research":
+            if self.research is None or self.source != "approved-public-web":
+                raise ValueError("Web research requires pinned research inputs")
+        elif self.research is not None or self.source != "synthetic-local-only":
+            raise ValueError("Fixture foundations cannot execute web research")
+        return self
 
     @field_validator("dataset")
     @classmethod

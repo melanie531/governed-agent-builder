@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .catalog import PERSONAS, SAMPLE_DATASET
+from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
 from .harness import evaluate, run_case
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
@@ -118,6 +119,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         return item
 
     def validate_current(db, persona, definition):
+        if definition.get("foundation_id") == "web-research" or definition.get("research") is not None:
+            raise HTTPException(503, "NOT_CONFIGURED: Web research Gateway deployment and live authorization are not connected; no fixture fallback")
         if catalog_mode == "live":
             raise HTTPException(503, "Live execution is not integrated; fixture execution is forbidden in live catalog mode")
         return validate_definition(db, persona, definition)
@@ -332,6 +335,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def me(request: Request):
         return {"persona": who(request), "csrf": request.state.csrf, "mode": mode_label}
 
+    @app.get("/api/foundations/web-research")
+    def web_research_foundation(request: Request):
+        who(request)
+        from .schemas import ResearchInput
+        return {**WEB_FOUNDATION, "input_schema": ResearchInput.model_json_schema(),
+                "report_skills": REPORT_SKILLS}
+
     @app.get("/api/build-options")
     def options(request: Request, foundation_id: str | None = None, model_id: str | None = None):
         persona = who(request)
@@ -345,6 +355,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if catalog_mode == "live":
                 catalog_records(db)  # Fail closed, never return seeded build choices.
                 return {"foundations": [], "choices": choices, "sample_dataset": [], "policy": policy(db), "integration_status": "Live composition/execution not yet enabled"}
+            if foundation_id == "web-research":
+                return {"foundations": [*foundations, WEB_FOUNDATION], "choices": choices, "sample_dataset": SAMPLE_DATASET, "integration_status": "NOT_CONFIGURED"}
             if foundation_id:
                 foundation = resource(db, "foundations", foundation_id)
                 if not foundation["approved"]:
@@ -355,13 +367,26 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                     component = json.loads(row[0])
                     if allowed(db, persona, component, foundation):
                         choices[component["kind"] + "s"].append(component)
-            return {"foundations": foundations, "choices": choices, "sample_dataset": SAMPLE_DATASET, "policy": policy(db), "catalog_revision": digest([foundations, choices]), "recalculate_on": ["foundation_id", "model_id"]}
+            return {"foundations": [*foundations, WEB_FOUNDATION], "choices": choices, "sample_dataset": SAMPLE_DATASET, "policy": policy(db), "catalog_revision": digest([foundations, choices]), "recalculate_on": ["foundation_id", "model_id"]}
 
     def save_definition(db, persona, data, agent_id=None):
         if persona["role"] != "business":
             raise HTTPException(403, "A business workspace membership is required to create agents")
-        payload = data.model_dump(exclude={"base_version"})
-        foundation = validate_current(db, persona, payload)
+        payload = data.model_dump(exclude={"base_version"}, exclude_none=True)
+        if payload['foundation_id'] == WEB_FOUNDATION['id']:
+            # Persist a source draft, never a fixture-executable or approved live binding.
+            if (payload['foundation_version'] != WEB_FOUNDATION['version']
+                    or payload['model_id'] or payload['tools'] or len(payload['skills']) != 1
+                    or payload['skills'][0] not in REPORT_SKILLS):
+                raise HTTPException(422, "Unconfigured research draft requires one packaged skill and no fabricated model/tool bindings")
+            skill_id = payload['skills'][0]
+            if payload['component_versions'] != {skill_id: REPORT_SKILLS[skill_id]['version']}:
+                raise HTTPException(422, "Pinned packaged skill version required")
+            foundation = WEB_FOUNDATION
+            payload['integration_status'] = 'NOT_CONFIGURED'
+            payload['skill_artifact'] = skill_binding(skill_id)
+        else:
+            foundation = validate_current(db, persona, payload)
         if agent_id:
             agent = agent_access(db, persona, agent_id)
             if data.base_version != agent["current_version"]:
@@ -479,6 +504,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             agent = agent_access(db, who(request), agent_id)
             definition = get_version(db, agent_id, agent["current_version"])
+            if definition.get("foundation_id") == "web-research":
+                raise HTTPException(503, "NOT_CONFIGURED: use the source-only research packager; fixture exports are forbidden")
             export_policy = policy(db)
             audit(db, who(request)["id"], "export", agent_id, f"version={agent['current_version']}")
         buffer = io.BytesIO()

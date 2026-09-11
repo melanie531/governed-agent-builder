@@ -1,0 +1,1 @@
+[{"name":"web_fetch","description":"Fetch one operator-allowlisted public HTTPS page. No redirects, credentials, queries, cookies or browser automation.","inputSchema":{"type":"object","properties":{"url":{"type":"string","maxLength":2048}},"required":["url"],"additionalProperties":false}}]

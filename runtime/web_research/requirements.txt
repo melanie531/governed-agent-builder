@@ -1,0 +1,2 @@
+# Canonical hash-locked runtime dependency set.
+-r requirements.lock
