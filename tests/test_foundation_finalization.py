@@ -211,7 +211,7 @@ def test_live_enabled_submission_requires_actual_linux(app,client,payload):
     with app.state.store.tx() as db:
         finalize_artifact(db,ADMIN,data,owner,PLATFORM,verifier=verified)
         jobs=FoundationJobs(None,None,SimpleNamespace(),enabled=True)
-        with pytest.raises(HTTPException,match='LINUX_EXECUTION_NOT_READY'):
+        with pytest.raises(HTTPException,match='FOUNDATION_POLICY_APPROVAL_REQUIRED'):
             jobs.approve_request(db,definition,owner)
 
 

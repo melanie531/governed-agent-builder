@@ -28,6 +28,7 @@ def inputs(definition):
 
 
 def test_real_handler_workflow_offline_only(cloud, payload, monkeypatch):
+    monkeypatch.setenv("FOUNDATION_M0_PROBE_ENABLED", "1")
     app, client, _ = cloud
     sign_in(cloud)
     definition = create(client, payload)
@@ -36,7 +37,7 @@ def test_real_handler_workflow_offline_only(cloud, payload, monkeypatch):
     assert client.post('/api/admin/foundation-sources',json=source.model_dump()).status_code == 403
     sign_in(cloud,subject='synthetic-reviewer',group='studio-admin')
     assert client.post('/api/admin/foundation-sources',json=source.model_dump()).status_code == 200
-    response = client.post('/api/admin/foundation-approvals',json=review.model_dump())
+    response = client.post('/api/internal/m0/foundation-approvals',json=review.model_dump())
     assert response.status_code == 200, response.text
     record = response.json()
     assert record['receipt']['approver'] == 'synthetic-reviewer'
@@ -47,8 +48,8 @@ def test_real_handler_workflow_offline_only(cloud, payload, monkeypatch):
     assert 'runtime' not in record and 'package_digest' not in record
     with app.state.store.tx() as db:
         assert runs.get(db,'foundation-approved:'+definition['digest']) == record
-    assert client.post('/api/admin/foundation-approvals',json=review.model_dump()).status_code == 409
-    assert client.post('/api/admin/foundation-approvals',json={**review.model_dump(),'role':'admin'}).status_code == 422
+    assert client.post('/api/internal/m0/foundation-approvals',json=review.model_dump()).status_code == 409
+    assert client.post('/api/internal/m0/foundation-approvals',json={**review.model_dump(),'role':'admin'}).status_code == 422
 
 
 @pytest.mark.parametrize('bad', ['owner','workspace','digest','grant','catalog','source','platform','revision','policy','epoch'])
@@ -86,7 +87,7 @@ def test_source_digest_and_unauthorized_registration(app,client,payload):
 def test_local_demo_admin_cannot_mint_real_approval(client, payload):
     login(client); source, review = inputs(create(client,payload)); login(client,'admin')
     assert client.post('/api/admin/foundation-sources',json=source.model_dump()).status_code == 403
-    assert client.post('/api/admin/foundation-approvals',json=review.model_dump()).status_code == 403
+    assert client.post('/api/internal/m0/foundation-approvals',json=review.model_dump()).status_code == 403
 
 
 def test_dynamo_cas_race_preserves_single_review(cloud,payload):

@@ -110,7 +110,7 @@ def compile_approval(db, actor, data, owner, platform):
     if (old or {}).get('revision', 0) != data.expected_revision or runs.get(db, 'foundation-review:'+data.request_id):
         raise HTTPException(409, 'APPROVAL_REPLAY_OR_REVISION_CONFLICT')
     now = time.time()
-    receipt = {'approver': actor['id'], 'approver_role': actor['role'], 'request_id': data.request_id,
+    receipt = {'provenance': 'M0', 'approver': actor['id'], 'approver_role': actor['role'], 'request_id': data.request_id,
                'definition_digest': data.definition_digest, 'version': data.version, 'reviewed_at': now,
                'source_revision': source['revision'], 'reason': data.reason}
     result = {'revision': data.expected_revision+1, 'definition_digest': data.definition_digest,
@@ -276,7 +276,11 @@ def finalize_artifact(db, actor, data, owner, platform, *, verifier=verify_final
     foundation = validate_definition(db, owner, definition)
     source = runs.get(db, 'foundation-source:' + definition['foundation_id']) or {}
     receipt = approved.get('receipt') or {}
-    if (approved['revision'] != data.approval_revision or approved['expires_at'] <= time.time()
+    automatic = receipt.get('provenance') in ('policy-admission', 'human-exception')
+    if automatic:
+        from .self_service_admission import check_current
+        check_current(db, owner, definition, approved)
+    if (approved['revision'] != data.approval_revision or (not automatic and approved['expires_at'] <= time.time())
             or approved['policy_version'] != runs.get(db, 'policy')['version']
             or approved['epoch'] != (runs.get(db, 'foundation-epoch') or 0)
             or approved['source_revision'] != source.get('revision')
@@ -285,8 +289,8 @@ def finalize_artifact(db, actor, data, owner, platform, *, verifier=verify_final
             or approved['manifest_digest'] != digest(approved['config'])
             or approved['admission'] != admission_config(approved['config'], platform['endpoint'], platform['role'])
             or receipt.get('definition_digest') != data.definition_digest
-            or receipt.get('approver_role') != 'admin' or not receipt.get('approver')
-            or receipt != runs.get(db, 'foundation-review:' + receipt.get('request_id', ''))
+            or (not automatic and (receipt.get('approver_role') != 'admin' or not receipt.get('approver')
+                or receipt != runs.get(db, 'foundation-review:' + receipt.get('request_id', ''))))
             or any(source.get('catalog', {}).get(i) != digest(resource(db, 'components', i))
                    for i in [definition['model_id'], *definition['tools'], *definition['skills']])):
         raise HTTPException(409, 'CURRENT_PROTECTED_APPROVAL_REQUIRED')

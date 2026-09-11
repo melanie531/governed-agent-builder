@@ -82,7 +82,10 @@ def current(db, row):
         raise Denied('MEMBERSHIP_REQUIRED')
     validate_definition(db, persona, json.loads(version['body']))
     approved = get(db, 'foundation-approved:' + row['definition_digest'])
-    if approved != row['approved'] or approved['expires_at'] <= time.time():
+    from .self_service_admission import check_current
+    from .foundation_approval import finalized_artifact
+    check_current(db, persona, json.loads(version['body']), approved or {})
+    if finalized_artifact(db, approved) != row['approved']:
         raise Denied('APPROVED_ARTIFACT_REVOKED')
     session_auth = db.select('job_authority', where=[('id', '=', row['run_ref'])]).fetchone() if principal else None
     if principal:

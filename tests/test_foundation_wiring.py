@@ -83,36 +83,32 @@ class Runtime:
 
 
 def install(store, definition, tmp_path, evidence=False):
-    raw = config()
-    raw['foundation']['digest'] = source_digest()
-    raw['limits']['maxModelCalls'] = 1
-    raw['systemPrompt'] = [{'text': definition['prompt']}]
-    raw['model']['id'] = definition['model_id']
-    raw['skills'][0]['id'] = definition['skills'][0]
-    raw['evaluation']['dataset']['digest'] = digest(definition['dataset'])
-    raw['evaluation']['rubric']['digest'] = digest(definition['rubric'])
+    from tests.test_self_service_admission import prepare
+    from backend.self_service_admission import admit
+    from tests.test_foundation_approval import PLATFORM
+    from unittest.mock import patch
+    with patch.dict(PLATFORM, role=ROLE):
+        owner = prepare(store, definition)
+    with store.tx() as db:
+        approved = admit(db, owner, definition['agent_id'], definition['version'])
+    raw = approved['config']
     saved = save_config(raw, tmp_path)
     network = {'networkMode': 'VPC', 'networkModeConfig': {'subnets': ['subnet-synthetic'], 'securityGroups': ['sg-synthetic']}}
-    approved = {'config': raw, 'manifest_digest': saved.stem, 'saved_manifest': str(saved),
-                'definition_digest': definition['digest'], 'owner': definition['owner'],
-                'workspace': definition['workspace'], 'epoch': 0, 'policy_version': 1,
-                'expires_at': time.time()+3600, 'tool_ids': definition['tools'],
-                'package_digest': 'e'*64, 'artifact_key': 'approved/ready.zip',
-                'artifact_version': 'synthetic-version', 'artifact_source_digest': source_digest(),
-                'role': ROLE, 'network': network, 'reservation_usd': '0.01',
-                'runtime_admission_reviewed': True,
-                'cost_envelope': {'reviewed': True, 'maximum_usd': '0.01', 'rate_card_digest': 'f'*64,
-                    'dimensions': ['model', 'gateway', 'policy', 'runtime', 'exchange', 'telemetry', 'storage']}}
     with store.tx() as db:
-        runs.put(db, 'foundation-approved:' + definition['digest'], approved)
-        # Synthetic protected binding/evidence ONLY for downstream job unit tests.
+        # Synthetic deployment and Linux evidence, not a real producer or cloud pass.
+        deployment_settings = {'network': network, 'reservation_usd': '0.01',
+            'cost_envelope': {'reviewed': True, 'maximum_usd': '0.01', 'rate_card_digest': 'f'*64,
+                'dimensions': ['model', 'gateway', 'policy', 'runtime', 'exchange', 'telemetry', 'storage']}}
+        runs.put(db, 'foundation-deployment', deployment_settings)
         from backend.foundation_approval import LINUX_TARGET
-        binding = {**approved, 'approval_digest': digest(approved),
-                   'admission_digest': 'a'*64, 'target': LINUX_TARGET,
-                   'deployment_digest': digest(runs.get(db, 'foundation-deployment')),
-                   'source_record_digest': digest(None)}
+        binding = {'package_digest': 'e'*64, 'artifact_key': 'approved/ready.zip',
+                   'artifact_version': 'synthetic-version', 'artifact_source_digest': raw['foundation']['digest'],
+                   'manifest_digest': approved['manifest_digest'], 'approval_digest': digest(approved),
+                   'admission_digest': digest(approved['admission']), 'target': LINUX_TARGET,
+                   'deployment_digest': digest(deployment_settings),
+                   'source_record_digest': digest(runs.get(db, 'foundation-source:research'))}
         runs.put(db, 'foundation-artifact:' + definition['digest'], binding)
-        runs.put(db, 'foundation-linux:' + approved['package_digest'], {
+        runs.put(db, 'foundation-linux:' + binding['package_digest'], {
             **{k: binding[k] for k in ('package_digest', 'manifest_digest', 'admission_digest',
                 'artifact_source_digest', 'artifact_version', 'target')},
             'status': 'PASS', 'execution': 'ACTUAL_LINUX', 'entrypoint_passed': True,
@@ -124,7 +120,7 @@ def install(store, definition, tmp_path, evidence=False):
         frozenset([ROLE]), 'synthetic-artifacts', allow_mutations=True), network)
     def readback(row):
         return {'run_ref': row['run_ref'], 'definition_digest': definition['digest'],
-                'manifest_digest': saved.stem, 'runtime_version': '3', 'epoch': 0, 'policy_version': 1,
+                'manifest_digest': saved.stem, 'runtime_version': '3', 'epoch': approved['epoch'], 'policy_version': 1,
                 'dataset_digest': digest(definition['dataset']), 'rubric_digest': digest(definition['rubric']),
                 'trace_readback': True, 'otel_delivery': True, 'trace_ids': ['a'*32],
                 'evaluation_passed': True, 'required_evaluations_complete': True,
@@ -185,7 +181,7 @@ def reserved(cloud, payload, tmp_path):
     service, control, runtime = install(app.state.store, definition, tmp_path)
     with app.state.store.tx() as db:
         service.enqueue(db, 'synthetic-run', definition,
-            {'id': definition['owner'], 'workspace': definition['workspace']}, time.time()+300)
+            {'id': definition['owner'], 'workspace': definition['workspace'], 'role': 'business', 'external_allowed': False}, time.time()+300)
         # Hosted authority is the same session snapshot used by the real API.
         from backend.hosted_auth import SESSION_COOKIE, sha
         db.insert('job_authority', {'id': 'synthetic-run', 'session_hash': sha(client.cookies.get(SESSION_COOKIE))})
@@ -224,7 +220,7 @@ def test_exchange_stale_revoke_cross_workspace_denied(cloud, payload, tmp_path, 
     with store.tx() as db:
         if tamper == 'workspace': db.update('agents', {'workspace': 'other'}, where=[('id', '=', definition['agent_id'])])
         if tamper == 'version': db.update('agents', {'current_version': 2}, where=[('id', '=', definition['agent_id'])])
-        if tamper == 'epoch': runs.put(db, 'foundation-epoch', 1)
+        if tamper == 'epoch': runs.put(db, 'foundation-epoch', 999)
         if tamper == 'expired':
             row['deadline'] = 0
             runs.put(db, 'foundation-run:synthetic-run', row)
@@ -251,13 +247,14 @@ def test_atomic_budget_fence_prevents_double_reservation(cloud, payload, tmp_pat
     service, _, _ = install(app.state.store, definition, tmp_path)
     with app.state.store.tx() as db:
         approved = runs.get(db, 'foundation-approved:' + definition['digest'])
-        approved['reservation_usd'] = '5'
-        runs.put(db, 'foundation-approved:' + definition['digest'], approved)
+        settings = runs.get(db, 'foundation-deployment'); settings['reservation_usd'] = '5'
+        runs.put(db, 'foundation-deployment', settings)
         binding = runs.get(db, 'foundation-artifact:' + definition['digest'])
         binding['approval_digest'] = digest(approved)
+        binding['deployment_digest'] = digest(settings)
         runs.put(db, 'foundation-artifact:' + definition['digest'], binding)
 
-    persona = {'id': definition['owner'], 'workspace': definition['workspace']}
+    persona = {'id': definition['owner'], 'workspace': definition['workspace'], 'role': 'business', 'external_allowed': False}
     a, b = DynamoUnit(app.state.store.table), DynamoUnit(app.state.store.table)
     service.enqueue(a, 'first', definition, persona, time.time()+300)
     service.enqueue(b, 'second', definition, persona, time.time()+300)

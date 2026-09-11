@@ -15,10 +15,11 @@ from . import foundation_runs as runs
 
 
 class FoundationJobs:
-    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None):
+    def __init__(self, deployment, runtime_client, target, *, enabled=False, evidence_reader=None, artifact_reader=None, policy_evaluator=None):
         self.deployment, self.runtime_client, self.target = deployment, runtime_client, target
         self.enabled, self.evidence_reader = enabled, evidence_reader
         self.artifact_reader = artifact_reader
+        self.policy_evaluator = policy_evaluator
 
     def approve_request(self, db, definition, persona):
         if not self.enabled:
@@ -26,6 +27,8 @@ class FoundationJobs:
         approved = runs.get(db, 'foundation-approved:' + definition['digest'])
         if not approved or approved.get('definition_digest') != definition['digest']:
             raise HTTPException(503, 'APPROVED_ARTIFACT_REQUIRED')
+        from .self_service_admission import check_current
+        check_current(db, persona, definition, approved)
         from .foundation_approval import finalized_artifact
         approved = finalized_artifact(db, approved)
         raw = approved['config']
@@ -34,7 +37,6 @@ class FoundationJobs:
                 or cfg.limits.maxModelCalls != 1 or len(definition['dataset']) != 1
                 or approved['policy_version'] != runs.get(db, 'policy')['version']
                 or approved['epoch'] != (runs.get(db, 'foundation-epoch') or 0)
-                or approved['expires_at'] <= time.time()
                 or raw['systemPrompt'] != [{'text': definition['prompt']}]
                 or cfg.evaluation.dataset.digest != digest(definition['dataset'])
                 or cfg.evaluation.rubric.digest != digest(definition['rubric'])
@@ -81,6 +83,16 @@ class FoundationJobs:
                     definition['digest'], persona['id'], persona['workspace']):
                 raise Denied('RESERVATION_IDEMPOTENCY_CONFLICT')
             return
+        from .self_service_admission import admit
+        if not self.enabled:
+            raise HTTPException(503, 'LIVE_DISABLED: no fixture fallback')
+        approved = admit(db, persona, definition['agent_id'], definition['version'], evaluator=self.policy_evaluator)
+        if not runs.get(db, 'foundation-artifact:' + definition['digest']):
+            runs.put(db, 'foundation-pending:' + job_id, {
+                'definition': definition, 'owner': persona['id'], 'agent': definition['agent_id'],
+                'version': definition['version'], 'deadline': deadline})
+            self.transition(db, job_id, 'WAIT_ARTIFACT')
+            return
         approved = self.approve_request(db, definition, persona)
         row = runs.reserve(db, job_id=job_id, definition=definition, persona=persona,
                            approved=approved, epoch=approved['epoch'], deadline=deadline)
@@ -94,6 +106,30 @@ class FoundationJobs:
         with store.tx() as db:
             job = dict(db.select('jobs', where=[('id', '=', job_id)]).fetchone())
             row = runs.get(db, 'foundation-run:' + job_id)
+            if job['stage'] == 'WAIT_ARTIFACT':
+                pending = runs.get(db, 'foundation-pending:' + job_id)
+                if not pending or pending['deadline'] <= time.time():
+                    raise Denied('AUTHORITY_EXPIRED')
+                from .catalog import PERSONAS
+                principal = db.select('principals', where=[('id', '=', pending['owner'])]).fetchone()
+                if principal and principal['expires'] <= time.time():
+                    raise Denied('MEMBERSHIP_EXPIRED')
+                persona = json.loads(principal['body']) if principal else PERSONAS.get(pending['owner'])
+                if not persona or (pending['definition'].get('mode') == 'CLOUD-HOSTED DEMO' and not principal):
+                    raise Denied('MEMBERSHIP_REQUIRED')
+                if principal:
+                    auth = db.select('job_authority', where=[('id', '=', job_id)]).fetchone()
+                    session = db.select('hosted_sessions', where=[('id_hash', '=', auth['session_hash'])]).fetchone() if auth else None
+                    if not session or session['expires'] <= time.time() or session['subject'] != pending['owner']:
+                        raise Denied('SESSION_REVOKED')
+                from .self_service_admission import check_current
+                approved = runs.get(db, 'foundation-approved:' + pending['definition']['digest'])
+                check_current(db, persona, pending['definition'], approved)
+                if not runs.get(db, 'foundation-artifact:' + pending['definition']['digest']):
+                    return  # Mechanical producer not yet delivered; no ready bypass.
+                self.enqueue(db, job_id, pending['definition'], persona, pending['deadline'])
+                self.transition(db, job_id, 'VALIDATING')
+                return
             if job['stage'] in ('LIVE_PASS', 'BLOCKED'):
                 return
             runs.current(db, row)

@@ -95,7 +95,7 @@ def test_same_agent_version_role_reuse_keeps_per_job_reservations(cloud, payload
     payload['dataset'] = payload['dataset'][:1]
     definition = create(client, payload)
     service, _, _ = install(app.state.store, definition, tmp_path)
-    persona = {'id': definition['owner'], 'workspace': definition['workspace']}
+    persona = {'id': definition['owner'], 'workspace': definition['workspace'], 'role': 'business', 'external_allowed': False}
     with app.state.store.tx() as db:
         service.enqueue(db, 'one', definition, persona, time.time()+300)
         service.enqueue(db, 'two', definition, persona, time.time()+300)

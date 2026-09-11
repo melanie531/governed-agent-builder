@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact
+from . import self_service_admission as self_service
 from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
@@ -180,7 +181,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 # safely because fixture execution has no external side effects.
                 for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchall():
                     from .foundation_runs import get as get_run
-                    if get_run(db, 'foundation-run:' + job['id']):
+                    if get_run(db, 'foundation-run:' + job['id']) or get_run(db, 'foundation-pending:' + job['id']):
                         continue
                     db.update('jobs', {'stage': 'VALIDATING', 'updated': time.time()}, where=[('id', '=', job['id'])])
                     event(db, job["id"], "RECOVERED", {"message": "Resumed durable local job after process restart"})
@@ -456,9 +457,12 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             existing = db.select('jobs', where=[('agent', '=', agent_id), ('requester', '=', persona['id']), ('idem', '=', data.idempotency_key)]).fetchone()
             if existing:
                 from .foundation_runs import get as get_run
-                is_live = get_run(db, 'foundation-run:' + existing['id']) is not None
+                is_live = bool(get_run(db, 'foundation-run:' + existing['id']) or get_run(db, 'foundation-pending:' + existing['id']))
                 if existing["version"] != data.version or is_live != (data.execution_mode == 'live'):
                     raise HTTPException(409, "Idempotency key already binds a different version")
+                if is_live:
+                    self_service.check_current(db, persona, definition,
+                        get_foundation_record(db, 'foundation-approved:' + definition['digest']) or {})
                 return {"job_id": existing["id"], "stage": existing["stage"], "reused": True}
             if db.select('jobs', where=[('agent', '=', agent_id), ('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchone():
                 raise HTTPException(409, "A job already owns this agent; wait for completion")
@@ -477,7 +481,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 from .hosted_auth import SESSION_COOKIE, sha
                 db.insert("job_authority", {"id": job_id, "session_hash": sha(request.cookies.get(SESSION_COOKIE, ""))})
         request.app.state.wake.set()
-        return {"job_id": job_id, "stage": "VALIDATING", "reused": False}
+        with store.tx() as db:
+            stage = db.select('jobs', where=[('id', '=', job_id)]).fetchone()['stage']
+        return {"job_id": job_id, "stage": stage, "reused": False}
 
     @app.get("/api/jobs/{job_id}")
     def job_result(job_id: str, request: Request):
@@ -606,11 +612,11 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             return register_source(db, actor, data, platform)
 
-    @app.post("/api/admin/foundation-approvals")
+    @app.post("/api/internal/m0/foundation-approvals")
     def approve_foundation(data: ApproveFoundation, request: Request):
         actor = who(request, True)
-        if not hosted:
-            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        if not hosted or os.getenv("FOUNDATION_M0_PROBE_ENABLED") != "1":
+            raise HTTPException(403, "INTERNAL_M0_PROBE_DISABLED")
         with store.tx() as db:
             definition = get_version(db, data.agent_id, data.version)
             source = get_foundation_record(db, 'foundation-source:'+definition['foundation_id'])
@@ -631,6 +637,37 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
             return finalize_artifact(db, principal(db, actor['id']), data,
                 principal(db, definition['owner']), platform_metadata(source['config']))
+
+    @app.post("/api/admin/foundation-policies")
+    def approve_self_service_policy(data: self_service.FoundationPolicy, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        with store.tx() as db:
+            return self_service.approve_policy(db, actor, data)
+
+    @app.post("/api/agents/{agent_id}/admission")
+    def domain_admission(agent_id: str, data: self_service.AdmissionRequest, request: Request):
+        with store.tx() as db:
+            record = self_service.admit(db, who(request), agent_id, data.version,
+                evaluator=getattr(foundation_jobs, 'policy_evaluator', None))
+            return {"receipt": record['receipt'], "status": "ADMITTED_NOT_RELEASED"}
+
+    @app.post("/api/agents/{agent_id}/exceptions", status_code=201)
+    def domain_exception(agent_id: str, data: self_service.ExceptionRequest, request: Request):
+        with store.tx() as db:
+            return self_service.request_exception(db, who(request), agent_id, data)
+
+    @app.post("/api/admin/domain-exceptions/{request_id}/decision")
+    def domain_exception_decision(request_id: str, data: self_service.ExceptionDecision, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        with store.tx() as db:
+            record = get_foundation_record(db, 'domain-exception:' + request_id)
+            if not record:
+                raise HTTPException(404, "Exception request not found")
+            return self_service.decide_exception(db, actor, request_id, data, principal(db, record['creator']))
 
     @app.post("/api/admin/grants")
     def grant(data: Grant, request: Request):
@@ -726,7 +763,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def step_job(job_id):
         from .foundation_runs import get as get_run
         with store.tx() as db:
-            live_run = get_run(db, 'foundation-run:' + job_id)
+            live_run = get_run(db, 'foundation-run:' + job_id) or get_run(db, 'foundation-pending:' + job_id)
         if live_run:
             try:
                 if foundation_jobs is None:
