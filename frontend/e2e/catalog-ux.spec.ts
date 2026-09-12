@@ -29,6 +29,29 @@ test('five resource categories, actual declared operations, stable draft selecti
  await page.getByRole('dialog').evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).map(a=>a.finished.catch(()=>{})));});
  const surface=page.getByRole('dialog').locator('[class*="awsui_container_"]').first();
  await expect(surface).toHaveCSS('background-color','rgb(255, 255, 255)');await expect(surface).toHaveCSS('opacity','1');
+ for(const width of [1365,390]){
+  await page.setViewportSize({width,height:1080});
+  const groups=page.getByTestId('catalog-operation');await expect(groups).toHaveCount(5);
+  await expect(page.getByRole('dialog').getByRole('table')).toHaveCount(0);
+  for(const t of tools.tools){
+   const group=page.getByRole('group',{name:`Operation: ${t.name}`,exact:true});
+   await expect(group).toHaveAttribute('data-operation-id',parent.id+':tool:'+t.name);
+   await expect(group.getByRole('button',{name:'Description and schemas',exact:true})).toHaveAttribute('aria-expanded','false');
+   await expect(group.getByLabel('Access',{exact:true})).toHaveText('requestable');
+   await expect(group.getByLabel('Readiness',{exact:true})).toHaveText('Not ready');
+   for(const name of ['Request access','Add to draft (not deployment)']){
+    const button=group.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
+    const rect=await button.boundingBox();const modal=await page.getByRole('dialog').boundingBox();
+    expect(rect).not.toBeNull();expect(modal).not.toBeNull();
+    expect(rect!.x).toBeGreaterThanOrEqual(Math.max(0,modal!.x));expect(rect!.x+rect!.width).toBeLessThanOrEqual(Math.min(width,modal!.x+modal!.width));
+    expect(rect!.y).toBeGreaterThanOrEqual(Math.max(0,modal!.y));expect(rect!.y+rect!.height).toBeLessThanOrEqual(Math.min(1080,modal!.y+modal!.height));
+   }
+  }
+ }
+ const first=page.getByTestId('catalog-operation').first();await first.getByRole('button',{name:'Description and schemas',exact:true}).click();
+ await expect(first.getByText(tools.tools[0].description,{exact:true})).toBeVisible();await expect(first.locator('pre')).toContainText('inputSchema');
+ await first.getByRole('button',{name:'Description and schemas',exact:true}).click();
+ await page.setViewportSize({width:1365,height:1080});
  await page.getByRole('button',{name:'Back to catalog'}).click();await page.getByRole('button',{name:'View details',exact:true}).click();
  await page.getByRole('button',{name:'Add to draft (not deployment)',exact:true}).first().click();await expect(page.getByText(children[0].id+' · 7',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('textbox',{name:/^Your instructions/})).toHaveValue('Preserve the exact QA prompt.');await expect(page.getByRole('textbox',{name:/^Success criteria/})).toHaveValue('Preserve QA evaluation.');await expect(page.getByRole('textbox',{name:/^Evaluation dataset/})).toHaveValue(/qa-case/);

@@ -10,7 +10,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await expect(page.getByText('Native Registry / Model Gateway: NotConnected.',{exact:false})).toBeVisible();
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
  await page.getByRole('button',{name:'View details',exact:true}).click();
- const row=page.getByRole('row').filter({hasText:'Synthetic strategy insights'});
+ const row=page.getByTestId('catalog-operation').filter({hasText:'Synthetic strategy insights'});
  await row.getByRole('button',{name:'Request access'}).click();
  await page.getByRole('textbox',{name:'Workspace business purpose'}).fill('Synthetic catalog browser acceptance purpose');
  await page.getByRole('button',{name:'Submit access request'}).click();
@@ -26,7 +26,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await navigate('AI Catalog');
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
  await page.getByRole('button',{name:'View details',exact:true}).click();
- await expect(page.getByRole('row').filter({hasText:'Synthetic strategy insights'}).getByRole('button',{name:'Use in builder'})).toBeVisible();
+ await expect(page.getByTestId('catalog-operation').filter({hasText:'Synthetic strategy insights'}).getByRole('button',{name:'Use in builder'})).toBeVisible();
  await page.screenshot({path:'../artifacts/ai-catalog-fixture-evidence.png',fullPage:true});
  await page.getByRole('button',{name:'Back to catalog'}).click();
  // Restore the grant changed by this test; later preserved journeys share this fixture server.
