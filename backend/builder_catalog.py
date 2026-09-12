@@ -24,7 +24,7 @@ def choices(db, persona, foundation, records, model_id=None):
     result = {'models': [], 'tools': [], 'skills': []}
     for item in records:
         public = projection(db, persona, item)
-        if not public or item['kind'] + 's' not in result:
+        if not public or item.get('documentation_only') or item['kind'] + 's' not in result:
             continue
         issue = binding(foundation, item, model_id)
         # No inferred compatibility. Catalog still exposes unbound discoverable items.
@@ -66,8 +66,10 @@ def assess(db, persona, definition, foundation, records, previous=None, deployme
         expected = 'model' if cid == definition['model_id'] else 'tool' if cid in definition['tools'] else 'skill'
         if item['kind'] != expected:
             raise HTTPException(422, 'Selected capability kind mismatch')
+        if item.get('documentation_only') and cid not in previous_ids:
+            raise HTTPException(422, 'Model documentation is not a selectable execution route')
         public = projection(db, persona, item)
-        codes = []
+        codes = ['model_documentation_only'] if item.get('documentation_only') else []
         if item['version'] != definition['component_versions'][cid]:
             codes.append('version_changed')
         reason = binding(foundation, item, definition['model_id'])

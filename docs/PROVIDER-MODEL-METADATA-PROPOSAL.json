@@ -1,10 +1,17 @@
 {
+  "schema_version": 3,
+  "source_id": "haiku-runtime-documentation",
   "approved": false,
   "region": "us-west-2",
-  "gateway_id": "gab-foundation-model-m0-gm7vvru7gn",
-  "gateway_arn": "arn:aws:bedrock-agentcore:us-west-2:<EXISTING_STUDIO_ACCOUNT>:gateway/gab-foundation-model-m0-gm7vvru7gn",
-  "target_id": "5ADTYKAJSO",
-  "target_revision": "fc8d1d433f46308d999f08d202a4ec9599d23936934a48583e21a8c063e4528d",
+  "policy": {
+    "approved_provider_api": "bedrock-runtime",
+    "allow_model_documentation": true,
+    "allow_execution": false
+  },
+  "execution_binding": {
+    "status": "NOT_CONFIGURED",
+    "reason": "gateway_runtime_binding_unverified"
+  },
   "scope": {
     "workspaces": [
       "research"
@@ -14,15 +21,7 @@
     "data_handling": "Provider metadata only; no inference or user data sent. Entitlement and execution unverified."
   },
   "snapshot": {
-    "mapping": {
-      "bedrock_model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
-      "mantle_model_id": "anthropic.claude-haiku-4-5",
-      "region": "us-west-2",
-      "api": "Messages",
-      "gateway_path": "/v1/messages",
-      "provider_path": "/anthropic/v1/messages"
-    },
-    "provenance": "AWS provider metadata + configured Gateway route; execution unverified",
+    "provenance": "AWS provider model documentation only; Gateway Runtime binding NOT_CONFIGURED",
     "control_plane_api": "bedrock:GetFoundationModel",
     "request_id": "8cc1c717-6293-4684-aa9f-91c2b34f5db3",
     "document_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html",
@@ -45,10 +44,25 @@
         "INFERENCE_PROFILE"
       ],
       "lifecycle": "ACTIVE"
-    }
+    },
+    "native_model": {
+      "provider_api": "bedrock-runtime",
+      "native_model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "supported_region": "us-west-2",
+      "supported_apis": [
+        "Messages",
+        "Converse",
+        "Invoke"
+      ],
+      "regional_inference": [
+        "GEO",
+        "GLOBAL"
+      ]
+    },
+    "foundation_sha256": "688ad2bae81cd6f4e20e2433733b822fff6669aa31c2952c2745525bf648b39b"
   },
   "exposure": {
-    "provider-model:gab-foundation-model-m0-gm7vvru7gn:5ADTYKAJSO:anthropic.claude-haiku-4-5": {
+    "provider-model:haiku-runtime-documentation:anthropic.claude-haiku-4-5-20251001-v1:0": {
       "workspaces": [
         "research"
       ],
@@ -56,8 +70,8 @@
       "owner": "Studio platform owner",
       "data_handling": "Provider metadata only; no inference or user data sent. Entitlement and execution unverified.",
       "approved": false,
-      "version": "f9fa359c20f7f6dc0728ed57c192e12df1ddbd4813bb77b2d9da1b8806ad0779",
-      "approval_sha256": "f9fa359c20f7f6dc0728ed57c192e12df1ddbd4813bb77b2d9da1b8806ad0779",
+      "version": "d3670519a1107f7a56d81803e93c09941f39fa9dcd9e1fd954dcdf4e0b1d9055",
+      "approval_sha256": "d3670519a1107f7a56d81803e93c09941f39fa9dcd9e1fd954dcdf4e0b1d9055",
       "digest_format": "native-catalog-v2"
     }
   }

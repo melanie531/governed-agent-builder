@@ -593,7 +593,7 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
         reader = model_reader_factory(source) if model_reader_factory else native_model_reader(source, session)
         mp.append(ModelGatewayCatalogProvider(client_factory('bedrock-agentcore-control', region),
                   source['gateway_id'], region, source['exposure'], reader, tuple(source['target_ids']), source['gateway_arn']))
-    pp = [ProviderModelMetadata(client_factory('bedrock-agentcore-control', region), copy.deepcopy(source), account, region)
+    pp = [ProviderModelMetadata(None, copy.deepcopy(source), account, region)
           for source in metadata]
     return LiveCatalog(Sources(mp), Sources(rp), ttl, Sources(pp) if pp else None)
 
@@ -663,7 +663,7 @@ def projection(db, persona, component):
     ready = component.get('integration_ready', True) and component.get('supported', True)
     usable = granted and ready
     requestable = not granted and component.get('requestable', True) and component.get('supported', True)
-    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement')
+    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement', 'native_model_id', 'approved_provider_api', 'supported_apis', 'documentation_only')
     public = {k: component[k] for k in public_fields if k in component}
     public.update({'record_id': component['id'], 'approved': True, 'external': component.get('external', False),
                    'discoverable': True, 'usable': usable, 'granted': granted, 'requestable': requestable,
