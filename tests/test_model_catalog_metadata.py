@@ -3,13 +3,15 @@ from tools.model_gate.handler import handler
 
 
 @pytest.mark.parametrize('method,path,body,allowed', [
-    ('GET', '/inference/v1/models', '', True),
+    ('GET', '/inference/v1/models', '', False),
     ('GET', '/inference/v1/models?x=1', '', False),
     ('GET', '/inference/v1/models/', '', False),
     ('GET', '/inference/v1/messages', '', False),
     ('POST', '/inference/v1/models', '', False),
     ('GET', '/inference/v1/models', 'e30=', False),
     ('GET', '/inference/v1/models', None, False),
+    # Actual Gateway metadata transport shape must NOT be guessed safe.
+    ('POST', '/v1/models', None, False),
 ])
 def test_metadata_route_is_exact(method, path, body, allowed):
     event = {'interceptorInputVersion': '1.0', 'http': {'gatewayRequest': {

@@ -16,7 +16,7 @@ from scripts.foundation_target import StudioTarget, STACK, sanitized
 from scripts.model_gate_probe import inventory, check_quarantine, load_template
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT / 'artifacts/model-catalog-structure'
+WORK = ROOT / 'artifacts/model-catalog-restore'
 
 
 def save(name, value):

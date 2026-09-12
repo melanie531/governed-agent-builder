@@ -39,12 +39,6 @@ def validate(event):
     request = http['gatewayRequest']
     if not isinstance(request, dict) or set(request) - {'path', 'httpMethod', 'body', 'headers'}:
         raise Rejected('EVENT_INVALID')
-    # Documented metadata enumeration only. Never authorize arbitrary GET paths,
-    # query variants or a request body; all inference validation stays below.
-    if request.get('path') == '/inference/v1/models' and request.get('httpMethod') == 'GET':
-        if request.get('body', '') != '':
-            raise Rejected('METADATA_BODY_DENIED')
-        return ''
     if request.get('path') != PATH or request.get('httpMethod') != 'POST':
         raise Rejected('OPERATION_DENIED')
     # Headers are never identity and never forwarded by this function.
@@ -100,13 +94,5 @@ def handler(event, context):
     custom = getattr(getattr(context, 'client_context', None), 'custom', {}) or {}
     rid = custom.get('REQUEST_ID') if isinstance(custom, dict) else None
     rid = rid if isinstance(rid, str) and re.fullmatch(r'[a-fA-F0-9-]{16,64}', rid) else None
-    request = event.get('http', {}).get('gatewayRequest', {}) if isinstance(event, dict) else {}
-    request = request if isinstance(request, dict) else {}
-    # Finite structural diagnostics only; never log headers, raw paths or bodies.
-    method = request.get('httpMethod')
-    path = request.get('path')
-    LOG.info(json.dumps({'decision': code, 'gateway_request_id': rid,
-        'method_shape': method if method in ('GET', 'POST') else 'other',
-        'path_shape': path if path in ('/inference/v1/models', '/v1/models', PATH) else 'other',
-        'body_shape': 'absent' if 'body' not in request else 'null' if request['body'] is None else 'empty' if request['body'] == '' else 'nonempty'}))
+    LOG.info(json.dumps({'decision': code, 'gateway_request_id': rid}))
     return output
