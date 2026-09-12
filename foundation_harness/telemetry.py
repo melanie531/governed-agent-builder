@@ -69,6 +69,14 @@ class ExecutionSpans(SpanProcessor):
             'startTimeUnixNano': span.start_time, 'endTimeUnixNano': span.end_time,
             'attributes': dict(span.attributes)})
 
+    def force_flush(self, timeout_millis=30000):
+        # on_end captures synchronously; there is no pending work to flush.
+        return True
+
+    def shutdown(self):
+        # Keep completed records available for the private invocation response.
+        pass
+
 
 class Telemetry:
     def __init__(self, exporter=None):
