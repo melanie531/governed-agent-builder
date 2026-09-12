@@ -602,6 +602,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             definition = get_version(db, agent_id, agent["current_version"])
             if definition.get("foundation_id") == "web-research":
                 raise HTTPException(503, "NOT_CONFIGURED: use the source-only research packager; fixture exports are forbidden")
+            if definition.get("catalog_mode") == "live":
+                raise HTTPException(503, "NOT_CONFIGURED: live agent archive export is not implemented; only the local fixture harness export is supported")
             export_policy = policy(db)
             audit(db, who(request)["id"], "export", agent_id, f"version={agent['current_version']}")
         buffer = io.BytesIO()
