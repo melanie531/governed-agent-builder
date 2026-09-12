@@ -122,6 +122,8 @@ class HostedAuth:
         claims = self.verify(row["access_token"], "access")
         if claims["sub"] != row["subject"]:
             raise HTTPException(401, "Invalid authentication")
+        from .qa_enrollment import approved
+        approved(self, claims, required=cookie.startswith('qa.'))
         return self.resolve(claims), row["csrf"]
 
     def start(self, request=None):
@@ -184,8 +186,10 @@ class HostedAuth:
         result = RedirectResponse(self.public_url + "/", status_code=303)
         result.delete_cookie(FLOW_COOKIE, secure=True, httponly=True, samesite="lax")
         result.delete_cookie(PENDING_COOKIE, secure=True, httponly=True, samesite="strict")
-        if identity.get("email_verified") is True:
-            self.mint(result, access, tokens["access_token"], email)
+        from .qa_enrollment import approved
+        qa = approved(self, access)
+        if identity.get("email_verified") is True or qa:
+            self.mint(result, access, tokens["access_token"], email, qa=qa)
         else:
             if "aws.cognito.signin.user.admin" not in access.get("scope", "").split():
                 raise HTTPException(401, "Restart sign-in to verify email")
@@ -215,9 +219,12 @@ class HostedAuth:
         if request.cookies.get(PENDING_COOKIE):
             self.verifications.delete(sha(request.cookies[PENDING_COOKIE]))
 
-    def mint(self, result, access, token, email):
+    def mint(self, result, access, token, email, qa=False):
+        if qa:
+            from .qa_enrollment import approved
+            approved(self, access, required=True)
         self.resolve(access, email)
-        cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        cookie, csrf = ('qa.' if qa else '') + secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with self.store.tx() as db:
             db.insert('hosted_sessions', {'id_hash': sha(cookie), 'subject': access['sub'], 'access_token': token, 'csrf': csrf, 'expires': min(access['exp'], time.time() + 3600)})
         result.set_cookie(SESSION_COOKIE, cookie, secure=True, httponly=True, samesite="strict", max_age=max(0, int(min(access["exp"] - time.time(), 3600))))
