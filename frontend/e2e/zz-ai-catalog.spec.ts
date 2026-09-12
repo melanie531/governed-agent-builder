@@ -6,6 +6,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  const navigate=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await navigate('AI Catalog');
  await expect(page.getByText('Development fixture catalog only.',{exact:false})).toBeVisible();
+ await expect(page.getByText('Native Registry / Model Gateway: NotConnected.',{exact:false})).toBeVisible();
  await page.getByRole('tab',{name:'Tools',exact:true}).click();
  const row=page.getByRole('row').filter({hasText:'Synthetic strategy insights'});
  await row.getByRole('button',{name:'Request access'}).click();

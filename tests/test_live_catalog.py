@@ -39,6 +39,15 @@ def test_hidden_search_count_detail_versions_and_request(client,app):
     assert 'private_endpoint' not in client.get('/api/catalog').text
 
 
+def test_fixture_catalog_reports_native_not_connected_preserving_builder(client):
+    login(client)
+    catalog = client.get('/api/catalog').json()
+    assert catalog['mode'] == 'fixture'
+    assert catalog['native_connection_state'] == 'NotConnected'
+    assert catalog['items'] and all(item['fixture'] for item in catalog['items'])
+    assert client.get('/api/build-options').json()['foundations']
+
+
 def test_available_requestable_approval_and_revoke(client):
     login(client)
     items={r['id']:r for r in client.get('/api/catalog').json()['items']}
