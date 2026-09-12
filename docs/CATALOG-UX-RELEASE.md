@@ -66,3 +66,37 @@ Well-Architected: Security preserves identity, least privilege and private origi
 Reliability has rollback and hash verification; Operations has fixed source and
 scoped receipts; Performance retains the bundle-size warning, unmeasured live
 load; Cost has no inference/tool calls; Sustainability reuses existing resources.
+
+## Completed deployment and authenticated acceptance
+
+Deployed implementation SHA: `21616c1e90058ac113590f49e52dddf70fa483b2` on `feat/live-capabilities`.
+Business ZIP SHA-256: `45248dc5a71b3cd828adf1b190885b72adea7e68957e8ebaee44a747d315bc45`.
+Business app.py SHA-256: `41125aa5713c834f50293f2a95aef8617e3a744e125a41ccbec46063c3d6d591`.
+Release reached `DEPLOYED_HASH_VERIFIED`: actual Lambda download and all S3/CDN
+frontend bytes match. Other package members and configuration fingerprints match
+fresh rollback. Existing native configuration, QA enrollments and telemetry remain.
+Final combined focused backend tests: **197 passed**, 2 existing warnings (7.66s).
+
+Real browser acceptance used actual Cognito form and approved business QA SSM
+credentials only in process. No cookie injection, mocked API, storageState or trace.
+Initial automation used a button locator for a link and timed out before credential
+entry; corrected to the observed real link and reran the complete acceptance.
+- Authenticated My agents loaded. Native `/api/catalog` returned live mode.
+- Exact five tabs; no Tools tab. Registry connected; ModelGateway NotConnected.
+- One top-level server; five children matching its stable parent_id.
+- Actual names: aws___read_documentation, aws___search_documentation,
+  aws___list_regions, aws___get_regional_availability, aws___retrieve_skill.
+- Models empty/NotConnected, server count 5, all operation names visible in detail.
+- Create foundation -> prompt/evaluation -> Catalog -> operation -> same draft
+  retained exact operation ID/version, prompt, criteria and dataset. Save draft
+  remained available; no automatic deployment. QA draft was not persisted.
+- No model/tool/evaluation invoked and no grants or user data changed.
+
+Private screenshots: `artifacts/catalog-ux/live-models.png`, `live-mcp-list.png`,
+`live-mcp-detail.png`, `live-draft.png`. DOM/network evidence: `qa-result.json`.
+These are actual authenticated captures. This model cannot view image content;
+independent visual layout review is explicitly pending with the parent/peer.
+
+Implementation source and deployment are complete, not a claim that live execution
+or the full MVP is complete. The documentation-only follow-up commit does not
+change the fixed deployed implementation SHA above.
