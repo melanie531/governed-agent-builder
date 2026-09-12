@@ -39,6 +39,12 @@ def validate(event):
     request = http['gatewayRequest']
     if not isinstance(request, dict) or set(request) - {'path', 'httpMethod', 'body', 'headers'}:
         raise Rejected('EVENT_INVALID')
+    # Documented metadata enumeration only. Never authorize arbitrary GET paths,
+    # query variants or a request body; all inference validation stays below.
+    if request.get('path') == '/inference/v1/models' and request.get('httpMethod') == 'GET':
+        if request.get('body', '') != '':
+            raise Rejected('METADATA_BODY_DENIED')
+        return ''
     if request.get('path') != PATH or request.get('httpMethod') != 'POST':
         raise Rejected('OPERATION_DENIED')
     # Headers are never identity and never forwarded by this function.
