@@ -100,5 +100,13 @@ def handler(event, context):
     custom = getattr(getattr(context, 'client_context', None), 'custom', {}) or {}
     rid = custom.get('REQUEST_ID') if isinstance(custom, dict) else None
     rid = rid if isinstance(rid, str) and re.fullmatch(r'[a-fA-F0-9-]{16,64}', rid) else None
-    LOG.info(json.dumps({'decision': code, 'gateway_request_id': rid}))
+    request = event.get('http', {}).get('gatewayRequest', {}) if isinstance(event, dict) else {}
+    request = request if isinstance(request, dict) else {}
+    # Finite structural diagnostics only; never log headers, raw paths or bodies.
+    method = request.get('httpMethod')
+    path = request.get('path')
+    LOG.info(json.dumps({'decision': code, 'gateway_request_id': rid,
+        'method_shape': method if method in ('GET', 'POST') else 'other',
+        'path_shape': path if path in ('/inference/v1/models', '/v1/models', PATH) else 'other',
+        'body_shape': 'absent' if 'body' not in request else 'null' if request['body'] is None else 'empty' if request['body'] == '' else 'nonempty'}))
     return output
