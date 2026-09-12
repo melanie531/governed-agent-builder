@@ -4,6 +4,7 @@ Preserves every other ZIP member and each function's configuration/resources.
 Uses fresh revision IDs, backups, readback hashes; never updates CloudFormation.
 """
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -58,7 +59,7 @@ def main():
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as archive:
             for item in original.infolist():
-                archive.writestr(item, replacements.pop(item.filename, original.read(item.filename)))
+                archive.writestr(copy.copy(item), replacements.pop(item.filename, original.read(item.filename)))
             for name, value in replacements.items(): archive.writestr(name, value)
         raw = stream.getvalue()
         patched = zipfile.ZipFile(io.BytesIO(raw))
