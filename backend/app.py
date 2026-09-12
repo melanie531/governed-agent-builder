@@ -616,6 +616,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                     "agent_listing_implemented": catalog_mode == "live",
                     "connection_state": "connected" if catalog_mode == "live" else "fixture",
                     "native_connection_state": "connected" if catalog_mode == "live" else "NotConnected",
+                    "sources": catalog_provider.source_status() if catalog_mode == 'live' and hasattr(catalog_provider, 'source_status') else {},
                     "revision": digest(items),
                     "execution_ready": False if catalog_mode == "live" else None}
 

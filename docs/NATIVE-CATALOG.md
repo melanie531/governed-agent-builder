@@ -202,3 +202,67 @@ untested. **Cost** bounded metadata reads, zero inference/tool execution.
 contract tests; operator configuration and cloud acceptance remain required.
 **Sustainability** bounded refresh/reuse rather than unbounded repeated discovery;
 no production utilization claim.
+
+## Native Studio connection release (2026-09-12)
+
+This owner-authorized release supersedes the earlier source-only checkpoint above.
+The project owns a new IAM-authorized Registry `governed_agent_builder_catalog`;
+no old demo registries, private skill packages or Gateways are reused.
+The official AWS Knowledge MCP documentation confirms unauthenticated Streamable HTTP.
+An initialize / initialized / tools/list exchange negotiated MCP **2025-03-26** and
+returned five operations: `aws___read_documentation`, `aws___search_documentation`,
+`aws___list_regions`, `aws___get_regional_availability`, `aws___retrieve_skill`.
+No tools/call, skill retrieval, model invocation or Gateway execution was performed.
+Server schema is **2025-12-11**, observed server version **1.0.0**. Exact returned
+schemas are stored in one native MCP record, version **1.0.0-discovery.20260912**.
+Native schema validation and explicit DRAFT → PENDING_APPROVAL → APPROVED admission
+precede discoverable List and Batch reads. Record admission does not grant execution.
+
+Exposure is explicitly `research` only, requestable, and bound to the full native
+record identity and v2 digest. The source configuration is generated from actual
+readback and packaged as `backend/native_catalog_source.json`, enabled only by
+`NATIVE_CATALOG_PACKAGED_CONFIG=1`; browser input cannot select this path. This avoids
+Lambda's 4 KiB environment limit without adding broad SSM/S3 read authority. The
+full configuration is private in ignored `artifacts/native-catalog/source-config-v2.json`.
+No fixture models are inserted. `/api/catalog.sources` reports Registry connected,
+ModelGateway NotConnected (production model-list permission unapproved), and the
+separate platform-owned FoundationLibrary. BedrockClaude/OpenAI execution routes,
+CreateInference Deny, ENFORCE and interceptors are not changed.
+
+The narrow release script starts from the existing CloudFormation template and
+current Business ZIP; it changes only Business code/config and an additional exact
+Registry List / record GetDiscoverableRegistryRecord IAM policy. All other ZIP
+members, including QA enrollment and reviewed telemetry, are byte-preserved. Auth,
+Authorizer, Worker and model/tool execution flags are untouched. Evaluated changes
+must be non-replacing; all physical IDs and outputs are checked after deployment.
+Source-status frontend assets use the existing private versioned bucket and CloudFront.
+
+Rollback: ignored `artifacts/native-catalog/rollback-template.json`,
+`rollback-business-config.json`, and `Business-rollback.zip` retain the previous
+configuration/code. Restore them through another reviewed non-replacing changeset;
+revert static index to its previous S3 version. Do not delete DynamoDB/Cognito or
+reset identities. The Registry/record tags include project, owner, purpose and
+cleanup metadata. On Studio retirement remove Catalog exposure/IAM first, then
+explicitly deprecate/delete this project record and Registry; never legacy registries.
+
+Verification: 195 focused native Catalog, Builder, auth/authorization and QA tests
+passed; sequential TypeScript/Vite production build passed (existing chunk warning).
+Registry-only regression saves genuine-ID/version drafts with no model or Runtime,
+keeps approved foundations visible, and leaves unready deployment blocked.
+Cloud receipts and final acceptance status are in `docs/NATIVE-CATALOG-RELEASE.md`.
+
+### Finalization status (2026-09-12)
+
+Fresh read-only parent verification confirms `UPDATE_COMPLETE`, the same existing
+Studio/account binding, exact current Business ZIP/source/config hashes, preserved
+physical IDs/outputs, original role permissions and QA/auth/telemetry bytes and
+metadata. Native operator List/Batch and record Get confirm the one APPROVED MCP
+record and five observed tools. No pending redeploy or additional AWS writes.
+Finalization reran 195 focused offline tests successfully. Five browser tests
+remain historical local-auth evidence, not hosted user acceptance. Current public
+Catalog rejects anonymous access with HTTP 401; frontend index matches the build.
+Operator SDK success does not prove Business-role transport or authenticated
+hosted Catalog. ModelGateway remains NotConnected; binding/execution unverified.
+Only eight task-owned files are included for fixed-SHA private feature review;
+concurrent fault files remain untouched. See [release evidence and limits](NATIVE-CATALOG-RELEASE.md).
+No deployed backend source bytes were changed during finalization.

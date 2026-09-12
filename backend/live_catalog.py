@@ -473,6 +473,17 @@ class LiveCatalog:
     _snapshot: list = field(default_factory=list, init=False)
     _expires: float = field(default=0, init=False)
 
+    def source_status(self):
+        # Registry-only connection is intentional: no model-list invocation grant.
+        registry_connected = bool(getattr(self.registry, 'providers', [self.registry]))
+        models_connected = bool(getattr(self.models, 'providers', [self.models]))
+        return {
+            'Registry': {'connection_state': 'connected' if registry_connected else 'NotConnected'},
+            'ModelGateway': {'connection_state': 'connected' if models_connected else 'NotConnected',
+                             'reason': '' if models_connected else 'Production model-list permission not approved; BedrockClaude and OpenAI execution routes unchanged'},
+            'FoundationLibrary': {'connection_state': 'platform-owned', 'authority': 'separate'}
+        }
+
     def records(self):
         if time.monotonic() < self._expires:
             return copy.deepcopy(self._snapshot)
@@ -500,6 +511,9 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     """Validate ALL approval input before SDK construction; bind one session via STS."""
     if config is None:
         raw = os.getenv('NATIVE_CATALOG_CONFIG')
+        if not raw and os.getenv('NATIVE_CATALOG_PACKAGED_CONFIG') == '1':
+            from pathlib import Path
+            raw = Path(__file__).with_name('native_catalog_source.json').read_text()
         if not raw:
             return None
         config = json.loads(raw)
