@@ -51,11 +51,28 @@ def main():
         time.sleep(2)
     save('metadata-change-review',change)
     assert change['Status']=='CREATE_COMPLETE' and not change.get('NextToken')
-    assert len(change['Changes'])==1
-    r=change['Changes'][0]['ResourceChange']
-    assert r['LogicalResourceId']=='ModelGate' and r['Action']=='Modify' and r['Replacement']=='False'
-    assert all(d['Target']['Name']=='Code' and d['Target']['RequiresRecreation']=='Never' for d in r['Details'])
+    from scripts.model_gate_review import verify_live
+    before_semantics = verify_live(t, old, ids)
+    dependencies = {
+        'FoundationRole': {('Policies', 'ModelGateway.GatewayArn')},
+        'ModelGateway': {('RoleArn', 'ModelRole.Arn'), ('InterceptorConfigurations', 'ModelGate.Arn')},
+        'ModelRole': {('Policies', 'ModelGate.Arn')},
+        'ToolPolicy': {('Definition', 'FoundationRole.Arn')},
+    }
+    seen = set()
+    for item in change['Changes']:
+        r = item['ResourceChange']; name = r['LogicalResourceId']
+        assert name not in seen; seen.add(name)
+        assert r['Action']=='Modify' and r['Replacement']=='False'
+        if name == 'ModelGate':
+            assert all(d['Target']['Name']=='Code' and d['Target']['RequiresRecreation']=='Never' for d in r['Details'])
+        else:
+            assert name in dependencies and old['Resources'][name] == desired['Resources'][name]
+            assert {(d['Target']['Name'], d.get('CausingEntity')) for d in r['Details']} == dependencies[name]
+            assert all(d['Evaluation']=='Dynamic' and d['ChangeSource']=='ResourceAttribute' and d['Target']['RequiresRecreation']=='Never' for d in r['Details'])
+    assert 'ModelGate' in seen
     t.verify(); check_quarantine(t,ids)
+    assert verify_live(t, desired, ids) == before_semantics
     save('metadata-change-executed',{'name':cs,'state':'DISPATCHING','sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()})
     cf.execute_change_set(StackName=STACK,ChangeSetName=cs)
     for _ in range(45):
@@ -65,6 +82,7 @@ def main():
     assert after['StackStatus']=='UPDATE_COMPLETE'
     assert inventory(cf)==ids and after['Outputs']==stack['Outputs']
     assert load_template(cf,StackName=STACK)==desired
+    assert verify_live(t, desired, ids) == before_semantics
     f=t.client('lambda').get_function(FunctionName=ids['ModelGate'])
     raw=urllib.request.urlopen(f['Code']['Location']).read()
     assert zipfile.ZipFile(io.BytesIO(raw)).read('index.py')==source.encode()
