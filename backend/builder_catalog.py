@@ -31,7 +31,7 @@ def choices(db, persona, foundation, records, model_id=None):
         if issue:
             continue
         public.update(binding_status='bound', draft_selectable=True,
-                      deployable=False, readiness_message='Live Runtime execution adapter is not connected')
+                      deployable=False, readiness_message='Save a version to resolve verified deployment bindings')
         result[item['kind'] + 's'].append(public)
     return result
 
@@ -40,11 +40,11 @@ def public_foundation(foundation, choices):
     result = {k: v for k, v in foundation.items() if k != 'native_bindings'}
     result.update({kind: [x['id'] for x in rows] for kind, rows in choices.items()})
     result.update(composition_mode='live', binding_message=BINDING_MESSAGE,
-                  execution_status='NotConnected: Live Runtime execution adapter is not connected')
+                  execution_status='Deployment readiness is resolved per saved version')
     return result
 
 
-def assess(db, persona, definition, foundation, records, previous=None):
+def assess(db, persona, definition, foundation, records, previous=None, deployment_issues=None):
     """Unknown new selections are forbidden; owned historical pins remain editable."""
     selected = [x for x in [definition['model_id'], *definition['tools'], *definition['skills']] if x]
     if len(set(selected)) != len(selected) or set(selected) != set(definition['component_versions']):
@@ -73,10 +73,15 @@ def assess(db, persona, definition, foundation, records, previous=None):
         reason = binding(foundation, item, definition['model_id'])
         if reason:
             codes.append(reason)
+        if item.get('external') and not persona.get('external_allowed'):
+            codes.append('data_policy_denied')
         if not public['granted']:
             codes.append('grant_required')
-        if not item.get('execution_ready') or not item.get('integration_ready') or not item.get('supported', True):
+        if (not item.get('execution_ready') or not item.get('integration_ready')
+                or not item.get('supported', True)
+                or item.get('execution_binding', {}).get('status') != 'verified'):
             codes.append('execution_not_ready')
         issues.extend({'code': code, 'component_id': cid, 'message': BINDING_MESSAGE if code.startswith('binding_') else code.replace('_', ' ')} for code in codes)
-    issues.append({'code': 'runtime_not_connected', 'message': 'Live Runtime execution adapter and evaluation acceptance are not connected; saving a draft creates no Runtime'})
-    return {'deployable': False, 'issues': issues}
+    issues.extend(deployment_issues if deployment_issues is not None else [
+        {'code': 'deployment_driver_missing', 'message': 'Configure the server-owned Foundation deployment driver; no fixture fallback'}])
+    return {'deployable': not issues, 'issues': issues}

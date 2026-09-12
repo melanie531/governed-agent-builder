@@ -103,7 +103,7 @@ def test_save_unready_draft_no_runtime_and_deploy_blocked(live, payload):
     assert r.status_code == 201, r.text
     saved = r.json()
     assert not saved['readiness']['deployable']
-    assert {'grant_required', 'execution_not_ready', 'runtime_not_connected'} <= {x['code'] for x in saved['readiness']['issues']}
+    assert {'grant_required', 'execution_not_ready', 'deployment_driver_missing'} <= {x['code'] for x in saved['readiness']['issues']}
     for key in ('prompt', 'dataset', 'rubric', 'component_versions'):
         assert saved[key] == original[key]
     for execution in ('live', 'fixture'):

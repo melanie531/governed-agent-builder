@@ -25,6 +25,52 @@ class FoundationJobs:
         self.evidence_collector = evidence_collector
         self.evidence_exporter = evidence_exporter
 
+    def readiness_issues(self, db, definition, persona):
+        """Read server-owned authority only; never reserve, renew, create or invoke.
+
+        Artifact bytes, target identity and SDK READY/endpoint pins are rechecked
+        by the existing worker immediately before use, not asserted by the UI.
+        """
+        issues = []
+        def block(code, message=None):
+            issues.append({'code': code, 'message': message or code.replace('_', ' ')})
+        if not self.enabled:
+            block('LIVE_DISABLED')
+        if (self.deployment is None or self.target is None or self.runtime_client is None
+                or not callable(getattr(self.deployment, 'submit_new', None))
+                or not callable(getattr(self.deployment, 'readiness', None))):
+            block('deployment_driver_missing')
+        if self.artifact_reader is None:
+            block('ARTIFACT_READBACK_REQUIRED')
+        if not definition.get('digest') or not definition.get('agent_id'):
+            block('saved_version_required', 'Save an immutable version before deployment admission and artifact verification')
+            return issues
+        if not runs.get(db, 'foundation-deployment'):
+            block('REVIEWED_FOUNDATION_DEPLOYMENT_REQUIRED')
+        if not runs.get(db, 'foundation-artifact:' + definition['digest']):
+            block('VERIFIED_ARTIFACT_FINALIZATION_REQUIRED')
+        try:
+            approved = self.approve_request(db, definition, persona)
+            if self.deployment is not None:
+                self.deployment.adapter.policy.validate(approved['role'])
+                if self.target.account != self.deployment.adapter.policy.target_account:
+                    block('STUDIO_TARGET_MISMATCH')
+                network = approved.get('network', {})
+                if (network != self.deployment.network or network.get('networkMode') != 'VPC'
+                        or not network.get('networkModeConfig', {}).get('subnets')
+                        or not network.get('networkModeConfig', {}).get('securityGroups')):
+                    block('APPROVED_EXISTING_VPC_BINDING_REQUIRED')
+        except HTTPException as exc:
+            # Only internal fixed codes, never endpoints, roles or provider text.
+            import re
+            code = exc.detail if isinstance(exc.detail, str) and re.fullmatch(r'[A-Z_]{1,80}', exc.detail) else 'CURRENT_EXECUTION_BINDING_REQUIRED'
+            block(code)
+        except (ValueError, KeyError, AttributeError, TypeError, ArithmeticError):
+            block('INVALID_DEPLOYMENT_BINDING')
+        except Exception:
+            block('DEPLOYMENT_POLICY_DENIED')
+        return issues
+
     def approve_request(self, db, definition, persona):
         if not self.enabled:
             raise HTTPException(503, 'LIVE_DISABLED: no fixture fallback')

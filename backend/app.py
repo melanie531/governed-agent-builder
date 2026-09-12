@@ -133,7 +133,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise HTTPException(404, "Capability not found")
         return item
 
-    def validate_current(db, persona, definition):
+    def validate_current(db, persona, definition, *, live_execution=False):
         if definition.get("catalog_mode") == "live" and catalog_mode != "live":
             raise HTTPException(503, "Live draft cannot execute in fixture mode")
         if definition.get("foundation_id") == "web-research" or definition.get("research") is not None:
@@ -141,7 +141,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         if catalog_mode == "live":
             foundation = resource(db, "foundations", definition["foundation_id"])
             readiness = live_readiness(db, persona, definition, foundation, definition)
-            raise HTTPException(503, {"code": "LIVE_EXECUTION_BLOCKED", **readiness})
+            if not live_execution or not readiness["deployable"]:
+                raise HTTPException(503, {"code": "LIVE_EXECUTION_BLOCKED", **readiness})
+            return foundation
         return validate_definition(db, persona, definition)
 
     def live_readiness(db, persona, definition, foundation, previous=None):
@@ -150,9 +152,15 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             unavailable = None
         except HTTPException as exc:
             records, unavailable = [], str(exc.detail)
-        result = builder_catalog.assess(db, persona, definition, foundation, records, previous)
+        deployment_issues = (foundation_jobs.readiness_issues(db, definition, persona)
+                             if foundation_jobs is not None else [
+                                 {'code': 'deployment_driver_missing', 'message': 'Configure the server-owned Foundation deployment driver; no fixture fallback'}])
+        if worker_enabled:
+            deployment_issues.append({'code': 'live_worker_required', 'message': 'Live deployment requires the configured durable worker, not the fixture worker'})
+        result = builder_catalog.assess(db, persona, definition, foundation, records, previous, deployment_issues)
         if unavailable:
             result['issues'].append({'code': 'NotConnected', 'message': unavailable})
+            result['deployable'] = False
         return result
 
     hosted = os.getenv("HOSTED_PREVIEW") == "1"
@@ -496,15 +504,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 definition['readiness'] = live_readiness(db, who(request), definition, foundation, definition)
             return {**agent, "definition": definition, "versions": versions, "jobs": jobs}
 
+    @app.post("/api/agents/{agent_id}/deploy", status_code=202)
     @app.post("/api/agents/{agent_id}/deploy-test", status_code=202)
     async def deploy(agent_id: str, data: Deploy, request: Request):
+        if request.url.path.endswith("/deploy") and data.execution_mode != "live":
+            raise HTTPException(422, "Explicit Deploy requires live execution mode")
         persona = who(request)
         with store.tx() as db:
             agent = agent_access(db, persona, agent_id)
             if agent["current_version"] != data.version:
                 raise HTTPException(409, "Only the current definition can be tested")
             definition = get_version(db, agent_id, data.version)
-            validate_current(db, persona, definition)
+            validate_current(db, persona, definition, live_execution=data.execution_mode == "live")
             if data.execution_mode == 'live' and (foundation_jobs is None or worker_enabled):
                 raise HTTPException(503, 'LIVE_DISABLED: no fixture fallback')
             existing = db.select('jobs', where=[('agent', '=', agent_id), ('requester', '=', persona['id']), ('idem', '=', data.idempotency_key)]).fetchone()
@@ -526,7 +537,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             job_id, now = uid(), time.time()
             db.insert('jobs', {'id': job_id, 'agent': agent_id, 'version': data.version, 'requester': persona['id'], 'idem': data.idempotency_key, 'stage': 'VALIDATING', 'created': now, 'updated': now, 'deadline': now + (900 if repository is not None else 60)})
             if data.execution_mode == 'live':
-                foundation_jobs.enqueue(db, job_id, definition, persona, now + 900)
+                foundation_jobs.enqueue(db, job_id, definition, persona, now + 900,
+                    renew_authority=definition.get("catalog_mode") != "live")
                 db.update('jobs', {'deadline': now + 900}, where=[('id', '=', job_id)])
             event(db, job_id, "VALIDATING", {"message": "Live deployment reserved" if data.execution_mode == "live" else "Local deploy/test accepted", "digest": definition["digest"], "mode": "live" if data.execution_mode == "live" else mode_label})
             audit(db, persona["id"], "deploy_test", agent_id, job_id)
@@ -844,7 +856,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 with store.tx() as db:
                     persona = principal(db, live_run['owner'])
                     definition = get_version(db, live_run['agent'], live_run['version'])
-                    validate_current(db, persona, definition)
+                    validate_current(db, persona, definition, live_execution=True)
                 foundation_jobs.step(store, job_id)
             except Exception as exc:
                 from foundation_harness.context import Denied
