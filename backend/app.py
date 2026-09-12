@@ -26,6 +26,7 @@ from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput
 from .store import Store
 from .hosted_auth import HostedAuth
 from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog
+from . import builder_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED"}
@@ -128,11 +129,26 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         return item
 
     def validate_current(db, persona, definition):
+        if definition.get("catalog_mode") == "live" and catalog_mode != "live":
+            raise HTTPException(503, "Live draft cannot execute in fixture mode")
         if definition.get("foundation_id") == "web-research" or definition.get("research") is not None:
             raise HTTPException(503, "NOT_CONFIGURED: Web research Gateway deployment and live authorization are not connected; no fixture fallback")
         if catalog_mode == "live":
-            raise HTTPException(503, "Live execution is not integrated; fixture execution is forbidden in live catalog mode")
+            foundation = resource(db, "foundations", definition["foundation_id"])
+            readiness = live_readiness(db, persona, definition, foundation, definition)
+            raise HTTPException(503, {"code": "LIVE_EXECUTION_BLOCKED", **readiness})
         return validate_definition(db, persona, definition)
+
+    def live_readiness(db, persona, definition, foundation, previous=None):
+        try:
+            records = catalog_records(db)
+            unavailable = None
+        except HTTPException as exc:
+            records, unavailable = [], str(exc.detail)
+        result = builder_catalog.assess(db, persona, definition, foundation, records, previous)
+        if unavailable:
+            result['issues'].append({'code': 'NotConnected', 'message': unavailable})
+        return result
 
     hosted = os.getenv("HOSTED_PREVIEW") == "1"
     demo = os.getenv("DEMO_MODE") == "1" if demo_mode is None else demo_mode
@@ -360,13 +376,25 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             foundations = [json.loads(r[0]) for r in db.select('foundations', columns=['body'])]
             foundations = [f for f in foundations if f["approved"]]
-            # Foundation compatibility IDs must not reveal hidden resources either.
-            visible_ids = {json.loads(r[0])['id'] for r in db.select('components', columns=['body']) if visibility(json.loads(r[0]), persona)} if catalog_mode == 'fixture' else set()
-            foundations = [{**f, **{k: [cid for cid in f[k] if cid in visible_ids] for k in ('models', 'tools', 'skills')}} for f in foundations]
             choices = {"models": [], "tools": [], "skills": []}
             if catalog_mode == "live":
-                catalog_records(db)  # Fail closed, never return seeded build choices.
-                return {"foundations": [], "choices": choices, "sample_dataset": [], "policy": policy(db), "integration_status": "Live composition/execution not yet enabled"}
+                try:
+                    records = catalog_records(db)
+                    status = builder_catalog.BINDING_MESSAGE
+                except HTTPException as exc:
+                    records, status = [], str(exc.detail) + "; configure owner-approved NATIVE_CATALOG_CONFIG"
+                public = []
+                for foundation in foundations:
+                    compatible = builder_catalog.choices(db, persona, foundation, records, model_id)
+                    public.append(builder_catalog.public_foundation(foundation, compatible))
+                    if foundation['id'] == foundation_id:
+                        choices = compatible
+                return {"foundations": public, "choices": choices, "sample_dataset": SAMPLE_DATASET,
+                        "policy": policy(db), "catalog_mode": "live", "integration_status": status,
+                        "recalculate_on": ["foundation_id", "model_id"]}
+            # Foundation compatibility IDs must not reveal hidden resources either.
+            visible_ids = {json.loads(r[0])['id'] for r in db.select('components', columns=['body']) if visibility(json.loads(r[0]), persona)}
+            foundations = [{**f, **{k: [cid for cid in f[k] if cid in visible_ids] for k in ('models', 'tools', 'skills')}} for f in foundations]
             if foundation_id == "web-research":
                 return {"foundations": [*foundations, WEB_FOUNDATION], "choices": choices, "sample_dataset": SAMPLE_DATASET, "integration_status": "NOT_CONFIGURED"}
             if foundation_id:
@@ -397,6 +425,16 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             foundation = WEB_FOUNDATION
             payload['integration_status'] = 'NOT_CONFIGURED'
             payload['skill_artifact'] = skill_binding(skill_id)
+        elif catalog_mode == 'live':
+            foundation = resource(db, 'foundations', payload['foundation_id'])
+            previous = None
+            if agent_id:
+                existing = agent_access(db, persona, agent_id)
+                previous = get_version(db, agent_id, existing['current_version'])
+            payload['readiness'] = live_readiness(db, persona, payload, foundation, previous)
+            payload['catalog_mode'] = 'live'
+            # Return/store a safe manifest projection, never hidden binding IDs.
+            foundation = builder_catalog.public_foundation(foundation, {'models': [], 'tools': [], 'skills': []})
         else:
             foundation = validate_current(db, persona, payload)
         if agent_id:
@@ -447,7 +485,11 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             agent = agent_access(db, who(request), agent_id)
             versions = [dict(r) for r in db.select('versions', columns=['version', 'digest', 'created'], where=[('agent', '=', agent_id)], order='version', descending=True)]
             jobs = [dict(r) for r in db.select('jobs', columns=['id', 'version', 'stage', 'created'], where=[('agent', '=', agent_id)], order='created', descending=True)]
-            return {**agent, "definition": get_version(db, agent_id, agent["current_version"]), "versions": versions, "jobs": jobs}
+            definition = get_version(db, agent_id, agent["current_version"])
+            if catalog_mode == 'live' and definition['foundation_id'] != 'web-research':
+                foundation = resource(db, 'foundations', definition['foundation_id'])
+                definition['readiness'] = live_readiness(db, who(request), definition, foundation, definition)
+            return {**agent, "definition": definition, "versions": versions, "jobs": jobs}
 
     @app.post("/api/agents/{agent_id}/deploy-test", status_code=202)
     async def deploy(agent_id: str, data: Deploy, request: Request):

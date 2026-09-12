@@ -56,7 +56,7 @@ def test_available_requestable_approval_and_revoke(client):
     login(client);assert not client.get('/api/catalog/restricted-insights').json()['usable']
 
 
-@pytest.mark.parametrize('path',['/api/catalog','/api/capabilities','/api/build-options','/api/catalog/bedrock-claude'])
+@pytest.mark.parametrize('path',['/api/catalog','/api/capabilities','/api/catalog/bedrock-claude'])
 def test_unconfigured_live_no_fallback(tmp_path,monkeypatch,path):
     monkeypatch.setenv('CATALOG_MODE','live')
     app=create_app(str(tmp_path/'live.sqlite'),demo_mode=True,worker_enabled=False)
@@ -97,7 +97,7 @@ def test_live_mode_never_creates_fixture_definition(tmp_path,monkeypatch,payload
     with TestClient(app,base_url=ORIGIN) as c:
         login(c)
         assert c.get('/api/catalog').json()['items'][0]['requestable']
-        assert c.post('/api/agents',json=payload).status_code==503
+        assert c.post('/api/agents',json=payload).status_code==422
         req=c.post('/api/requests',json={'component_id':'registry:safe','reason':'Approved business purpose'}).json()
         login(c,'admin')
         assert c.post('/api/admin/requests/'+req['id']+'/decision',json={'approve':True,'reason':'Scoped permission approved'}).status_code==200
