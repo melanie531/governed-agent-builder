@@ -1,6 +1,6 @@
 # Telemetry flush fix
 
-Status: CURRENT SOURCE VERIFIED; publication and telemetry-only cloud release in progress.
+Status: PUBLISHED AND DEPLOYED. Telemetry-only Business/Worker repair; fixture-only, not full MVP or live Runtime acceptance.
 
 ## Current authorized continuation — 2026-09-12
 
@@ -241,3 +241,86 @@ GitHub DNS and fresh main/feature ancestry checks; approved AWS STS access and
 fresh cloud identity/package/config/rollback inspection. Resume the scoped
 commit/push and guarded code-only deployment only after these external limits
 are resolved. No elevation, chmod, host switching or approval bypass attempted.
+
+## Current completed cloud release — 2026-09-12
+
+- Published fix commit: `868436ec5f661ed46c3ff548fa1c86418a4bd685`.
+- Deployment source: release checkpoint `49b67bafbe69b2912cf8c75266eaf9b4d4debde9`
+  plus only the telemetry module from the fix commit. NOT the full current HEAD.
+- All 62 packaged owned source/lock files matched the baseline before patching.
+- Both downloaded post-update ZIPs passed CodeSha256, full ZIP SHA-256 and exact
+  telemetry module byte checks. Only `foundation_harness/telemetry.py` differs
+  from each pre-update live ZIP. Repeated packaging produces identical bytes.
+- New ZIP SHA-256: `5e60c0c64a12109a0939c40919caa46de974fa97bfaff245388ae96ec8e8ebe4`.
+- Business/Worker CodeSha256: `XmDAxkoSEJoJOcQJGcqkbel0+pe/r/JFOIrpbsjo6+Q=`.
+- Module SHA-256: `dc471579140743b61423e528c15193d54ce1d6483408aa239d79da654b4b7b36`.
+- Rollback ZIP SHA-256: `26718dbd2cb9daa837561a6f663c1438b01b86199837301e391deea7739297f6`.
+
+Versioned artifact/rollback uploads were read back and hash-verified in the
+existing private release bucket before either Lambda write. Existing bucket
+versioning and all Block Public Access settings were checked, not changed.
+
+### Business
+- rollback: `releases/26718dbd2cb9daa837561a6f663c1438b01b86199837301e391deea7739297f6/telemetry-rollback.zip`, version `2RGkIbehEigRzLsqzvhCGd7USWds1.DK`.
+- release: `releases/5e60c0c64a12109a0939c40919caa46de974fa97bfaff245388ae96ec8e8ebe4/telemetry-release.zip`, version `S03kP5Ty2Xo7alMg1HKzzmRT_madBQjN`.
+
+### Worker
+- rollback: `releases/26718dbd2cb9daa837561a6f663c1438b01b86199837301e391deea7739297f6/telemetry-rollback.zip`, version `dyhM8RlIXxAqKdMTToBh3tpAMScyeHSE`.
+- release: `releases/5e60c0c64a12109a0939c40919caa46de974fa97bfaff245388ae96ec8e8ebe4/telemetry-release.zip`, version `xvFMfmsufPu64VGfZuO227pQS3MRMEHj`.
+
+
+Fresh pre/post checks prove all resource physical IDs, CFN template, parameters
+(including the existing Business/Worker artifact declarations), outputs, function
+configuration fingerprints and exact role identities/configuration unchanged.
+Auth, Authorizer, Dispatcher and FoundationExchange code/revisions also unchanged.
+Only Business and Worker received update_function_code, using RevisionId guards.
+No frontend, IAM, Cognito, user, data, network, settings or feature-flag mutation.
+Live/producer flags stayed OFF. Current Catalog/Builder changes were not deployed.
+Direct Lambda update intentionally leaves CFN artifact parameters unchanged;
+a future CFN deployment must explicitly retain the verified telemetry artifact.
+
+Two local safeguards stopped before cloud writes: ZIP building originally reused
+mutable ZipInfo metadata (corrected by copying metadata per output entry); snapshot
+comparison originally included IAM RoleLastUsed (observational activity timestamp,
+excluded while preserving all role identity and configuration checks). Neither was
+a permissions denial or justification to change execution authority. Final fresh
+snapshot checks passed before any function mutation.
+
+Evidence: ignored `artifacts/telemetry-current/` contains before/after private
+snapshots, original/replacement ZIPs, reproducible release.py, package.json,
+release.json and logs. Three excluded fault-file hashes match the original run.
+
+FoundationRuntime packages were NOT rebuilt or deployed. No model, tool,
+Runtime, evaluation, live export, paid workload or authenticated E2E calls made.
+The deployment remains fixture-only. Catalog-approved source integration and the
+original full MVP requirements remain outstanding, not replaced by this repair.
+
+Well-Architected: Security preserved/flags off; Reliability regression tests and
+rollback/readbacks verified, live behavior untested; Performance not benchmarked;
+Cost no paid workload calls (storage/API costs not measured); Operations exact
+source/artifact mapping, with CFN code drift disclosed; Sustainability no new
+compute resources or duplicate infrastructure.
+
+## Post-deployment frontend and AWS Console acceptance
+
+Fresh anonymous HTTP after successful code updates: `/` **200**, `/api` **401**.
+Actual browser rendered Agent Studio, invited sign-in link, **Not signed in**, and
+**CLOUD-HOSTED DEMO / Fixture runner, no live LLM**. No page errors recorded.
+Browser DOM loaded `assets/index-B5FJDnbv.js` and `assets/index-CxpBgIk2.css`;
+actual CloudFront bytes matched prior release hashes (frontend-assets.json).
+
+Authenticated create/list journey: **UNVERIFIED**. The authorized managed browser
+has no Studio session; login is required. No unrelated login was borrowed, no
+credentials requested/read, and no synthetic user/data created to fake acceptance.
+
+AWS Console: **UNVERIFIED**. Opening the us-west-2 Lambda console in the inspected
+managed profile displayed **IAM user sign in**, not resources. Console acceptance
+requires the owner to sign in to the correct approved account via the browser.
+AWS API acceptance is independently **VERIFIED** by STS target matching, Lambda
+successful update status and downloaded code/module hashes, plus full preservation
+checks above. API evidence is not labeled as Console verification.
+
+No authenticated app flow or Runtime workload was exercised; therefore no new
+CloudWatch execution trace/export evidence is claimed. Fixture-only/off flags
+remain. Independent peer review was not performed in this bounded sole-worker
+run; this is a remaining acceptance gate, not a fabricated second reviewer.
