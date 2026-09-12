@@ -18,7 +18,17 @@ test('five resource categories, actual declared operations, stable draft selecti
  await nav();await expect(page.getByRole('tab')).toHaveText(['Models','MCP servers','Skills','Agents','Other']);await expect(page.getByRole('tab',{name:'Tools',exact:true})).toHaveCount(0);
  await expect(page.getByText('Models: NotConnected. See Connection details.',{exact:true})).toBeVisible();
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();await expect(page.getByText('5 tools',{exact:true})).toBeVisible();
+ for(const width of [1365,390]){
+  await page.setViewportSize({width,height:1080});
+  const row=page.getByRole('row').filter({has:page.getByRole('button',{name:parent.name,exact:true})});
+  await expect.poll(()=>row.getByRole('cell').first().evaluate(e=>e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(240);
+  await expect.poll(()=>row.getByRole('cell').last().evaluate(e=>e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+ }
+ await page.setViewportSize({width:1365,height:1080});
  await page.getByRole('button',{name:'View details',exact:true}).click();for(const t of tools.tools)await expect(page.getByText(t.name,{exact:true})).toBeVisible();
+ await page.getByRole('dialog').evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).map(a=>a.finished.catch(()=>{})));});
+ const surface=page.getByRole('dialog').locator('[class*="awsui_container_"]').first();
+ await expect(surface).toHaveCSS('background-color','rgb(255, 255, 255)');await expect(surface).toHaveCSS('opacity','1');
  await page.getByRole('button',{name:'Back to catalog'}).click();await page.getByRole('button',{name:'View details',exact:true}).click();
  await page.getByRole('button',{name:'Add to draft (not deployment)',exact:true}).first().click();await expect(page.getByText(children[0].id+' · 7',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('textbox',{name:/^Your instructions/})).toHaveValue('Preserve the exact QA prompt.');await expect(page.getByRole('textbox',{name:/^Success criteria/})).toHaveValue('Preserve QA evaluation.');await expect(page.getByRole('textbox',{name:/^Evaluation dataset/})).toHaveValue(/qa-case/);
