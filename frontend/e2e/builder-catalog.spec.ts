@@ -19,6 +19,7 @@ test('native Catalog returns to same Builder draft preserving prompt and evaluat
  await page.getByRole('textbox',{name:/^Success criteria/}).fill('User evaluation criteria stay unchanged.');
  const nav=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await nav('AI Catalog');
+ await page.getByRole('button',{name:'View details',exact:true}).click();
  await page.getByRole('button',{name:'Add to draft (not deployment)',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Create agent',exact:true})).toBeVisible();
  await expect(page.getByText(item.id+' · 7',{exact:true})).toBeVisible();

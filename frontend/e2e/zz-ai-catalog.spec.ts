@@ -1,13 +1,15 @@
 import {test,expect} from '@playwright/test';
 
 test('AI Catalog development fixture request, admin approval and refreshed selection',async({page})=>{
+ await page.route('**/api/catalog', async route=>{const response=await route.fetch();const data=await response.json(); const parent={...data.items.find((x:any)=>x.id==='restricted-insights'),id:'offline-server',record_id:'offline-server',name:'Synthetic offline server',kind:'mcp_server',protocol:'MCP'};data.items=data.items.map((x:any)=>x.kind==='tool'?{...x,parent_id:parent.id,protocol:'MCP'}:x);data.items.push(parent);await route.fulfill({json:data});});
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
  const navigate=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await navigate('AI Catalog');
  await expect(page.getByText('Development fixture catalog only.',{exact:false})).toBeVisible();
  await expect(page.getByText('Native Registry / Model Gateway: NotConnected.',{exact:false})).toBeVisible();
- await page.getByRole('tab',{name:'Tools',exact:true}).click();
+ await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
+ await page.getByRole('button',{name:'View details',exact:true}).click();
  const row=page.getByRole('row').filter({hasText:'Synthetic strategy insights'});
  await row.getByRole('button',{name:'Request access'}).click();
  await page.getByRole('textbox',{name:'Workspace business purpose'}).fill('Synthetic catalog browser acceptance purpose');
@@ -22,9 +24,11 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await page.getByRole('button',{name:/DEV ONLY/}).click();
  await page.getByRole('menuitem',{name:/Sam Taylor/}).click();
  await navigate('AI Catalog');
- await page.getByRole('tab',{name:'Tools',exact:true}).click();
+ await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
+ await page.getByRole('button',{name:'View details',exact:true}).click();
  await expect(page.getByRole('row').filter({hasText:'Synthetic strategy insights'}).getByRole('button',{name:'Use in builder'})).toBeVisible();
  await page.screenshot({path:'../artifacts/ai-catalog-fixture-evidence.png',fullPage:true});
+ await page.getByRole('button',{name:'Back to catalog'}).click();
  // Restore the grant changed by this test; later preserved journeys share this fixture server.
  await page.getByRole('button',{name:/DEV ONLY/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();

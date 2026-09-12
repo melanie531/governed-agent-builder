@@ -123,7 +123,12 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         return [json.loads(r[0]) for r in db.select('components', columns=['body'])]
 
     def catalog_resource(db, persona, component_id):
-        item = next((c for c in catalog_records(db) if c['id'] == component_id), None)
+        records = catalog_records(db)
+        item = next((c for c in records if c['id'] == component_id), None)
+        if item and item.get('parent_id'):
+            parent = next((c for c in records if c['id'] == item['parent_id']), None)
+            if not parent or not visibility(parent, persona):
+                raise HTTPException(404, "Capability not found")
         if not item or not visibility(item, persona):
             raise HTTPException(404, "Capability not found")
         return item
@@ -610,9 +615,12 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def ai_catalog(request: Request, kind: str | None = None, q: str = ""):
         persona = who(request)
         with store.tx() as db:
-            items = [p for c in catalog_records(db) if (p := projection(db, persona, c)) is not None]
+            records = catalog_records(db)
+            visible = {c['id'] for c in records if visibility(c, persona)}
+            items = [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
+                     and (p := projection(db, persona, c)) is not None]
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
-            return {"items": items, "count": len(items), "mode": catalog_mode,
+            return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": catalog_mode,
                     "agent_listing_implemented": catalog_mode == "live",
                     "connection_state": "connected" if catalog_mode == "live" else "fixture",
                     "native_connection_state": "connected" if catalog_mode == "live" else "NotConnected",
