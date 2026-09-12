@@ -470,6 +470,7 @@ class LiveCatalog:
     models: CatalogProvider
     registry: CatalogProvider
     ttl: float = 30
+    provider_metadata: CatalogProvider = None
     _snapshot: list = field(default_factory=list, init=False)
     _expires: float = field(default=0, init=False)
 
@@ -481,14 +482,18 @@ class LiveCatalog:
             'Registry': {'connection_state': 'connected' if registry_connected else 'NotConnected'},
             'ModelGateway': {'connection_state': 'connected' if models_connected else 'NotConnected',
                              'reason': '' if models_connected else 'Production model-list permission not approved; BedrockClaude and OpenAI execution routes unchanged'},
+            'ProviderMetadata': {'connection_state': 'connected' if self.provider_metadata else 'NotConnected',
+                                 'reason': 'Provider metadata only; not entitlement, Gateway enumeration or execution'},
             'FoundationLibrary': {'connection_state': 'platform-owned', 'authority': 'separate'}
         }
 
     def records(self):
-        if time.monotonic() < self._expires:
+        if self.provider_metadata is None and time.monotonic() < self._expires:
             return copy.deepcopy(self._snapshot)
         try:
             items = self.models.records() + self.registry.records()
+            if self.provider_metadata is not None:
+                items += self.provider_metadata.records()
             if len(items) > 200 or len({i['id'] for i in items}) != len(items):
                 raise ValueError('Invalid snapshot')
             self._snapshot = copy.deepcopy(items)
@@ -524,7 +529,10 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     registries, models = config.get('registries', []), config.get('model_gateways', [])
     if not isinstance(registries, list) or not isinstance(models, list):
         raise ValueError('Invalid catalog sources')
-    if not registries and not models:
+    metadata = config.get('provider_metadata', [])
+    if not isinstance(metadata, list):
+        raise ValueError('Invalid provider metadata sources')
+    if not registries and not models and not metadata:
         return None
     binding = config.get('binding', {})
     account, region = binding.get('expected_account'), binding.get('region')
@@ -536,7 +544,7 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     ttl = config.get('cache_seconds', 30)
     if type(ttl) not in (int, float) or not 0 <= ttl <= 60:
         raise ValueError('Invalid cache interval')
-    if len(registries) + len(models) > 10:
+    if len(registries) + len(models) + len(metadata) > 10:
         raise ValueError('Too many catalog sources')
     for sources, service, key in ((registries, 'agent-registry', 'registry'), (models, 'bedrock-agentcore', 'gateway')):
         for source in sources:
@@ -561,6 +569,9 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
                     if (len(parts) != 4 or parts[2] not in targets or not isinstance(qualified, str)
                             or qualified.count('/') != 1 or qualified.split('/')[1] != parts[3]):
                         raise ValueError('Exact qualified model approval required')
+    from .provider_model_metadata import validate_source, ProviderModelMetadata
+    for source in metadata:
+        validate_source(source, account, region)
     from botocore.config import Config
     sdk_config = Config(connect_timeout=3, read_timeout=5, retries={'max_attempts': 1})
     if session is None:
@@ -582,7 +593,9 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
         reader = model_reader_factory(source) if model_reader_factory else native_model_reader(source, session)
         mp.append(ModelGatewayCatalogProvider(client_factory('bedrock-agentcore-control', region),
                   source['gateway_id'], region, source['exposure'], reader, tuple(source['target_ids']), source['gateway_arn']))
-    return LiveCatalog(Sources(mp), Sources(rp), ttl)
+    pp = [ProviderModelMetadata(client_factory('bedrock-agentcore-control', region), copy.deepcopy(source), account, region)
+          for source in metadata]
+    return LiveCatalog(Sources(mp), Sources(rp), ttl, Sources(pp) if pp else None)
 
 
 def validate_model_endpoint(source):
@@ -650,7 +663,7 @@ def projection(db, persona, component):
     ready = component.get('integration_ready', True) and component.get('supported', True)
     usable = granted and ready
     requestable = not granted and component.get('requestable', True) and component.get('supported', True)
-    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector')
+    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement')
     public = {k: component[k] for k in public_fields if k in component}
     public.update({'record_id': component['id'], 'approved': True, 'external': component.get('external', False),
                    'discoverable': True, 'usable': usable, 'granted': granted, 'requestable': requestable,

@@ -1,0 +1,64 @@
+{
+  "approved": false,
+  "region": "us-west-2",
+  "gateway_id": "gab-foundation-model-m0-gm7vvru7gn",
+  "gateway_arn": "arn:aws:bedrock-agentcore:us-west-2:<EXISTING_STUDIO_ACCOUNT>:gateway/gab-foundation-model-m0-gm7vvru7gn",
+  "target_id": "5ADTYKAJSO",
+  "target_revision": "fc8d1d433f46308d999f08d202a4ec9599d23936934a48583e21a8c063e4528d",
+  "scope": {
+    "workspaces": [
+      "research"
+    ],
+    "requestable": false,
+    "owner": "Studio platform owner",
+    "data_handling": "Provider metadata only; no inference or user data sent. Entitlement and execution unverified."
+  },
+  "snapshot": {
+    "mapping": {
+      "bedrock_model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "mantle_model_id": "anthropic.claude-haiku-4-5",
+      "region": "us-west-2",
+      "api": "Messages",
+      "gateway_path": "/v1/messages",
+      "provider_path": "/anthropic/v1/messages"
+    },
+    "provenance": "AWS provider metadata + configured Gateway route; execution unverified",
+    "control_plane_api": "bedrock:GetFoundationModel",
+    "request_id": "8cc1c717-6293-4684-aa9f-91c2b34f5db3",
+    "document_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html",
+    "document_sha256": "6f5fdc77a67dc7ec18bd974a28b79bae791e873be7848856334b5422e4267831",
+    "retrieved_at": 1789202788.563652,
+    "expires_at": 1789289188.563652,
+    "foundation_model": {
+      "modelId": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "modelName": "Claude Haiku 4.5",
+      "providerName": "Anthropic",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "INFERENCE_PROFILE"
+      ],
+      "lifecycle": "ACTIVE"
+    }
+  },
+  "exposure": {
+    "provider-model:gab-foundation-model-m0-gm7vvru7gn:5ADTYKAJSO:anthropic.claude-haiku-4-5": {
+      "workspaces": [
+        "research"
+      ],
+      "requestable": false,
+      "owner": "Studio platform owner",
+      "data_handling": "Provider metadata only; no inference or user data sent. Entitlement and execution unverified.",
+      "approved": false,
+      "version": "f9fa359c20f7f6dc0728ed57c192e12df1ddbd4813bb77b2d9da1b8806ad0779",
+      "approval_sha256": "f9fa359c20f7f6dc0728ed57c192e12df1ddbd4813bb77b2d9da1b8806ad0779",
+      "digest_format": "native-catalog-v2"
+    }
+  }
+}
