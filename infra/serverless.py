@@ -80,7 +80,7 @@ def template(*, foundation_deployment=None, foundation_producer=None):
         statements = [{"Effect": "Allow", "Action": ["logs:CreateLogStream", "logs:PutLogEvents"], "Resource": attr(logs)}]
         if name != "Dispatcher":
             entity_keys = {
-                "Business": ["_revision", "components", "foundations", "catalog_history", "grants", "agents", "versions", "jobs", "events", "requests", "audit", "settings", "hosted_sessions", "principals", "job_authority"],
+                "Business": ["_revision", "components", "foundations", "catalog_history", "grants", "agents", "versions", "jobs", "events", "requests", "audit", "settings", "hosted_sessions", "principals", "job_authority", "general_requests"],
                 "Auth": ["_revision", "grants", "oidc_flows", "hosted_sessions", "principals"],
                 "Authorizer": ["_revision", "grants", "hosted_sessions", "principals"],
                 "Worker": ["_revision", "components", "foundations", "grants", "agents", "versions", "jobs", "events", "settings", "audit", "hosted_sessions", "principals", "job_authority"],

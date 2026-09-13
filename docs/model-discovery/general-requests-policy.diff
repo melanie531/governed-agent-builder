@@ -1,0 +1,22 @@
+--- ScopedRuntime.before.json
++++ ScopedRuntime.proposed.json
+@@ -27,7 +27,8 @@
+             "settings",
+             "hosted_sessions",
+             "principals",
+-            "job_authority"
++            "job_authority",
++            "general_requests"
+           ]
+         }
+       },
+@@ -57,7 +58,8 @@
+             "settings",
+             "hosted_sessions",
+             "principals",
+-            "job_authority"
++            "job_authority",
++            "general_requests"
+           ]
+         }
+       },
