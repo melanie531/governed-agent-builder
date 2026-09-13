@@ -3,9 +3,11 @@ import {test,expect} from '@playwright/test';
 // Presentation-only contract for the AI Catalog Models list (mocked /api/catalog):
 // the verified Haiku route displays "Anthropic" / "Claude Haiku 4.5"; the full
 // model/profile ID appears only inside View details. Unknown IDs are never
-// relabelled as Haiku. Access/readiness/approval semantics are untouched.
+// relabelled. Access/readiness/approval semantics are untouched. Models are
+// grouped BY PROVIDER (Bedrock-catalog style), so verified routes render under a
+// provider table and unverified routes fall under an "Other providers" table.
 const base={record_id:'',version:'v1',kind:'model',description:'Enumerated Bedrock inference route; execution not verified',provider:'Amazon Bedrock',data_handling:'Synthetic',capabilities:[],status:'AVAILABLE',policy_reason:'',requestable:false,usable:true,origin:'AgentCore Model Gateway',refreshed_at:null,fixture:false,approved:true,external:false,execution_ready:false};
-const haiku={...base,id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',record_id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',name:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',model_id:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0'};
+const haiku={...base,id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',record_id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',name:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',model_id:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',native_model_id:'anthropic.claude-haiku-4-5-20251001-v1:0'};
 const unknown={...base,id:'model:gw:target:us.anthropic.claude-mystery-9-9-v1:0',record_id:'model:gw:target:us.anthropic.claude-mystery-9-9-v1:0',name:'demo-target/us.anthropic.claude-mystery-9-9-v1:0',model_id:'demo-target/us.anthropic.claude-mystery-9-9-v1:0',status:'PENDING',usable:false,requestable:true};
 
 test('Models list shows Anthropic / Claude Haiku 4.5; full ID only in View details; unknown IDs never relabelled',async({page})=>{
@@ -16,15 +18,15 @@ test('Models list shows Anthropic / Claude Haiku 4.5; full ID only in View detai
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  // List: verified Haiku shows friendly provider/name, not the raw route ID.
  await expect(page.getByRole('button',{name:'Claude Haiku 4.5',exact:true})).toBeVisible();
- await expect(page.getByText('Anthropic',{exact:true})).toBeVisible();
- const table=page.getByRole('table');
- await expect(table.getByText('demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',{exact:true})).toHaveCount(0);
+ // Provider grouping: an Anthropic-labelled table groups the verified route.
+ const anthropic=page.getByRole('table').filter({has:page.getByRole('button',{name:'Claude Haiku 4.5',exact:true})});
+ await expect(anthropic.getByText('demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',{exact:true})).toHaveCount(0);
  // Unknown route keeps its raw identity; it is never presented as Haiku.
  await expect(page.getByRole('button',{name:'demo-target/us.anthropic.claude-mystery-9-9-v1:0'})).toBeVisible();
- // Readiness/access markers unchanged.
- await expect(table.getByText('Not ready',{exact:true})).toHaveCount(2);
- await expect(table.getByText('Pending approval',{exact:true})).toBeVisible();
- // View details: full model/profile ID present.
+ // Readiness/access markers unchanged (from the API, not fabricated).
+ await expect(page.getByText('Not ready',{exact:true})).toHaveCount(2);
+ await expect(page.getByText('Pending approval',{exact:true})).toBeVisible();
+ // View details: full model/profile ID present only here.
  await page.getByRole('button',{name:'Claude Haiku 4.5',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await expect(dialog.getByRole('heading',{name:'Claude Haiku 4.5'})).toBeVisible();
