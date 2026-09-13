@@ -5,6 +5,16 @@ import json
 import logging
 import re
 
+# Foundation route binding. Each entry is an owner-approved native model route
+# whose outbound Gateway IAM InvokeModel grant and Cedar permit are provisioned.
+# Adding a route here alone does NOT authorize inference: the ModelGateway role
+# grant and the PolicyEngine Cedar permit for the same model must also exist,
+# otherwise the request fails closed downstream. Haiku is the proven baseline.
+APPROVED_MODELS = frozenset({
+    'claude/anthropic.claude-haiku-4-5',
+    'claude/anthropic.claude-opus-5',
+})
+# Backward-compatible alias: the proven baseline route. New routes go in APPROVED_MODELS.
 APPROVED_MODEL = 'claude/anthropic.claude-haiku-4-5'
 PATH = '/inference/v1/messages'
 MAX_BODY_BYTES = 1744  # plus the foundation budget's 256-byte allowance <= 2000
@@ -53,7 +63,7 @@ def validate(event):
         raise Rejected('JSON_INVALID')
     if set(payload) - {'model', 'messages', 'system', 'max_tokens', 'stream'}:
         raise Rejected('CONTROL_FIELD_DENIED')
-    if payload.get('model') != APPROVED_MODEL:
+    if payload.get('model') not in APPROVED_MODELS:
         raise Rejected('MODEL_DENIED')
     if 'stream' in payload and payload['stream'] is not False:
         raise Rejected('STREAM_DENIED')
