@@ -1,0 +1,17 @@
+{
+  "arch": "aarch64",
+  "python": "3.13.15",
+  "packaged_native_import": true,
+  "manifest_roundtrip": true,
+  "codec_executed": true,
+  "signed_passthrough_mock": true,
+  "empty_allowlist_denied": true,
+  "direct_runtime_denied": true,
+  "network": "disabled",
+  "inference_calls": 0,
+  "emulated_on_x86_64": true,
+  "extracted_bytes_match_archive": true,
+  "archive_sha256": "4e79c12b47bc3cf1f62d298e75f37a9120139d01303f7dbd2d611013e4b99240",
+  "cloud_runtime_tested": false,
+  "container_image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a"
+}
