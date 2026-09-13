@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact
+from .diagnostic_approval import (SubmitDiagnostic, ReviewDiagnostic, handle as diagnostic_operator,
+                                  inspect_candidate as diagnostic_candidate)
 from . import self_service_admission as self_service
 from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
@@ -754,6 +756,31 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         platform = platform_metadata(data.config)
         with store.tx() as db:
             return register_source(db, actor, data, platform)
+
+    @app.post("/api/admin/diagnostic-capture/submissions", status_code=201)
+    def submit_diagnostic_capture(data: SubmitDiagnostic, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_operator(store, actor, data, session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
+
+    @app.get("/api/admin/diagnostic-capture/submissions/{candidate_ref}")
+    def get_diagnostic_candidate(candidate_ref: str, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_candidate(store, actor, candidate_ref,
+                                    session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
+
+    @app.post("/api/admin/diagnostic-capture/reviews")
+    def review_diagnostic_capture(data: ReviewDiagnostic, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_operator(store, actor, data, session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
 
     @app.post("/api/internal/m0/foundation-approvals")
     def approve_foundation(data: ApproveFoundation, request: Request):
