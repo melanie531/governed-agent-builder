@@ -10,13 +10,17 @@ const root = resolve(import.meta.dirname, '../..');
 const expect = baseExpect.configure({timeout: 45000});
 const statePath = process.env.GAB_RELEASE_STATE;
 if (!statePath) throw new Error('Explicit GAB_RELEASE_STATE is required');
+// Pin model choices: template defaults alone missed Knowledge Q&A + GPT-6.
+const defaultScenarios = [
+  {template: 'Research', eval: true, model: 'GPT-6 Astra'},
+  {template: 'Knowledge Q&A', eval: true, model: 'GPT-6 Astra'},
+  {template: 'Research', eval: false, model: 'Claude Haiku 4.5'},
+  {template: 'Knowledge Q&A', eval: false, model: 'GPT-6 Astra'},
+];
 // Give each complete journey a fresh real Cognito session. A four-scenario
 // suite can outlive one access token, including the final cleanup phases.
 if (!process.env.GAB_LIVE_SCENARIO && !process.env.GAB_CLEANUP_IDS && !process.env.GAB_REQUEST_ONLY) {
-  for (const scenario of [
-    {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
-    {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
-  ]) {
+  for (const scenario of defaultScenarios) {
     const result = spawnSync(process.execPath, [resolve(import.meta.dirname, 'live.mjs')], {
       cwd: root, env: {...process.env, GAB_LIVE_SCENARIO: JSON.stringify(scenario)}, stdio: 'inherit',
     });
@@ -258,11 +262,13 @@ print(json.dumps({'request_id':request_id,'storage':'DynamoDB','initial_status':
     await expect(page.getByRole('heading', {name: detail.definition.name, exact: true})).toBeVisible();
     await removeAgent(detail, 'failed-' + id);
   }
-  const scenarios = process.env.GAB_CLEANUP_IDS || process.env.GAB_REQUEST_ONLY ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
-    {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
-    {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
-  ];
+  const scenarios = process.env.GAB_CLEANUP_IDS || process.env.GAB_REQUEST_ONLY ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : defaultScenarios;
   for (const [index, scenario] of scenarios.entries()) {
+    const optionsResponse = await read('/api/journey/options');
+    if (!optionsResponse.ok()) throw new Error(`Catalog options returned HTTP ${optionsResponse.status()}`);
+    const options = await optionsResponse.json();
+    const expectedModel = scenario.model ? options.choices.models.find(model => model.name === scenario.model) : null;
+    if (scenario.model && !expectedModel) throw new Error(`Requested test model is unavailable in the Catalog: ${scenario.model}`);
     await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});
     await page.reload({waitUntil: 'domcontentloaded'});
     await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible();
@@ -303,6 +309,8 @@ print(json.dumps({'request_id':request_id,'storage':'DynamoDB','initial_status':
     await page.reload({waitUntil: 'domcontentloaded'});
     await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
     const detail = await (await read('/api/journey/agents/' + saved.agent_id)).json();
+    if (expectedModel && detail.definition.model_id !== expectedModel.id) throw new Error('Deployed model differs from the selected Catalog model');
+    if (detail.last_invocation?.model_id !== detail.definition.resolved_model_id) throw new Error('Runtime invoked a different model from the saved definition');
     const conversationTools = detail.conversation?.messages.flatMap(message => message.tools || []) || [];
     if (detail.last_invocation?.phase !== 'SUCCEEDED' || !conversationTools.length) throw new Error('Missing actual Gateway call evidence');
     if (scenario.eval && (detail.evaluation.cases.length !== 2 || detail.evaluation.cases.some(c => !c.request_id || c.evaluator_id !== 'Builtin.Correctness'))) throw new Error('Missing native evaluation receipts');
