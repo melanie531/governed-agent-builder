@@ -24,7 +24,7 @@ class ModelClient:
             body = build_request(self.model.requestModel, system, content[0]['text'],
                                  budget.limits.maxOutputTokens - budget.output_tokens)
         else:
-            body = {'model': self.model.route, 'system': system, 'messages': messages,
+            body = {'model': self.model.requestModel if self.model.transport == 'runtime-passthrough' else self.model.route, 'system': system, 'messages': messages,
                     'max_tokens': budget.limits.maxOutputTokens - budget.output_tokens, 'stream': False}
         if tools:
             body['tools'] = [{'name': t.name, 'description': t.description, 'input_schema': t.inputSchema} for t in tools]
@@ -41,6 +41,9 @@ class ModelClient:
             if self.model.protocol == 'messages-passthrough':
                 from .opus_messages import read_response
                 read_response(value, self.model.responseModelAllowlist, body['max_tokens'])
+            elif self.model.transport == 'runtime-passthrough':
+                if provider_model not in self.model.responseModels:
+                    raise GatewayError('PROVIDER_MODEL_MISMATCH')
             else:
                 approved_model = self.model.route.split('/', 1)[1]
                 if provider_model not in (approved_model, approved_model.removeprefix('anthropic.')):

@@ -43,6 +43,8 @@ class Model(Frozen):
     provider: Literal['bedrock']
     protocol: Literal['messages', 'messages-passthrough']
     targetDigest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    transport: Literal['inference-provider', 'runtime-passthrough'] = Field(default='inference-provider', exclude=True)
+    responseModels: tuple[str, ...] = Field(default=(), exclude=True)
     requestModel: str | None = Field(default=None, exclude=True)
     responseModelAllowlist: tuple[str, ...] = Field(default=(), exclude=True)
 
@@ -52,11 +54,17 @@ class Model(Frozen):
         if self.protocol == 'messages-passthrough':
             data['requestModel'] = self.requestModel
             data['responseModelAllowlist'] = list(self.responseModelAllowlist) if info.mode == 'json' else self.responseModelAllowlist
+        elif self.transport == 'runtime-passthrough':
+            data['transport'] = self.transport
+            data['requestModel'] = self.requestModel
+            data['responseModels'] = list(self.responseModels) if info.mode == 'json' else self.responseModels
         return data
 
     @model_validator(mode='after')
     def check(self):
         if self.protocol == 'messages-passthrough':
+            if self.transport != 'inference-provider' or self.responseModels:
+                raise ValueError('AMBIGUOUS_MESSAGES_BINDING')
             endpoint(self.endpoint, '/bedrockrt/v1/messages')
             if self.requestModel != 'us.anthropic.claude-opus-5' or self.route != self.requestModel:
                 raise ValueError('EXACT_OPUS_PASSTHROUGH_BINDING_REQUIRED')
@@ -64,6 +72,16 @@ class Model(Frozen):
                     or len(set(self.responseModelAllowlist)) != len(self.responseModelAllowlist)
                     or any(not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', x) for x in self.responseModelAllowlist)):
                 raise ValueError('EXPLICIT_RESPONSE_ID_ALLOWLIST_REQUIRED')
+        elif self.transport == 'runtime-passthrough':
+            if not re.fullmatch(r'[A-Za-z0-9-]+/[a-zA-Z0-9:._-]+', self.route):
+                raise ValueError('EXPLICIT_RUNTIME_MODEL_IDENTITIES_REQUIRED')
+            target, model = self.route.split('/', 1)
+            endpoint(self.endpoint, '/' + target + '/v1/messages')
+            if (self.requestModel != model or self.responseModelAllowlist
+                    or model != 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+                    or not self.responseModels or len(set(self.responseModels)) != len(self.responseModels)
+                    or any(not re.fullmatch(r'anthropic\.claude-[a-zA-Z0-9:._-]+', x) for x in self.responseModels)):
+                raise ValueError('EXPLICIT_EXISTING_HAIKU_BINDING_REQUIRED')
         else:
             endpoint(self.endpoint, '/inference/v1/messages')
             if (not re.fullmatch(r'claude/anthropic\.claude-[a-zA-Z0-9:._-]+', self.route)

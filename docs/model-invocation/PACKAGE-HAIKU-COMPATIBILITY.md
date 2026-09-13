@@ -1,0 +1,9 @@
+# Package and deployed Haiku contract correction
+
+Actual downloaded Business bundle foundation_harness/config.py uses transport=runtime-passthrough, requestModel, responseModels, protocol=messages and target/model route. Earlier cbd0bab only tested old inference-provider messages format. Added explicit compatibility for the deployed us.anthropic.claude-haiku-4-5-20251001-v1:0 binding with exact responseModels validation, preserving its serialized manifest and request path. Existing generic legacy messages remains unchanged. Opus messages-passthrough is separate and rejects mixing responseModels/responseModelAllowlist contracts. No inferred response identities, permissions or Ready flags.
+
+scripts/package_foundation.py SOURCES now includes opus_messages.py, hence source digest changes and old source approvals cannot be reused silently.
+
+RED: existing deployed Haiku shape rejected (transport/responseModels extra fields), generated ZIP lacked opus_messages.py. GREEN: package(mode=base) creates a real source ZIP; isolated subprocess python -I from temporary cwd imports codec/config/ModelClient from that ZIP (asserted __file__), executes request+synthetic response codec, roundtrips both Opus and deployed Haiku manifests. Host locked test venv supplies dependencies; this is NOT the ARM64 live package or deployed Runtime execution. Separate actual Engine test sends the exact Haiku profile and validates explicit responseModels; no model inference.
+
+Tests: tests/test_opus_package.py tests/test_opus_modelclient.py tests/test_opus_request_contract.py tests/test_foundation_executor.py tests/test_foundation_approval.py ->63 passed,2 existing warnings,37.81s. No backend driver edits, IAM changes or deployment. Source packaging and admission re-approval remain required after integration with backend branch.
