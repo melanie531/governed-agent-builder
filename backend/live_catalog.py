@@ -597,9 +597,10 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     from .runtime_model_catalog import validate_source as validate_runtime_source, RuntimeModelCatalog
     for source in runtime_sources:
         validate_runtime_source(source, account, region)
-    from .provider_model_metadata import validate_source, ProviderModelMetadata
-    for source in metadata:
-        validate_source(source, account, region)
+    if metadata:
+        from .provider_model_metadata import validate_source, ProviderModelMetadata
+        for source in metadata:
+            validate_source(source, account, region)
     from .discovery_catalog_source import DiscoveryCatalogSource, load_discovery_cache
     for source in discovery:
         if (not isinstance(source, dict) or source.get('approved') is not True
@@ -634,8 +635,11 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
                   source['gateway_id'], region, source['exposure'], reader, tuple(source['target_ids']), source['gateway_arn']))
     for source in runtime_sources:
         mp.append(RuntimeModelCatalog(client_factory('bedrock-agentcore-control', region), source))
-    pp = [ProviderModelMetadata(None, copy.deepcopy(source), account, region)
-          for source in metadata]
+    pp = []
+    if metadata:
+        from .provider_model_metadata import ProviderModelMetadata
+        pp = [ProviderModelMetadata(None, copy.deepcopy(source), account, region)
+              for source in metadata]
     dp = [DiscoveryCatalogSource(source['source_id'], source['cache_path'],
                                  copy.deepcopy(source.get('scope', {})), today=source.get('today'))
           for source in discovery]
