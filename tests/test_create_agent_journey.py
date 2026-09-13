@@ -99,6 +99,47 @@ def test_double_submit_and_duplicate_worker_do_not_duplicate_cloud_work(setup):
     assert repeated["job_id"] == first["job_id"]
 
 
+def test_failed_knowledge_agent_recovers_with_current_foundation_without_losing_configuration(setup, monkeypatch):
+    """A platform fix must reach an existing failed agent through a new version."""
+    from botocore.exceptions import ClientError
+    journey, cloud = setup
+    create = cloud.create
+
+    def denied(*args):
+        raise ClientError({"Error": {"Code": "AccessDeniedException"},
+                           "ResponseMetadata": {"RequestId": "initial-denial"}}, "CreateAgentRuntime")
+
+    monkeypatch.setattr(cloud, "create", denied)
+    saved = save(journey)
+    drain(journey)
+    failed = journey.detail(PERSONAS["alex"], saved["agent_id"])
+    assert failed["deployment"]["status"] == "FAILED"
+    assert "CreateAgentRuntime" in failed["deployment"]["error"]
+    assert not cloud.created and not cloud.invocations
+    original = failed["definition"]
+
+    monkeypatch.setattr(cloud, "create", create)
+    journey.settings["artifact"] = {"bucket": "test-private-bucket", "key": "fixed-foundation.zip", "version_id": "2"}
+    request = SaveAgent(definition=AgentDefinition(**{key: original[key] for key in AgentDefinition.model_fields}),
+                        base_version=1, idempotency_key=uuid4().hex, deploy=True)
+    recovered = journey.save(PERSONAS["alex"], request, agent_id=saved["agent_id"])
+    assert journey.save(PERSONAS["alex"], request, agent_id=saved["agent_id"]) == recovered
+    drain(journey)
+    current = journey.detail(PERSONAS["alex"], saved["agent_id"])
+    assert current["current_version"] == 2 and current["deployment"]["status"] == "DEPLOYED"
+    assert current["evaluation"]["status"] == "SKIPPED" and not cloud.evaluations
+    assert all(current["definition"][key] == original[key] for key in AgentDefinition.model_fields)
+    assert next(iter(cloud.created.values()))["artifact"] == journey.settings["artifact"]
+    with journey.store.tx() as db:
+        assert journey.owned(db, PERSONAS["alex"], saved["agent_id"], 1)[1] == original
+        assert get(db, f"journey-deployment:{saved['agent_id']}:1")["status"] == "FAILED"
+    invoked = journey.action(PERSONAS["alex"], saved["agent_id"], InvokeAgent(
+        version=2, input="What is the Aurora support target?", idempotency_key=uuid4().hex), "invoke")
+    drain(journey)
+    assert journey.result(PERSONAS["alex"], invoked["job_id"])["phase"] == "SUCCEEDED"
+    assert len(cloud.created) == 1
+
+
 def test_chat_reuses_server_history_and_isolates_agent_conversations(setup):
     journey, cloud = setup
     first, second = save(journey), save(journey)
