@@ -11,6 +11,7 @@ from .foundation_runs import get, put
 from .journey_catalog import records
 from .journey_schema import Strict
 from .platform_metrics import overview
+from .platform_cloud import registry_descriptor
 
 
 class Reasoned(Strict):
@@ -96,13 +97,15 @@ def router(store, who, cloud=None):
         return value
 
     def verify_record(item, record):
+        registered = binding(item)
+        if record.get("recordArn") != registered["arn"] or record.get("recordVersion") != registered["version"]:
+            raise HTTPException(409, "Registry record identity or version changed; register a reviewed version")
         try:
             descriptor = json.loads(record["descriptors"]["custom"]["inlineContent"])
         except (KeyError, ValueError, TypeError):
             raise HTTPException(409, "Registry descriptor does not match the Catalog") from None
-        expected = {"capability_id": item["id"], "binding_digest": item["binding_digest"],
-                    "version": binding(item)["version"], "schema": "gab.catalog.v1", "kind": item["kind"]}
-        if any(descriptor.get(key) != value for key, value in expected.items()):
+        expected = registry_descriptor({**item, "version": binding(item)["version"]})
+        if descriptor != expected:
             raise HTTPException(409, "Registry descriptor changed; register a reviewed version")
 
     @routes.get("/overview")

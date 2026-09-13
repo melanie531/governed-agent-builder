@@ -10,6 +10,7 @@ from backend.app import create_app
 from backend.foundation_runs import put
 from backend.store import Store
 from backend.platform_metrics import overview
+from backend.platform_cloud import registry_descriptor
 from foundation_harness.config import digest
 from tests.conftest import login, ORIGIN
 from tests.journey_support import make_journey
@@ -26,9 +27,7 @@ class Native:
     def register(self, item):
         arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:registry/abcdefghijkl/record/" + digest(item["id"])[:12]
         self.rows[arn] = {"recordArn": arn, "recordVersion": item["version"], "status": "DRAFT",
-                         "descriptors": {"custom": {"inlineContent": json.dumps({
-                             "schema": "gab.catalog.v1", "capability_id": item["id"], "kind": item["kind"],
-                             "version": item["version"], "binding_digest": item["binding_digest"]})}}}
+                         "descriptors": {"custom": {"inlineContent": json.dumps(registry_descriptor(item))}}}
         self.calls.append("register")
         return {"arn": arn, "status": "CREATING", "version": item["version"], "binding_digest": item["binding_digest"]}
 
@@ -117,13 +116,18 @@ def test_model_registry_approval_publish_grant_and_withdraw(platform):
         assert {row["action"] for row in db.select("audit")} >= {"registry_registered", "registry_decided", "model_validated", "catalog_published", "catalog_withdrawn"}
 
 
-def test_registry_descriptor_drift_blocks_approval(platform):
+@pytest.mark.parametrize("field,value", [("schema", "tampered"), ("target_id", "different-target"), ("recordVersion", "changed")])
+def test_registry_descriptor_drift_blocks_approval(platform, field, value):
     client, _, native, _ = platform
     login(client, "admin")
     base = "/api/admin/platform/catalog/mcp-tavily"
     revision = {"version": "1", "reason": "Synthetic approval"}
     assert client.post(base + "/register", json=revision).status_code == 200
-    next(iter(native.rows.values()))["descriptors"]["custom"]["inlineContent"] = '{"schema":"tampered"}'
+    descriptor = next(iter(native.rows.values()))["descriptors"]["custom"]
+    if field == "recordVersion":
+        next(iter(native.rows.values()))[field] = value
+    else:
+        descriptor["inlineContent"] = json.dumps({**json.loads(descriptor["inlineContent"]), field: value})
     assert client.post(base + "/submit", json=revision).status_code == 409
 
 

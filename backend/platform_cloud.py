@@ -11,6 +11,20 @@ from fastapi import HTTPException
 from foundation_harness.config import digest
 
 
+def registry_descriptor(item):
+    descriptor = {"schema": "gab.catalog.v1", "capability_id": item["id"], "kind": item["kind"],
+                  "version": item["version"], "binding_digest": item["binding_digest"]}
+    if item["kind"] == "model":
+        descriptor["model_id"] = item["binding"]["model_id"]
+    elif item["kind"] == "mcp_server":
+        descriptor.update(gateway_id=item["binding"]["gateway_id"], target_id=item["binding"]["target_id"])
+    elif item["kind"] == "skill":
+        descriptor["instructions"] = item["binding"]["instructions"]
+    else:
+        raise HTTPException(422, "Register the MCP server that owns this tool")
+    return descriptor
+
+
 class PlatformCloud:
     def __init__(self, settings, session=None):
         self.settings = settings
@@ -63,18 +77,9 @@ class PlatformCloud:
     def register(self, item):
         # CUSTOM model records carry typed metadata. MCP records point only at
         # this platform's previously verified Gateway bindings.
-        descriptor = {"schema": "gab.catalog.v1", "capability_id": item["id"], "kind": item["kind"],
-                      "version": item["version"], "binding_digest": item["binding_digest"]}
-        if item["kind"] == "model":
-            descriptor["model_id"] = item["binding"]["model_id"]
-        elif item["kind"] == "mcp_server":
-            if item["binding"]["gateway_id"] != self.settings["gateway_id"]:
-                raise HTTPException(409, "MCP server is outside the platform Gateway")
-            descriptor.update(gateway_id=self.settings["gateway_id"], target_id=item["binding"]["target_id"])
-        elif item["kind"] == "skill":
-            descriptor["instructions"] = item["binding"]["instructions"]
-        else:
-            raise HTTPException(422, "Register the MCP server that owns this tool")
+        descriptor = registry_descriptor(item)
+        if item["kind"] == "mcp_server" and item["binding"]["gateway_id"] != self.settings["gateway_id"]:
+            raise HTTPException(409, "MCP server is outside the platform Gateway")
         # A validated platform descriptor is CUSTOM, never misrepresented as a
         # native MCP server.json or Agent Skill format.
         response = self.client("bedrock-agentcore-control").create_registry_record(
