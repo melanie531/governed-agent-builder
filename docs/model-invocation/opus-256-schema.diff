@@ -1,0 +1,40 @@
+--- readback-schema
++++ proposed-schema
+@@ -46,6 +46,37 @@
+                         }
+                       }
+                     }
++                  },
++                  "system": {
++                    "type": "string",
++                    "maxLength": 2048
++                  },
++                  "thinking": {
++                    "type": "object",
++                    "required": [
++                      "type"
++                    ],
++                    "properties": {
++                      "type": {
++                        "type": "string",
++                        "enum": [
++                          "disabled"
++                        ]
++                      }
++                    },
++                    "additionalProperties": false
++                  },
++                  "tools": {
++                    "type": "array",
++                    "items": {
++                      "type": "object"
++                    }
++                  },
++                  "tool_choice": {
++                    "type": "object"
++                  },
++                  "output_config": {
++                    "type": "object"
+                   }
+                 }
+               }
