@@ -140,3 +140,55 @@ def test_boundary_exactly_at_cap_is_admitted(tmp_path):
     assert row['state'] == 'RESERVED'
     assert row['held_usd'] == '0.06'
     assert row['held_micros'] == 60000
+
+
+# --- 哥哥 sharpening: reserve_and_claim_capture strict ordering (atomic step b) ---
+from scripts.opus_capture_ticket import reserve_and_claim_capture
+
+
+def rc(store, ticket='one', **kw):
+    args = dict(role='synthetic-role', workspace='synthetic-project', request_digest='a'*64,
+                deadline=200, now=100, costs=envelope(), cap_usd='0.06')
+    args.update(kw)
+    return reserve_and_claim_capture(store, ticket, **args)
+
+
+def test_reserve_and_claim_is_single_atomic_claimed_row(tmp_path):
+    s = Store(str(tmp_path / 'c.sqlite'))
+    row = rc(s)
+    assert row['state'] == 'CLAIMED'           # reserve + claim in ONE tx
+    assert row['held_usd'] == '0.06' and row['held_micros'] == 60000
+    from backend.foundation_runs import get
+    with s.tx() as db:
+        assert get(db, 'opus-capture:one')['state'] == 'CLAIMED'
+
+
+def test_reserve_and_claim_duplicate_key_denied(tmp_path):
+    s = Store(str(tmp_path / 'c.sqlite')); rc(s)
+    with pytest.raises(ValueError, match='EXISTS'):
+        rc(s)
+
+
+@pytest.mark.parametrize('kw,match', [
+    ({'role': ''}, 'CAPTURE_BINDING_REQUIRED'),
+    ({'now': float('nan')}, 'TIME_VALUE_NOT_FINITE'),
+    ({'deadline': float('inf')}, 'TIME_VALUE_NOT_FINITE'),
+])
+def test_reserve_and_claim_precheck_failure_creates_nothing(tmp_path, kw, match):
+    # STRICT ORDERING: a step-(a) failure must create NO reservation and NO ticket.
+    s = Store(str(tmp_path / 'c.sqlite'))
+    with pytest.raises(ValueError, match=match):
+        rc(s, **kw)
+    from backend.foundation_runs import get
+    with s.tx() as db:
+        assert get(db, 'opus-capture:one') is None
+
+
+def test_reserve_and_claim_over_budget_creates_nothing(tmp_path):
+    s = Store(str(tmp_path / 'c.sqlite'))
+    costs = envelope(); costs['model_input']['usd'] = '0.010001'  # 0.060001 > 0.06
+    with pytest.raises(ValueError, match='CAPTURE_COST_EXCEEDS_CAP'):
+        rc(s, costs=costs)
+    from backend.foundation_runs import get
+    with s.tx() as db:
+        assert get(db, 'opus-capture:one') is None

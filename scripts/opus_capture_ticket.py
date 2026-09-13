@@ -118,6 +118,71 @@ def consume_capture(store,ticket,*,role,workspace,request_digest,now):
     return row
 
 
+def _validate_binding(role, workspace, request_digest):
+    """STRICT ORDERING step (a) part 1: identity/authority binding must pass first."""
+    if not role or not workspace or not re.fullmatch(r'[a-f0-9]{64}', request_digest):
+        raise ValueError('CAPTURE_BINDING_REQUIRED')
+
+
+def _validate_window(now, deadline):
+    """STRICT ORDERING step (a): admission window finiteness/bounds (fail-closed)."""
+    now = _finite(now); deadline = _finite(deadline)
+    if not now < deadline <= now + 60 * 60:
+        raise ValueError('CAPTURE_DEADLINE_INVALID')
+    return now, deadline
+
+
+def _price_costs(costs, cap_usd):
+    """STRICT ORDERING step (a): cost-basis coverage + EXACT micro-USD sizing.
+
+    Returns (cap_amount, cap_micros, total_micros). Raises before any persistence
+    if coverage/basis/precision/cap are invalid, so no reservation or ticket is
+    ever created when an earlier check fails.
+    """
+    if not isinstance(costs, dict) or not SERVICES <= costs.keys():
+        raise ValueError('COST_COVERAGE_REQUIRED')
+    cap_micros = _micros(cap_usd)
+    if not 0 < cap_micros <= CAP_CEILING_MICROS:
+        raise ValueError('CAPTURE_CAP_INVALID')
+    cap_amount = Decimal(cap_usd)
+    total_micros = 0
+    for item in costs.values():
+        if not isinstance(item, dict) or not isinstance(item.get('basis'), str) or not item['basis'].strip():
+            raise ValueError('COST_BASIS_REQUIRED')
+        total_micros += _micros(item.get('usd'))
+    if total_micros <= 0 or total_micros > cap_micros:
+        raise ValueError('CAPTURE_COST_EXCEEDS_CAP')
+    return cap_amount, cap_micros, total_micros
+
+
+def reserve_and_claim_capture(store, ticket, *, role, workspace, request_digest,
+                              deadline, now, costs, cap_usd):
+    """STRICT-ORDERED atomic send-path admission for the real dispatch entry.
+
+    Ordering (哥哥 sharpening): (a) verify identity + admission window + cost-basis
+    FIRST -> (b) in the SAME serializable transaction, reserve the total budget
+    (held_micros) AND create+claim the ticket (state CLAIMED). If any step (a)
+    check fails, NO reservation, NO ticket, NO claim -> caller must not send.
+
+    Only after this persistent CLAIM is committed may the caller dispatch, exactly
+    once. Two racers cannot both create+claim the same ticket key in one tx.
+    """
+    key = _key(ticket)
+    # (a) pre-checks BEFORE any persistence; any failure => no reserve, no ticket.
+    _validate_binding(role, workspace, request_digest)
+    now, deadline = _validate_window(now, deadline)
+    cap_amount, cap_micros, _total = _price_costs(costs, cap_usd)
+    # (b) single atomic tx: reserve budget AND create+claim the ticket together.
+    row = dict(role=role, workspace=workspace, request_digest=request_digest,
+               deadline=deadline, state='CLAIMED', held_usd=str(cap_amount),
+               held_micros=cap_micros, costs=costs, attempts=1)
+    with store.tx() as db:
+        if get(db, key) is not None:
+            raise ValueError('CAPTURE_TICKET_EXISTS')
+        put(db, key, row)
+    return row
+
+
 def finish_capture(store,ticket,*,outcome):
     if outcome not in {'CAPTURED','UNKNOWN'}:raise ValueError('CAPTURE_OUTCOME_INVALID')
     with store.tx() as db:

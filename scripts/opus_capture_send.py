@@ -1,48 +1,48 @@
-"""Send-path gate: the ONLY real dispatch entry consumes the capture ticket and
-reserves budget atomically BEFORE any network I/O, so a live call sends AT MOST
-ONCE. Isolated module; the live Bedrock call remains UNVERIFIED until 哥哥 applies
-IAM/Cedar (no permissions are applied here and no cloud resource is created).
+"""Send-path gate: the ONLY real dispatch entry. STRICT ORDERING (哥哥 sharpening):
+  (a) verify identity + admission window + cost-basis FIRST;
+  (b) in the SAME serializable transaction, reserve the total budget AND
+      create+claim the ticket (persistent consumption);
+  (c) only AFTER that persistent consumption succeeds may the actual send proceed.
+If any step (a) check fails there is no reservation, no ticket, no send. If the
+persistent claim (b) fails (e.g. a concurrent loser), there is no send.
 
-Atomicity contract (no TOCTOU window):
-  * consume_capture() performs claim-ticket + hold-budget as a SINGLE serializable
-    store.tx() that is committed before this function performs any transport I/O.
-  * The ticket's held_usd (integer micro-USD) IS the reserved budget; the same
-    committed CLAIM state-transition is both the ticket claim and the reservation.
-  * Two racing callers cannot both pass: exactly one wins the CLAIM; the loser
-    gets CAPTURE_TICKET_CONSUMED and NEVER reaches dispatch. Proven by the
-    concurrency regression test (only one caller sends).
+At-most-once / no TOCTOU: the reserve+claim is one committed store.tx(); two racers
+cannot both create+claim the same ticket key, so at most one caller ever reaches the
+dispatch in (c). The live Bedrock call remains UNVERIFIED-pending-哥哥-IAM/Cedar-apply
+(no permissions applied here, no cloud resource created, no Ready flag written).
 
-This module constructs no clients and creates no cloud resources. The caller
-supplies an already-authorized transport (post(endpoint, body, headers, timeout))
-whose identity/authority is verified upstream, never from a request payload.
+The caller supplies an already-authorized transport (post(endpoint, body, headers,
+timeout)) whose identity/authority is verified upstream, never from a request payload.
 """
-from scripts.opus_capture_ticket import consume_capture, finish_capture
+from scripts.opus_capture_ticket import reserve_and_claim_capture, finish_capture
 
 
 class SendGateDenied(RuntimeError):
-    """Raised when the atomic ticket claim fails; no dispatch may occur."""
+    """Raised when step (a) or the atomic claim (b) fails; NO dispatch may occur."""
 
 
-def guarded_capture_send(store, ticket, *, role, workspace, request_digest, now,
+def guarded_capture_send(store, ticket, *, role, workspace, request_digest,
+                         deadline, now, costs, cap_usd,
                          transport, endpoint, body, headers, timeout=60):
-    """Atomically claim the ticket + reserve budget, THEN dispatch at most once.
+    """STRICT-ORDERED send: pre-checks -> atomic reserve+claim -> then dispatch once.
 
-    Returns a dict with the claimed reservation and the raw transport outcome.
-    Raises SendGateDenied (wrapping the claim ValueError) if the ticket cannot be
-    claimed (already consumed, expired, identity mismatch, non-finite time) — in
-    which case NO dispatch is performed and no budget is consumed by this caller.
+    Returns a dict describing the committed claim + the raw transport outcome.
+    Raises SendGateDenied (wrapping the underlying ValueError) if identity/admission/
+    cost-basis fails OR the persistent claim fails (concurrent loser / already
+    consumed / invalid). In every such case NO dispatch is performed.
     """
-    # STEP 1 (atomic, committed before any I/O): claim ticket + hold budget.
-    # This is the single point that guarantees at-most-once and closes TOCTOU.
+    # STEP (a)+(b): pre-checks then single atomic reserve+claim. If this raises,
+    # execution never reaches the transport call below -> guaranteed zero sends.
     try:
-        claim = consume_capture(store, ticket, role=role, workspace=workspace,
-                                request_digest=request_digest, now=now)
+        claim = reserve_and_claim_capture(
+            store, ticket, role=role, workspace=workspace,
+            request_digest=request_digest, deadline=deadline, now=now,
+            costs=costs, cap_usd=cap_usd)
     except ValueError as exc:
-        # Loser of a race / expired / invalid time => fail closed, never dispatch.
+        # Failed identity/admission/cost-basis OR lost the claim race => no send.
         raise SendGateDenied(str(exc)) from exc
 
-    # STEP 2: only the sole CLAIM winner reaches here. Dispatch exactly once.
-    # The live call cannot succeed until 哥哥 applies IAM/Cedar; mark accordingly.
+    # STEP (c): persistent consumption succeeded. Dispatch exactly once.
     live_call_status = 'UNVERIFIED-pending-哥哥-apply'
     response = None
     error = None
@@ -53,9 +53,9 @@ def guarded_capture_send(store, ticket, *, role, workspace, request_digest, now,
              **(headers or {})},
             timeout)
         response = value
-        # A real provider response would flip this once IAM/Cedar are applied and
-        # a live identity is observed through the reviewed transport; until then it
-        # stays UNVERIFIED. We never set any Ready flag here.
+        # A real provider response would flip this once IAM/Cedar are applied and a
+        # live identity is observed through the reviewed transport; until then it
+        # stays UNVERIFIED. No Ready flag is ever set here.
         live_call_status = 'OBSERVED-live-response' if isinstance(value, dict) else live_call_status
     except Exception as exc:  # transport/auth failure => still one claim spent
         error = repr(exc)
