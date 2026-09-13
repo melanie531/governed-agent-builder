@@ -1,0 +1,22 @@
+{
+  "status": "built",
+  "backend_sha": "60aa14ee93fca2f02a771e81e2f4b635b30b22b2",
+  "adapter_sha": "9540be4706f93dadf100023d1e08658187be71b3",
+  "cloud_writes": false,
+  "inference_calls": 0,
+  "artifact": {
+    "source_digest": "26582a5eb853130ef15f10e94af0ea6ca1c38706cc73c32bdc6e01046ad9fa01",
+    "manifest_digest": "f79c64d1e525c1bf57f464324ff69272c8429014671dac454645b94906b76c74",
+    "package_digest": "4e79c12b47bc3cf1f62d298e75f37a9120139d01303f7dbd2d611013e4b99240",
+    "package_mode": "base",
+    "admission_config_present": false,
+    "deploy_ready": false,
+    "artifact_kind": "linux-arm64-python3.13-locked",
+    "runtime_created": false,
+    "production_ready": false
+  },
+  "source_tree": "28eda8e5c62c7ff8dd72c8184584802ba692c41d",
+  "response_allowlist": "synthetic build-only; never activate",
+  "linux_execution": "NOT_RUN",
+  "admission": "not present"
+}

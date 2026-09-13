@@ -1,0 +1,1 @@
+{"credentials_deadline_zero_sends": true, "signature_deadline_zero_sends": true, "deadline_context_reset": true, "arch": "aarch64", "python": "3.13.15", "packaged_native_import": true, "manifest_roundtrip": true, "codec_executed": true, "signed_passthrough_mock": true, "empty_allowlist_denied": true, "direct_runtime_denied": true, "network": "disabled", "inference_calls": 0}

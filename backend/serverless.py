@@ -175,3 +175,40 @@ def foundation_exchange_handler(event, context):
         return {'statusCode': 200, 'headers': {'content-type': 'application/json'}, 'body': json.dumps(result)}
     except Exception:
         return {'statusCode': 403, 'body': '{"code":"ADMISSION_DENIED"}'}
+
+
+def diagnostic_capture_exchange_handler(event, context):
+    """Unregistered and disabled: requires a NEW exact AWS_IAM route/invoke grant.
+
+    Never reuse the product exchange route or accept IAM identity from headers.
+    Direct Lambda invocation must be denied to Runtime/browser principals.
+    """
+    if (os.getenv('DIAGNOSTIC_CAPTURE_EXCHANGE_ENABLED', '0') != '1'
+            or event.get('routeKey') != 'POST /internal/diagnostic/capture'):
+        return {'statusCode': 403, 'body': '{"code":"LIVE_DISABLED"}'}
+    try:
+        from botocore.config import Config
+        from .diagnostic_capture import require
+        from .diagnostic_exchange import exchange
+        request = event.get('requestContext', {})
+        require(bool(os.getenv('DIAGNOSTIC_CAPTURE_API_ID'))
+                and request.get('apiId') == os.environ['DIAGNOSTIC_CAPTURE_API_ID']
+                and request.get('stage') == '$default'
+                and request.get('http', {}).get('method') == 'POST'
+                and event.get('rawPath') == '/internal/diagnostic/capture'
+                and event.get('version') == '2.0', 'CAPTURE_EXCHANGE_NAMESPACE_DENIED')
+        iam = request.get('authorizer', {}).get('iam', {})
+        require(isinstance(iam, dict) and isinstance(iam.get('userArn'), str),
+                'VERIFIED_IAM_PRINCIPAL_REQUIRED')
+        raw = event.get('body', '')
+        require(isinstance(raw, str) and len(raw) <= 8192 and not event.get('isBase64Encoded'),
+                'CAPTURE_EXCHANGE_SHAPE_DENIED')
+        config = Config(retries={'total_max_attempts': 1}, connect_timeout=3, read_timeout=5)
+        control = boto3.client('bedrock-agentcore-control', region_name='us-west-2', config=config)
+        repository = DynamoStore(os.environ['STATE_TABLE'],
+            resource=boto3.resource('dynamodb', region_name='us-west-2', config=config))
+        result = exchange(repository, principal_arn=iam['userArn'], body=json.loads(raw), control=control)
+        return {'statusCode': 200, 'headers': {'content-type': 'application/json', 'cache-control': 'no-store'},
+                'body': json.dumps(result)}
+    except Exception:
+        return {'statusCode': 403, 'body': '{"code":"CAPTURE_ADMISSION_DENIED"}'}

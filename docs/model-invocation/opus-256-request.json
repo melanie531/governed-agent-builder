@@ -1,0 +1,15 @@
+{
+  "model": "us.anthropic.claude-opus-5",
+  "system": "Answer briefly and accurately.",
+  "max_tokens": 256,
+  "stream": false,
+  "thinking": {
+    "type": "disabled"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain in two short sentences why the sky appears blue."
+    }
+  ]
+}

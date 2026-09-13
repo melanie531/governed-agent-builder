@@ -11,6 +11,7 @@ SCHEMA = {
     "jobs": ("id agent version requester idem stage result created updated deadline attempts", "id"),
     "events": ("id job stage detail created", "id"),
     "requests": ("id requester workspace component reason status decision created", "id"),
+    "general_requests": ("id requester workspace summary details status resolution created updated", "id"),
     "audit": ("id actor action resource detail created", "id"),
     "settings": ("key body", "key"),
     "oidc_flows": ("state_hash verifier nonce expires", "state_hash"),

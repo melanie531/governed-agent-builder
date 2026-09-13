@@ -1,0 +1,9 @@
+{
+  "archive_crc_ok": true,
+  "native_library_count": 8,
+  "all_native_elf_aarch64": true,
+  "codec_packaged": true,
+  "zip_bytes": 27512646,
+  "sha256": "4e79c12b47bc3cf1f62d298e75f37a9120139d01303f7dbd2d611013e4b99240",
+  "linux_arm64_execution": "NOT_RUN"
+}

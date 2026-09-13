@@ -1,0 +1,48 @@
+{
+  "source_commit": "f69d11d2c2be26f12e9254a87aa54d96b4c85560",
+  "source_tree": "c020f3218bf8eda22e430b4b78151575ba7ff600",
+  "artifact": {
+    "source_digest": "66a00150b739263bf172eb0da24dd2bcb4501f5d1467a010f44bc6f4081e02fc",
+    "manifest_digest": "fdceef5d96b6b5167f79eb16f0237adfb7045de5b96311083b5dcf614e28e006",
+    "package_digest": "82cf2c31b0ddf9c8d09408c1b1bd7de36c1454d70120ee7090e647bf9b4daac3",
+    "package_mode": "base",
+    "admission_config_present": false,
+    "deploy_ready": false,
+    "artifact_kind": "linux-arm64-python3.13-locked",
+    "runtime_created": false,
+    "production_ready": false
+  },
+  "sha256": "82cf2c31b0ddf9c8d09408c1b1bd7de36c1454d70120ee7090e647bf9b4daac3",
+  "bytes": 27513033,
+  "native_aarch64_count": 8,
+  "transport_bytes_match_source": true,
+  "admission": false,
+  "response_allowlist": "synthetic build-only",
+  "cloud_writes": false,
+  "inference_calls": 0,
+  "execution": {
+    "credentials_deadline_zero_sends": true,
+    "signature_deadline_zero_sends": true,
+    "deadline_context_reset": true,
+    "arch": "aarch64",
+    "python": "3.13.15",
+    "packaged_native_import": true,
+    "manifest_roundtrip": true,
+    "codec_executed": true,
+    "signed_passthrough_mock": true,
+    "empty_allowlist_denied": true,
+    "direct_runtime_denied": true,
+    "network": "disabled",
+    "inference_calls": 0
+  },
+  "exit_code": 0,
+  "emulated_linux_arm64": true,
+  "cloud_runtime_tested": false,
+  "extracted_bytes_match_zip": true,
+  "image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a",
+  "repo_digests": [
+    "arm64v8/python@sha256:c33ba31a4f8fc187a1ec9f33ef63945c29e9eaa74c47542894f26db67a4156d6",
+    "python@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285"
+  ],
+  "probe_sha256": "fdb84c1d09cc7d0b6c096d087d3345d09bf2a1eda84e3e99a4cda5f4d074a4c6"
+}

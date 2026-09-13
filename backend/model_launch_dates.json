@@ -1,0 +1,870 @@
+{
+  "_provenance": "Verified launch-date EVIDENCE map keyed by EXACT bedrock modelId. Built from docs/review-data/bedrock-model-date-inventory.json (official AWS Bedrock model cards, each with source_url + content_sha256) filtered to ids that exact-match the account bedrock:ListFoundationModels snapshot (list-foundation-models-sanitized.json, 113 models). This is EVIDENCE only: the account<->evidence exact-id join and the rolling 6-month recency window are RE-COMPUTED AT RUNTIME (backend.model_recency) from the live API list, this map, and the current date. No dates are fabricated; entries with no date, no API match, or a date conflict are omitted here.",
+  "_source_branch": "docs/model-launch-date-evidence",
+  "_source_files": [
+    "docs/review-data/bedrock-model-date-inventory.json",
+    "docs/review-data/list-foundation-models-sanitized.json"
+  ],
+  "_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+  "_api_model_count": 113,
+  "_inventory_card_count": 127,
+  "_matched_entry_count": 95,
+  "_conflicts": {},
+  "models": {
+    "amazon.nova-2-lite-v1:0": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "content_sha256": "5d08d3286547eee13b5310ce3300c5e4ba4da1ac232e61f4ad698bf3179e3778",
+      "evidence_quote": "Model launch date: Dec 02, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.nova-2-sonic-v1:0": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-sonic.html",
+      "content_sha256": "10f8eadfbfa8816f6dddcaa511e43c34741fb692d5e89d8d6949780a624acd1f",
+      "evidence_quote": "Model launch date: Dec 2, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.nova-lite-v1:0": {
+      "launch_date": "2024-12-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html",
+      "content_sha256": "52c8139bf12816dcdfac9e3f149fb1ef469470610bd143af0c96c4fe7e9caeda",
+      "evidence_quote": "Model launch date: Dec 05, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.nova-micro-v1:0": {
+      "launch_date": "2024-12-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "content_sha256": "675153bb7157298836c2c37a659cf91ff9352a764aba2a6ed1497af272f859ba",
+      "evidence_quote": "Model launch date: Dec 05, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.nova-premier-v1:0": {
+      "launch_date": "2025-10-31",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-premier.html",
+      "content_sha256": "1467042c6d9735445ea1edba784a02c13ba7593d0f2118e7b39cb9ae8ba5312c",
+      "evidence_quote": "Model launch date: Oct 31, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.nova-pro-v1:0": {
+      "launch_date": "2024-12-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html",
+      "content_sha256": "c45779039163c56c5d2edec7c70dc671af82f1302e33ef2f337dd706980374c0",
+      "evidence_quote": "Model launch date: Dec 05, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.titan-embed-image-v1": {
+      "launch_date": "2023-11-29",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-multimodal-embeddings-g1.html",
+      "content_sha256": "3826581ecc97d0cc34099e2ce0edac2d4ef05377b85eed9e046fdf4b30db6d8a",
+      "evidence_quote": "Model launch date: Nov 29, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.titan-embed-text-v1": {
+      "launch_date": "2023-09-28",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-embeddings-g1---text.html",
+      "content_sha256": "d2736bf98c761e136756a291c99ce7f18005104475f51d8b339fd563cc579cef",
+      "evidence_quote": "Model launch date: Sep 28, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "amazon.titan-embed-text-v2:0": {
+      "launch_date": "2024-04-30",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html",
+      "content_sha256": "32c5cf3aad2a31999bead6ec88cf0d268c3a26dc729e7bf7ea92e69088fe112e",
+      "evidence_quote": "Model launch date: Apr 30, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-fable-5": {
+      "launch_date": "2026-06-09",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-fable-5.html",
+      "content_sha256": "b1b7ba3cee39062148256eaad0ffffd823904e38efcca4d5870e424ed94dffda",
+      "evidence_quote": "Model launch date: June 9, 2026",
+      "inventory_status": "included"
+    },
+    "anthropic.claude-fable-5-1": {
+      "launch_date": "2026-09-01",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-fable-5-1.html",
+      "content_sha256": "44dbfa26f73496b1edf24f2ee853b1d494209632a3cf72ae9eea5b0c2102370b",
+      "evidence_quote": "Model launch date: September 1, 2026",
+      "inventory_status": "included"
+    },
+    "anthropic.claude-haiku-4-5-20251001-v1:0": {
+      "launch_date": "2025-10-16",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html",
+      "content_sha256": "d19397a67fed2665bae500ef02ffbc0636e48230873c87d9b62b669d8ff9ad90",
+      "evidence_quote": "Model launch date: Oct 16, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-opus-4-1-20250805-v1:0": {
+      "launch_date": "2025-08-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-1.html",
+      "content_sha256": "f9149e13d93c3cfcf765e6b740ae9895b3655bb8c38e380526075f94d7d6a000",
+      "evidence_quote": "Model launch date: Aug 05, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-opus-4-5-20251101-v1:0": {
+      "launch_date": "2025-11-24",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-5.html",
+      "content_sha256": "8a32ecc123f912a4691d9a4a691dcaddaabbc561b9ecc176b3eb0b9e7db0c949",
+      "evidence_quote": "Model launch date: Nov 24, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-opus-4-6-v1": {
+      "launch_date": "2026-02-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-6.html",
+      "content_sha256": "71d0b41834b08d5cdcb5c3e171f725b7b1a0b8e58e27817e8701be6035eb71ea",
+      "evidence_quote": "Model launch date: Feb 5, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-opus-4-7": {
+      "launch_date": "2026-04-16",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html",
+      "content_sha256": "6968467e1e4310351d0a5c5717d1fe09035a9e031228f2e4f12c14d4fed94b36",
+      "evidence_quote": "Model launch date: Apr 16, 2026",
+      "inventory_status": "included"
+    },
+    "anthropic.claude-opus-4-8": {
+      "launch_date": "2026-05-28",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-8.html",
+      "content_sha256": "be174afe8cda68c766ff9f5ac6d8f926bb04d31035e54d256f08972cdb50f360",
+      "evidence_quote": "Model launch date: May 28, 2026",
+      "inventory_status": "included"
+    },
+    "anthropic.claude-opus-5": {
+      "launch_date": "2026-07-24",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5.html",
+      "content_sha256": "66ff71a502956ab14f176950e6c922bc061ee6d2f7059ff8a878064ccdbf45b1",
+      "evidence_quote": "Model launch date: July 24, 2026",
+      "inventory_status": "included"
+    },
+    "anthropic.claude-sonnet-4-20250514-v1:0": {
+      "launch_date": "2025-05-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html",
+      "content_sha256": "61c9ed730e57e8c8452f76b7e23356660af38fe2bf5bc04f63ef0ccfef25067f",
+      "evidence_quote": "Model launch date: May 23, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-sonnet-4-5-20250929-v1:0": {
+      "launch_date": "2025-09-30",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.html",
+      "content_sha256": "72d7f3ce0c761b9ee1fffbf19df65c1773ea78e3422aac75be3e7d6a4a7197dd",
+      "evidence_quote": "Model launch date: Sep 30, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-sonnet-4-6": {
+      "launch_date": "2026-02-17",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html",
+      "content_sha256": "3cfd1def21bb16fa8204facb440eb58d956fecefd80d26a320631a38fa78cffc",
+      "evidence_quote": "Model launch date: Feb 17, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "anthropic.claude-sonnet-5": {
+      "launch_date": "2026-06-30",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html",
+      "content_sha256": "32f7e3f7197ca2518d0e93c27638707f2c66f1a4d8db3779fc105ffcd269f761",
+      "evidence_quote": "Model launch date: June 30, 2026",
+      "inventory_status": "included"
+    },
+    "cohere.embed-english-v3": {
+      "launch_date": "2023-11-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-english.html",
+      "content_sha256": "914efd4ef636640b27e66b425307bd2df62915b2ff7cf7562cc34060539220a5",
+      "evidence_quote": "Model launch date: Nov 2, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "cohere.embed-multilingual-v3": {
+      "launch_date": "2023-11-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-multilingual.html",
+      "content_sha256": "fd3bb32d41bfacfec8e629faebd552d33191cb166f8a1a4decae4081fec6ccb8",
+      "evidence_quote": "Model launch date: Nov 2, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "cohere.embed-v4:0": {
+      "launch_date": "2025-04-15",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-v4.html",
+      "content_sha256": "7246c9abda9317d5d50b8319c0af08418d78eb37a5cd6e8fd0322705030f445a",
+      "evidence_quote": "Model launch date: Apr 15, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "cohere.rerank-v3-5:0": {
+      "launch_date": "2024-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-rerank-3-5.html",
+      "content_sha256": "f1d8538f8a38d31071cec7fee1323e67d2517282ddffa77b4c89dfb925cc873d",
+      "evidence_quote": "Model launch date: Dec 2, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "deepseek.r1-v1:0": {
+      "launch_date": "2025-01-20",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-r1.html",
+      "content_sha256": "304f4dc989f07e6381553e0bb98fc95e3b61a3ea099334665513a7e99f1d8c86",
+      "evidence_quote": "Model launch date: Jan 20, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "deepseek.v3-v1:0": {
+      "launch_date": "2025-08-21",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-v3-1.html",
+      "content_sha256": "9d091d7be9fa54dd61490579fa75b63c6dfa9948ea6b3f72ba6247d360ba232d",
+      "evidence_quote": "Model launch date: Aug 21, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "deepseek.v3.2": {
+      "launch_date": "2025-12-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-v3-2.html",
+      "content_sha256": "56dac3b0f0b70b574aa8eddf045b5e6641d2a243e1fb45a8e8be170c19ee2b84",
+      "evidence_quote": "Model launch date: Dec 01, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "google.gemma-3-12b-it": {
+      "launch_date": "2025-03-12",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-12b-it.html",
+      "content_sha256": "a60ca05d2c749104716ccc18e6086981b0b2300104e5962c34344f404880f111",
+      "evidence_quote": "Model launch date: Mar 12, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "google.gemma-3-27b-it": {
+      "launch_date": "2025-03-12",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-27b-pt.html",
+      "content_sha256": "c4a38248535942c125add4101f539bacebb714d75ace582f9d00bd3d371d009a",
+      "evidence_quote": "Model launch date: Mar 12, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "google.gemma-3-4b-it": {
+      "launch_date": "2025-03-12",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-4b-it.html",
+      "content_sha256": "035ef24ccf7bb257e729ecee51c46cea46e7bf1e7efe750905015b8c523a84a6",
+      "evidence_quote": "Model launch date: Mar 12, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama3-1-70b-instruct-v1:0": {
+      "launch_date": "2024-07-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-1-70b-instruct.html",
+      "content_sha256": "d3c9dc958662fce6b85156c2eae9261e0e652f0884b2fb5b027a9a84f7f9e1c2",
+      "evidence_quote": "Model launch date: Jul 23, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama3-1-8b-instruct-v1:0": {
+      "launch_date": "2024-07-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-1-8b-instruct.html",
+      "content_sha256": "7bb7e28214ce09d90413cb5d8549d38837b57919c3a6e5d77a77237a21890158",
+      "evidence_quote": "Model launch date: Jul 23, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama3-3-70b-instruct-v1:0": {
+      "launch_date": "2024-12-06",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-3-70b-instruct.html",
+      "content_sha256": "d21d21cef894ff399f73ec06158f997998e5006ed616dbd94eabdc83fad6cbf9",
+      "evidence_quote": "Model launch date: Dec 06, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama3-70b-instruct-v1:0": {
+      "launch_date": "2024-04-18",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-70b-instruct.html",
+      "content_sha256": "bd4b070298933dc98627bf942bd7f5f84fba044bf49ae4d4c80de9c91a7fbe49",
+      "evidence_quote": "Model launch date: Apr 18, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama3-8b-instruct-v1:0": {
+      "launch_date": "2024-04-18",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-8b-instruct.html",
+      "content_sha256": "aed7502355c41b79063764c120b3c3e74fbbdd85e8694f99e6075e403f81a7b0",
+      "evidence_quote": "Model launch date: Apr 18, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama4-maverick-17b-instruct-v1:0": {
+      "launch_date": "2025-04-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-maverick-17b-instruct.html",
+      "content_sha256": "f1ee6c2a50df1b7bcf7c86609f0e09cff0b4ae36b65529ec2365e14a5be7596e",
+      "evidence_quote": "Model launch date: Apr 05, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "meta.llama4-scout-17b-instruct-v1:0": {
+      "launch_date": "2025-04-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-scout-17b-instruct.html",
+      "content_sha256": "0d51bc6c960d5fa65e5b0f38db13368a9472ce1a07e4a456e6af195bb851294c",
+      "evidence_quote": "Model launch date: Apr 05, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "minimax.minimax-m2": {
+      "launch_date": "2025-10-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2.html",
+      "content_sha256": "a6f7b35cee342550b8e94d4b8c87535d677c22a354765839ba6507ec53db4449",
+      "evidence_quote": "Model launch date: Oct 23, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "minimax.minimax-m2.1": {
+      "launch_date": "2025-12-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2-1.html",
+      "content_sha256": "2c86bdbd6a8185ceae71ab2b59c2b52dd581986ac25d7a6ebf7a3095cde478b0",
+      "evidence_quote": "Model launch date: Dec 23, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "minimax.minimax-m2.5": {
+      "launch_date": "2026-02-12",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2-5.html",
+      "content_sha256": "17f90b8acbf40d987ff234a4aa93f0ccd334dfa0f127f73fcf4d4d0b8cb4bc31",
+      "evidence_quote": "Model launch date: Feb 12, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.devstral-2-123b": {
+      "launch_date": "2025-06-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-devstral-2-123b.html",
+      "content_sha256": "eb4a396e3d4d7807a0c4c08036571c3463027b44b4ae751f8eab7eccf72f4dce",
+      "evidence_quote": "Model launch date: Jun 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.magistral-small-2509": {
+      "launch_date": "2025-09-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-magistral-small-2509.html",
+      "content_sha256": "9ac5c4cdd03bd387342599817469cd05555d283162f92b405d504c78ff60f729",
+      "evidence_quote": "Model launch date: Sep 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.ministral-3-14b-instruct": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-14b-3-0.html",
+      "content_sha256": "c1ec7b160a85c0b1e5c70c9e84295c3201cf1e5929f15884a76a3f76b7986e29",
+      "evidence_quote": "Model launch date: Dec 2, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.ministral-3-3b-instruct": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3b.html",
+      "content_sha256": "2aa3aab2c5afb63275354766b6a93f0c834f1ef6267dab98d88d9fee17c5fa51",
+      "evidence_quote": "Model launch date: Dec 2, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.ministral-3-8b-instruct": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html",
+      "content_sha256": "4fa4f7af9a65eea59eabeee5c6de0d906e3f1bddeca888c16f1954a168611598",
+      "evidence_quote": "Model launch date: Dec 02, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.mistral-7b-instruct-v0:2": {
+      "launch_date": "2023-09-28",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-7b-instruct.html",
+      "content_sha256": "5ed7ca6f161752579db9ced171bd37a4e26d6a330ba80e75fe9f737295bdeb04",
+      "evidence_quote": "Model launch date: Sep 28, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.mistral-large-2402-v1:0": {
+      "launch_date": "2024-02-26",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large.html",
+      "content_sha256": "9866fd20e92cec737c36e730c28a1473ded2ab48a025b60e224579653929812b",
+      "evidence_quote": "Model launch date: Feb 26, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.mistral-large-3-675b-instruct": {
+      "launch_date": "2025-12-02",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html",
+      "content_sha256": "ba8aa4b5f399ab2194312dc4e66c66a3759cb713f56f0d07975015d5a0ee5205",
+      "evidence_quote": "Model launch date: Dec 2, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.mixtral-8x7b-instruct-v0:1": {
+      "launch_date": "2023-12-10",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mixtral-8x7b-instruct.html",
+      "content_sha256": "cf5b9ced133f44cf88b1a646e90478bb4d74044a8fb6a429fcb5fe69665830af",
+      "evidence_quote": "Model launch date: Dec 10, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.pixtral-large-2502-v1:0": {
+      "launch_date": "2024-11-19",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-pixtral-large.html",
+      "content_sha256": "5d9fe546bd667bef7509c837842035b9584aaa3feb16c131e661108fd8af5ca9",
+      "evidence_quote": "Model launch date: Nov 19, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.voxtral-mini-3b-2507": {
+      "launch_date": "2025-07-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-voxtral-mini-3b-2507.html",
+      "content_sha256": "b6f9d4ffec1019355e07818e753f81891f51a6fab4823dd33258f4d1b5796311",
+      "evidence_quote": "Model launch date: Jul 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "mistral.voxtral-small-24b-2507": {
+      "launch_date": "2025-10-30",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-voxtral-small-24b-2507.html",
+      "content_sha256": "b601a7784bea4a2c71a3e5b1bc632e23faeec7c27e47b4187f255f11d38851df",
+      "evidence_quote": "Model launch date: Oct 30, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "moonshot.kimi-k2-thinking": {
+      "launch_date": "2025-11-06",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k2-thinking.html",
+      "content_sha256": "d932c82b55b68adfdaf4012a7370d5301f68522058362ba3f76f32b1bd3cd2e7",
+      "evidence_quote": "Model launch date: Nov 06, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "moonshotai.kimi-k2.5": {
+      "launch_date": "2026-01-27",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k2-5.html",
+      "content_sha256": "8d234442f112095191f6328b3857fcdf8c092dcbc3ec39d1468802a5c4557691",
+      "evidence_quote": "Model launch date: Jan 27, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "nvidia.nemotron-nano-12b-v2": {
+      "launch_date": "2025-10-28",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nvidia-nemotron-nano-12b-v2-vl-bf16.html",
+      "content_sha256": "8efbce386e2dd70b6bab74ee66bfa100ccff89943f1bb02bddc921747cecf487",
+      "evidence_quote": "Model launch date: Oct 28, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "nvidia.nemotron-nano-3-30b": {
+      "launch_date": "2025-12-15",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nemotron-nano-3-30b.html",
+      "content_sha256": "99c032143816d84e85f091cf00daead036af3b3c53af5b369a451dbfce61a5c0",
+      "evidence_quote": "Model launch date: Dec 15, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "nvidia.nemotron-nano-9b-v2": {
+      "launch_date": "2025-08-18",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nvidia-nemotron-nano-9b-v2.html",
+      "content_sha256": "a3fcd0e23b61b3b25ef56e2f18682c767d22408dd0489cc339e8e4a038091796",
+      "evidence_quote": "Model launch date: Aug 18, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "nvidia.nemotron-super-3-120b": {
+      "launch_date": "2026-03-11",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nemotron-super-3-120b.html",
+      "content_sha256": "fbd7689e9952de7377da56e3a1d97f3c0750643278b8076257052d2652cc6c94",
+      "evidence_quote": "Model launch date: Mar 11, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "openai.gpt-5.6-luna": {
+      "launch_date": "2026-07-13",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html",
+      "content_sha256": "70a3c6885ce4f081923e141b7b14d686ef1fbbebc9ddd553dd6975a5b6f647a8",
+      "evidence_quote": "Model launch date: July 13, 2026",
+      "inventory_status": "included"
+    },
+    "openai.gpt-5.6-sol": {
+      "launch_date": "2026-07-13",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html",
+      "content_sha256": "b7ac1a1730883df3c63cc80ea1be0e123d5adc57fb2005df78709ef5294d27d1",
+      "evidence_quote": "Model launch date: July 13, 2026",
+      "inventory_status": "included"
+    },
+    "openai.gpt-5.6-terra": {
+      "launch_date": "2026-07-13",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html",
+      "content_sha256": "0c9893445b7181ec2f2dfa5764b272f74c6b0e71d809f4651e654b7e706c48fe",
+      "evidence_quote": "Model launch date: July 13, 2026",
+      "inventory_status": "included"
+    },
+    "openai.gpt-6-astra": {
+      "launch_date": "2026-09-08",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html",
+      "content_sha256": "db312b49ac18c605ff21a3e44146a41e7ca9c2a64501087412883e65eb5ef3c6",
+      "evidence_quote": "Model launch date: September 8, 2026",
+      "inventory_status": "included"
+    },
+    "openai.gpt-oss-120b-1:0": {
+      "launch_date": "2025-08-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-120b.html",
+      "content_sha256": "7a21d17822e396e2ad832971f9c2bd11d4db22e49d4c0c499d37daa640c61102",
+      "evidence_quote": "Model launch date: Aug 05, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "openai.gpt-oss-20b-1:0": {
+      "launch_date": "2025-08-05",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html",
+      "content_sha256": "db5f9d5d60aa5e557d2cf449191cae44fd48f38626bd23e560a7048bf3a809f3",
+      "evidence_quote": "Model launch date: Aug 05, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "openai.gpt-oss-safeguard-120b": {
+      "launch_date": "2025-10-29",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-safeguard-120b.html",
+      "content_sha256": "fa8c12cc4b62738c63d0a6458f0aaa8150290dbb1f230d4e8e0d2dd5ddd3d0ee",
+      "evidence_quote": "Model launch date: Oct 29, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "openai.gpt-oss-safeguard-20b": {
+      "launch_date": "2025-10-29",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-safeguard-20b.html",
+      "content_sha256": "492daf720721908c3fac4255032ac50d428131c97e2019f7b638eda3e9372b64",
+      "evidence_quote": "Model launch date: Oct 29, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-235b-a22b-2507-v1:0": {
+      "launch_date": "2025-04-28",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-235b-a22b-2507.html",
+      "content_sha256": "52938e11d8a3286ef15f7bf9be0af06848441e867fcfc6be2a521a13ceeed7ce",
+      "evidence_quote": "Model launch date: Apr 28, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-32b-v1:0": {
+      "launch_date": "2025-04-29",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-32b.html",
+      "content_sha256": "fa32a551cfe905fa9443399887cc35c3505224889e35c63ab66d097ad8b8457c",
+      "evidence_quote": "Model launch date: Apr 29, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-coder-30b-a3b-v1:0": {
+      "launch_date": "2025-07-31",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-coder-30b-a3b-instruct.html",
+      "content_sha256": "70b35ec6c25007ef49b06a6efafc8b2e4ad21687ebb1f524955d56f6d22375f6",
+      "evidence_quote": "Model launch date: Jul 31, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-coder-480b-a35b-v1:0": {
+      "launch_date": "2025-07-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-coder-480b-a35b-instruct.html",
+      "content_sha256": "d3c9124f304da2b1123a6e5a53d88bc8f61fbcab1fa52110d7ad73e2ccc91247",
+      "evidence_quote": "Model launch date: Jul 23, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-next-80b-a3b": {
+      "launch_date": "2025-09-11",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-next-80b-a3b.html",
+      "content_sha256": "fed4dfff9ae28b405161e948cbd7a0d2cdea7c75f3d8a1824a62ed822f75df77",
+      "evidence_quote": "Model launch date: Sep 11, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "qwen.qwen3-vl-235b-a22b": {
+      "launch_date": "2025-09-23",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-vl-235b-a22b.html",
+      "content_sha256": "efd38c3c88b857eeccf6e350ed34f66025adaf5e9bb9b49252e7633877ae720b",
+      "evidence_quote": "Model launch date: Sep 23, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-conservative-upscale-v1:0": {
+      "launch_date": "2024-05-20",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-conservative-upscale.html",
+      "content_sha256": "707514ce12924f14770137c5ac07a565ca080dc10a4f2424a3e6cc760b84cd04",
+      "evidence_quote": "Model launch date: May 20, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-creative-upscale-v1:0": {
+      "launch_date": "2024-03-21",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-creative-upscale.html",
+      "content_sha256": "14374e69fcc9bc9899dda221ba38f639cedce0daf9281cdb0476bc7d2222c167",
+      "evidence_quote": "Model launch date: Mar 21, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-fast-upscale-v1:0": {
+      "launch_date": "2024-09-10",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-fast-upscale.html",
+      "content_sha256": "542dc005b3463d65c9b64c001aeadd80f47630c0284136fcd33c0c164c51ca55",
+      "evidence_quote": "Model launch date: Sep 10, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-control-sketch-v1:0": {
+      "launch_date": "2023-07-13",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-control-sketch.html",
+      "content_sha256": "7af37ed25c632ab5c57b4ce81a965ed43076953f4c3a0e4cfb286e2defefc386",
+      "evidence_quote": "Model launch date: Jul 13, 2023",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-control-structure-v1:0": {
+      "launch_date": "2024-04-30",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-control-structure.html",
+      "content_sha256": "c7910b64a36dd8f0db3ef2093bc80c9b29106b39944c04ab34ff9bb518e03331",
+      "evidence_quote": "Model launch date: Apr 30, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-erase-object-v1:0": {
+      "launch_date": "2024-05-20",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-erase-object.html",
+      "content_sha256": "c13e5272b130da1afb9cace29b70f3f12a9afada0380461d1e85f34b6871ca61",
+      "evidence_quote": "Model launch date: May 20, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-inpaint-v1:0": {
+      "launch_date": "2022-11-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-inpaint.html",
+      "content_sha256": "cf2a19d4db79e87c4987bd51e7b058c5fb7149b8e16b5f81f7e78423ef939941",
+      "evidence_quote": "Model launch date: Nov 2022",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-remove-background-v1:0": {
+      "launch_date": "2024-11-07",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-remove-background.html",
+      "content_sha256": "6a20af13e95eb25de6b129bdf6cc365558720952154ac287bf8b8669aa757327",
+      "evidence_quote": "Model launch date: Nov 7, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-search-recolor-v1:0": {
+      "launch_date": "2024-08-19",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-search-and-recolor.html",
+      "content_sha256": "9ef16f4da8bb8bb54ded6e505284de3f5f1f7a2a38cf382185ee4d5ded887fd4",
+      "evidence_quote": "Model launch date: Aug 19, 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-search-replace-v1:0": {
+      "launch_date": "2024-10-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-search-and-replace.html",
+      "content_sha256": "3cd199964e20434607262f2ff207590c3ff8719bd741a9430cc258119334f4c7",
+      "evidence_quote": "Model launch date: Oct 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-image-style-guide-v1:0": {
+      "launch_date": "2024-10-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-style-guide.html",
+      "content_sha256": "062901e182b49240d4ead4416772be1c281cdca4a02f8f43e83c4b1f3757285a",
+      "evidence_quote": "Model launch date: Oct 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-outpaint-v1:0": {
+      "launch_date": "2022-11-24",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-outpaint.html",
+      "content_sha256": "c0164204b9b7d25abb5a408af85a7b4fcc40c2c095e77945b6e625d7d470c036",
+      "evidence_quote": "Model launch date: Nov 24, 2022",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "stability.stable-style-transfer-v1:0": {
+      "launch_date": "2024-10-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-style-transfer.html",
+      "content_sha256": "e07aeb769540b416c87638d0ce3989fd2fcb571e7c193898fca6fa1006c4c980",
+      "evidence_quote": "Model launch date: Oct 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "twelvelabs.pegasus-1-2-v1:0": {
+      "launch_date": "2025-02-11",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-pegasus-v1-2.html",
+      "content_sha256": "966fe5d74ddff7465549bead6ad84e9e5051c64f1563b8c8cb6f07b3ff1b76e3",
+      "evidence_quote": "Model launch date: Feb 11, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "writer.palmyra-vision-7b": {
+      "launch_date": "2026-03-26",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-writer-palmyra-vision-7b.html",
+      "content_sha256": "b9bcae72ed42a79a9829b161b7f2e336055ea14dd8be117d638ddda473005ea7",
+      "evidence_quote": "Model launch date: Mar 26, 2026",
+      "inventory_status": "included"
+    },
+    "writer.palmyra-x4-v1:0": {
+      "launch_date": "2024-09-01",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-writer-palmyra-x4.html",
+      "content_sha256": "a139c419d8474d7328c2768c55a26ecc4a10c5dad63d466d17134e646d7ce825",
+      "evidence_quote": "Model launch date: Sep 2024",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "writer.palmyra-x5-v1:0": {
+      "launch_date": "2026-01-21",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-writer-palmyra-x5.html",
+      "content_sha256": "87c2482902fc0e623664e3e6904f10fd51494aa2677dd281689778c8424363d1",
+      "evidence_quote": "Model launch date: Jan 21, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "xai.grok-4.6": {
+      "launch_date": "2026-08-18",
+      "launch_date_precision": "day",
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.html",
+      "content_sha256": "a2910fdb7a62b6baa06197773266837e7eed6cddc47e640f211eba14da8f1cb0",
+      "evidence_quote": "Model launch date: August 18, 2026",
+      "inventory_status": "included"
+    },
+    "zai.glm-4.7": {
+      "launch_date": "2025-12-22",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-4-7.html",
+      "content_sha256": "59590bc9dc5538960a2ddaece69904ad77efc1fe8d26356257a991c06f715e7b",
+      "evidence_quote": "Model launch date: Dec 22, 2025",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "zai.glm-4.7-flash": {
+      "launch_date": "2026-01-19",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-4-7-flash.html",
+      "content_sha256": "b7451aba1fbe78a17cbe76a766a0f99f22671ae30250c270e1731a95c399cc15",
+      "evidence_quote": "Model launch date: Jan 19, 2026",
+      "inventory_status": "excluded_out_of_window"
+    },
+    "zai.glm-5": {
+      "launch_date": "2026-02-11",
+      "launch_date_precision": null,
+      "launch_date_type": "official",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-5.html",
+      "content_sha256": "8dcba702a2a1c970eb11e4cf1dd9a2f56cfdf7d39cf735142b68022cfb8d3d4c",
+      "evidence_quote": "Model launch date: Feb 11, 2026",
+      "inventory_status": "excluded_out_of_window"
+    }
+  }
+}

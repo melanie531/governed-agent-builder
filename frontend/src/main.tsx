@@ -52,7 +52,7 @@ async function api<T>(path:string, body?:unknown):Promise<T>{
   if(body===undefined&&r.status===409&&detail==='Concurrent governance update; reload and retry'&&attempt<5){
    await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));continue;
   }
-  throw new Error(detail);
+  throw Object.assign(new Error(detail),{status:r.status});
  }
  throw new Error('Studio is busy. Refresh and try again.');
 }

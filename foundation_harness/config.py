@@ -4,7 +4,7 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 from jsonschema import Draft202012Validator
 
 
@@ -27,26 +27,83 @@ class Ref(Frozen):
     digest: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
-def endpoint(value, path):
-    pattern = (r'https://gab-foundation-[a-z0-9-]+\.gateway\.bedrock-agentcore'
-               r'\.us-west-2\.amazonaws\.com' + re.escape(path))
-    if not re.fullmatch(pattern, value):
+# Reviewed dedicated-Gateway Messages target paths. '/bedrockrt/v1/messages' is
+# the inbound path of the existing HTTP passthrough target named 'bedrockrt'
+# (real read-only GetGatewayTarget evidence; Gateway forwards to Runtime
+# /anthropic/v1/messages). Transport dispatch admits both reviewed paths;
+# manifest validation still binds each protocol to exactly one path via
+# exact_endpoint, so a legacy manifest can never carry the passthrough path.
+MESSAGES_DISPATCH_PATHS = ('/inference/v1/messages', '/bedrockrt/v1/messages')
+
+
+def exact_endpoint(value, *paths):
+    host = (r'https://gab-foundation-[a-z0-9-]+\.gateway\.bedrock-agentcore'
+            r'\.us-west-2\.amazonaws\.com')
+    if not any(re.fullmatch(host + re.escape(path), value) for path in paths):
         raise ValueError('DEDICATED_GATEWAY_ENDPOINT_REQUIRED')
     return value
+
+
+def endpoint(value, path):
+    # Shared transport dispatch guard. The legacy Messages dispatch literal
+    # admits every reviewed Messages target path; any other path stays exact.
+    if path == '/inference/v1/messages':
+        return exact_endpoint(value, *MESSAGES_DISPATCH_PATHS)
+    return exact_endpoint(value, path)
 
 
 class Model(Frozen):
     id: str
     version: str
     endpoint: str
-    route: str = Field(pattern=r'^claude/anthropic\.claude-[a-zA-Z0-9:._-]+$')
+    route: str
     provider: Literal['bedrock']
-    protocol: Literal['messages']
+    protocol: Literal['messages', 'messages-passthrough']
     targetDigest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    transport: Literal['inference-provider', 'runtime-passthrough'] = Field(default='inference-provider', exclude=True)
+    responseModels: tuple[str, ...] = Field(default=(), exclude=True)
+    requestModel: str | None = Field(default=None, exclude=True)
+    responseModelAllowlist: tuple[str, ...] = Field(default=(), exclude=True)
+
+    @model_serializer(mode='wrap')
+    def serialized_binding(self, handler, info):
+        data = handler(self)
+        if self.protocol == 'messages-passthrough':
+            data['requestModel'] = self.requestModel
+            data['responseModelAllowlist'] = list(self.responseModelAllowlist) if info.mode == 'json' else self.responseModelAllowlist
+        elif self.transport == 'runtime-passthrough':
+            data['transport'] = self.transport
+            data['requestModel'] = self.requestModel
+            data['responseModels'] = list(self.responseModels) if info.mode == 'json' else self.responseModels
+        return data
 
     @model_validator(mode='after')
     def check(self):
-        endpoint(self.endpoint, '/inference/v1/messages')
+        if self.protocol == 'messages-passthrough':
+            if self.transport != 'inference-provider' or self.responseModels:
+                raise ValueError('AMBIGUOUS_MESSAGES_BINDING')
+            exact_endpoint(self.endpoint, '/bedrockrt/v1/messages')
+            if self.requestModel != 'us.anthropic.claude-opus-5' or self.route != self.requestModel:
+                raise ValueError('EXACT_OPUS_PASSTHROUGH_BINDING_REQUIRED')
+            if (not self.responseModelAllowlist or len(self.responseModelAllowlist) > 4
+                    or len(set(self.responseModelAllowlist)) != len(self.responseModelAllowlist)
+                    or any(not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', x) for x in self.responseModelAllowlist)):
+                raise ValueError('EXPLICIT_RESPONSE_ID_ALLOWLIST_REQUIRED')
+        elif self.transport == 'runtime-passthrough':
+            if not re.fullmatch(r'[A-Za-z0-9-]+/[a-zA-Z0-9:._-]+', self.route):
+                raise ValueError('EXPLICIT_RUNTIME_MODEL_IDENTITIES_REQUIRED')
+            target, model = self.route.split('/', 1)
+            exact_endpoint(self.endpoint, '/' + target + '/v1/messages')
+            if (self.requestModel != model or self.responseModelAllowlist
+                    or model != 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+                    or not self.responseModels or len(set(self.responseModels)) != len(self.responseModels)
+                    or any(not re.fullmatch(r'anthropic\.claude-[a-zA-Z0-9:._-]+', x) for x in self.responseModels)):
+                raise ValueError('EXPLICIT_EXISTING_HAIKU_BINDING_REQUIRED')
+        else:
+            exact_endpoint(self.endpoint, '/inference/v1/messages')
+            if (not re.fullmatch(r'claude/anthropic\.claude-[a-zA-Z0-9:._-]+', self.route)
+                    or self.requestModel is not None or self.responseModelAllowlist):
+                raise ValueError('LEGACY_MESSAGES_BINDING_INVALID')
         return self
 
 
@@ -122,6 +179,11 @@ class HarnessConfig(Frozen):
 
     @model_validator(mode='after')
     def check(self):
+        if self.model.protocol == 'messages-passthrough':
+            if (self.tools or self.allowedTools or self.skills
+                    or self.limits.maxIterations != 1 or self.limits.maxModelCalls != 1
+                    or self.limits.maxToolCalls != 0):
+                raise ValueError('OPUS_FIRST_SINGLE_CALL_NO_TOOLS_REQUIRED')
         names = [t.name for t in self.tools]
         if (len(set(names)) != len(names) or sorted(names) != sorted(self.allowedTools)
                 or len({(s.id, s.version) for s in self.skills}) != len(self.skills)):

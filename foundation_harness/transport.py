@@ -1,6 +1,33 @@
 """Renewable SigV4 over exact HTTP bytes. No retry, redirects or provider fallback."""
 import asyncio
 import json
+import math
+from contextvars import ContextVar
+from contextlib import contextmanager
+
+_CAPTURE_DEADLINE = ContextVar('capture_deadline', default=None)
+
+
+@contextmanager
+def capture_deadline(deadline, clock):
+    token = _CAPTURE_DEADLINE.set((deadline, clock))
+    try:
+        yield
+    finally:
+        _CAPTURE_DEADLINE.reset(token)
+
+
+def remaining_timeout(timeout):
+    boundary = _CAPTURE_DEADLINE.get()
+    if boundary is not None:
+        deadline, clock = boundary
+        now = clock()
+        if type(now) not in (int, float) or not math.isfinite(now):
+            raise TimeoutError('CAPTURE_CLOCK_INVALID')
+        timeout = min(timeout, deadline - now)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise TimeoutError('CAPTURE_DEADLINE_EXCEEDED')
+    return timeout
 
 import httpx
 from botocore.auth import SigV4Auth
@@ -36,14 +63,27 @@ class IAMTransport:
         request = AWSRequest(method='POST', url=url, data=data,
                              headers={'Content-Type': 'application/json', **headers})
         SigV4Auth(credentials.get_frozen_credentials(), service, 'us-west-2').add_auth(request)
+        # Credentials/signing may block; recheck the absolute capture deadline
+        # after both and again inside the network coroutine.
+        timeout = remaining_timeout(timeout)
         return asyncio.run(self._send(url, data, dict(request.headers), timeout))
 
     async def _send(self, url, data, headers, timeout):
         # asyncio timeout bounds the whole response, including slow chunk streams.
+        timeout = remaining_timeout(timeout)
         async with asyncio.timeout(min(timeout, 60)):
+            async def before_send(request):
+                # HTTPX request hooks run after build/auth preparation, immediately
+                # before transport dispatch. Recompute, never reuse pre-build time.
+                remaining = remaining_timeout(timeout)
+                request.extensions['timeout'] = httpx.Timeout(min(remaining, 10)).as_dict()
+
             async with httpx.AsyncClient(follow_redirects=False, trust_env=False,
+                                         event_hooks={'request': [before_send]},
                                          timeout=httpx.Timeout(min(timeout, 10))) as client:
-                async with client.stream('POST', url, content=data, headers=headers) as response:
+                remaining = remaining_timeout(timeout)
+                async with client.stream('POST', url, content=data, headers=headers,
+                                         timeout=httpx.Timeout(min(remaining, 10))) as response:
                     if not 200 <= response.status_code < 300:
                         # Payload may contain prompts/credentials. Do not log it.
                         raise GatewayError(f'GATEWAY_HTTP_{response.status_code}')

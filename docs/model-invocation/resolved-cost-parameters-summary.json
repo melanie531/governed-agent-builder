@@ -1,0 +1,12 @@
+{
+  "role_exists": true,
+  "role_matches_prior_snapshot": true,
+  "existing_buckets_checked": 2,
+  "artifact_bucket_resolved": true,
+  "artifact_versioning_enabled": true,
+  "private_config_populated": true,
+  "new_role_required": false,
+  "new_bucket_required": false,
+  "network_approved": false,
+  "cloud_writes": 0
+}

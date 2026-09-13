@@ -1,0 +1,2747 @@
+{
+  "schema_version": 1,
+  "official_review_status": "complete",
+  "source": {
+    "name": "Official model cards joined to ListFoundationModels",
+    "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html"
+  },
+  "generated_at": "2026-09-13T09:24:08.750362+00:00",
+  "records": [
+    {
+      "record_id": "openai.gpt-6-astra",
+      "model_id": "openai.gpt-6-astra",
+      "vendor": "OpenAI",
+      "model_name": "GPT-6 Astra",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-09-08",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html",
+      "source_content_sha256": "db312b49ac18c605ff21a3e44146a41e7ca9c2a64501087412883e65eb5ef3c6",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:10Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-09-08T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "nvidia.nemotron-nano-12b-v2",
+      "model_id": "nvidia.nemotron-nano-12b-v2",
+      "vendor": "NVIDIA",
+      "model_name": "NVIDIA Nemotron Nano 12B v2 VL BF16",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-28",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nvidia-nemotron-nano-12b-v2-vl-bf16.html",
+      "source_content_sha256": "8efbce386e2dd70b6bab74ee66bfa100ccff89943f1bb02bddc921747cecf487",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:08Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-5.6-terra",
+      "model_id": "openai.gpt-5.6-terra",
+      "vendor": "OpenAI",
+      "model_name": "GPT-5.6 Terra",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-07-13",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html",
+      "source_content_sha256": "0c9893445b7181ec2f2dfa5764b272f74c6b0e71d809f4651e654b7e706c48fe",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:09Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-08-13T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-sonnet-4-20250514-v1:0",
+      "model_id": "anthropic.claude-sonnet-4-20250514-v1:0",
+      "vendor": "Anthropic",
+      "model_name": "Claude Sonnet 4",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-05-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html",
+      "source_content_sha256": "61c9ed730e57e8c8452f76b7e23356660af38fe2bf5bc04f63ef0ccfef25067f",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:55Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "LEGACY",
+        "startOfLifeTime": "2025-05-22T00:00:00+00:00",
+        "endOfLifeTime": "2026-10-14T08:00:00+00:00",
+        "legacyTime": "2026-04-14T08:00:00+00:00",
+        "publicExtendedAccessTime": "2026-07-14T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "vendor": "Anthropic",
+      "model_name": "Claude Haiku 4.5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-16",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html",
+      "source_content_sha256": "d19397a67fed2665bae500ef02ffbc0636e48230873c87d9b62b669d8ff9ad90",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:52Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-10-15T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "model_id": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "vendor": "Qwen",
+      "model_name": "Qwen3 235B A22B 2507",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-04-28",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-235b-a22b-2507.html",
+      "source_content_sha256": "52938e11d8a3286ef15f7bf9be0af06848441e867fcfc6be2a521a13ceeed7ce",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:12Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-15T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "moonshotai.kimi-k2.5",
+      "model_id": "moonshotai.kimi-k2.5",
+      "vendor": "Moonshot AI",
+      "model_name": "Kimi K2.5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-01-27",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k2-5.html",
+      "source_content_sha256": "8d234442f112095191f6328b3857fcdf8c092dcbc3ec39d1468802a5c4557691",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:07Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-06T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-oss-120b-1:0",
+      "model_id": "openai.gpt-oss-120b-1:0",
+      "vendor": "OpenAI",
+      "model_name": "gpt-oss-120b",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-08-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-120b.html",
+      "source_content_sha256": "7a21d17822e396e2ad832971f9c2bd11d4db22e49d4c0c499d37daa640c61102",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:10Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-08-06T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-creative-upscale-v1:0",
+      "model_id": "stability.stable-creative-upscale-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Creative Upscale",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-03-21",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-creative-upscale.html",
+      "source_content_sha256": "14374e69fcc9bc9899dda221ba38f639cedce0daf9281cdb0476bc7d2222c167",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:14Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-next-80b-a3b",
+      "model_id": "qwen.qwen3-next-80b-a3b",
+      "vendor": "Qwen",
+      "model_name": "Qwen3 Next 80B A3B",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-09-11",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-next-80b-a3b.html",
+      "source_content_sha256": "fed4dfff9ae28b405161e948cbd7a0d2cdea7c75f3d8a1824a62ed822f75df77",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:12Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-fable-5",
+      "model_id": "anthropic.claude-fable-5",
+      "vendor": "Anthropic",
+      "model_name": "Claude Fable 5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-06-09",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-fable-5.html",
+      "source_content_sha256": "b1b7ba3cee39062148256eaad0ffffd823904e38efcca4d5870e424ed94dffda",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:51Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-06-09T10:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "deepseek.v3.2",
+      "model_id": "deepseek.v3.2",
+      "vendor": "DeepSeek",
+      "model_name": "DeepSeek V3.2",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-01",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-v3-2.html",
+      "source_content_sha256": "56dac3b0f0b70b574aa8eddf045b5e6641d2a243e1fb45a8e8be170c19ee2b84",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-06T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "nvidia.nemotron-nano-3-30b",
+      "model_id": "nvidia.nemotron-nano-3-30b",
+      "vendor": "NVIDIA",
+      "model_name": "Nemotron Nano 3 30B",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-15",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nemotron-nano-3-30b.html",
+      "source_content_sha256": "99c032143816d84e85f091cf00daead036af3b3c53af5b369a451dbfce61a5c0",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:07Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-23T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-sonnet-4-6",
+      "model_id": "anthropic.claude-sonnet-4-6",
+      "vendor": "Anthropic",
+      "model_name": "Claude Sonnet 4.6",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-02-17",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html",
+      "source_content_sha256": "3cfd1def21bb16fa8204facb440eb58d956fecefd80d26a320631a38fa78cffc",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:54Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-17T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "minimax.minimax-m2",
+      "model_id": "minimax.minimax-m2",
+      "vendor": "MiniMax",
+      "model_name": "MiniMax M2",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2.html",
+      "source_content_sha256": "a6f7b35cee342550b8e94d4b8c87535d677c22a354765839ba6507ec53db4449",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:03Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "zai.glm-4.7-flash",
+      "model_id": "zai.glm-4.7-flash",
+      "vendor": "Z.AI",
+      "model_name": "GLM 4.7 Flash",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2026-01-19",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-4-7-flash.html",
+      "source_content_sha256": "b7451aba1fbe78a17cbe76a766a0f99f22671ae30250c270e1731a95c399cc15",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:19Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-06T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "xai.grok-4.6",
+      "model_id": "xai.grok-4.6",
+      "vendor": "xAI",
+      "model_name": "Grok 4.6",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-08-18",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.html",
+      "source_content_sha256": "a2910fdb7a62b6baa06197773266837e7eed6cddc47e640f211eba14da8f1cb0",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:19Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-08-19T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-pro-v1:0",
+      "model_id": "amazon.nova-pro-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova Pro",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "input:VIDEO",
+        "output:TEXT"
+      ],
+      "release_date": "2024-12-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html",
+      "source_content_sha256": "c45779039163c56c5d2edec7c70dc671af82f1302e33ef2f337dd706980374c0",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:49Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-12-03T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-image-remove-background-v1:0",
+      "model_id": "stability.stable-image-remove-background-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Remove Background",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-11-07",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-remove-background.html",
+      "source_content_sha256": "6a20af13e95eb25de6b129bdf6cc365558720952154ac287bf8b8669aa757327",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:16Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-image-control-sketch-v1:0",
+      "model_id": "stability.stable-image-control-sketch-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Control Sketch",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2023-07-13",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-control-sketch.html",
+      "source_content_sha256": "7af37ed25c632ab5c57b4ce81a965ed43076953f4c3a0e4cfb286e2defefc386",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:13Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-2-lite-v1:0",
+      "model_id": "amazon.nova-2-lite-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova 2 Lite",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "input:VIDEO",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html",
+      "source_content_sha256": "5d08d3286547eee13b5310ce3300c5e4ba4da1ac232e61f4ad698bf3179e3778",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:47Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-conservative-upscale-v1:0",
+      "model_id": "stability.stable-conservative-upscale-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Conservative Upscale",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-05-20",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-conservative-upscale.html",
+      "source_content_sha256": "707514ce12924f14770137c5ac07a565ca080dc10a4f2424a3e6cc760b84cd04",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:13Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "minimax.minimax-m2.5",
+      "model_id": "minimax.minimax-m2.5",
+      "vendor": "MiniMax",
+      "model_name": "MiniMax M2.5",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2026-02-12",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2-5.html",
+      "source_content_sha256": "17f90b8acbf40d987ff234a4aa93f0ccd334dfa0f127f73fcf4d4d0b8cb4bc31",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:03Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-03-18T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "google.gemma-3-12b-it",
+      "model_id": "google.gemma-3-12b-it",
+      "vendor": "Google",
+      "model_name": "Gemma 3 12B IT",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-03-12",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-12b-it.html",
+      "source_content_sha256": "a60ca05d2c749104716ccc18e6086981b0b2300104e5962c34344f404880f111",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-image-search-recolor-v1:0",
+      "model_id": "stability.stable-image-search-recolor-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Search and Recolor",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-08-19",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-search-and-recolor.html",
+      "source_content_sha256": "9ef16f4da8bb8bb54ded6e505284de3f5f1f7a2a38cf382185ee4d5ded887fd4",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:16Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "moonshot.kimi-k2-thinking",
+      "model_id": "moonshot.kimi-k2-thinking",
+      "vendor": "Moonshot AI",
+      "model_name": "Kimi K2 Thinking",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-11-06",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k2-thinking.html",
+      "source_content_sha256": "d932c82b55b68adfdaf4012a7370d5301f68522058362ba3f76f32b1bd3cd2e7",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:07Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.mistral-large-3-675b-instruct",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "vendor": "Mistral AI",
+      "model_name": "Mistral Large 3",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html",
+      "source_content_sha256": "ba8aa4b5f399ab2194312dc4e66c66a3759cb713f56f0d07975015d5a0ee5205",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:05Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "twelvelabs.pegasus-1-2-v1:0",
+      "model_id": "twelvelabs.pegasus-1-2-v1:0",
+      "vendor": "TwelveLabs",
+      "model_name": "Pegasus v1.2",
+      "capabilities": [
+        "input:TEXT",
+        "input:VIDEO",
+        "output:TEXT"
+      ],
+      "release_date": "2025-02-11",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-pegasus-v1-2.html",
+      "source_content_sha256": "966fe5d74ddff7465549bead6ad84e9e5051c64f1563b8c8cb6f07b3ff1b76e3",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:17Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-10-31T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-2-sonic-v1:0",
+      "model_id": "amazon.nova-2-sonic-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova 2 Sonic",
+      "capabilities": [
+        "input:SPEECH",
+        "output:SPEECH",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-sonic.html",
+      "source_content_sha256": "10f8eadfbfa8816f6dddcaa511e43c34741fb692d5e89d8d6949780a624acd1f",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:47Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "minimax.minimax-m2.1",
+      "model_id": "minimax.minimax-m2.1",
+      "vendor": "MiniMax",
+      "model_name": "MiniMax M2.1",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-minimax-minimax-m2-1.html",
+      "source_content_sha256": "2c86bdbd6a8185ceae71ab2b59c2b52dd581986ac25d7a6ebf7a3095cde478b0",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:02Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-06T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "nvidia.nemotron-super-3-120b",
+      "model_id": "nvidia.nemotron-super-3-120b",
+      "vendor": "NVIDIA",
+      "model_name": "NVIDIA Nemotron 3 Super 120B A12B",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2026-03-11",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nemotron-super-3-120b.html",
+      "source_content_sha256": "fbd7689e9952de7377da56e3a1d97f3c0750643278b8076257052d2652cc6c94",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:08Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-03-18T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-32b-v1:0",
+      "model_id": "qwen.qwen3-32b-v1:0",
+      "vendor": "Qwen",
+      "model_name": "Qwen3 32B (dense)",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-04-29",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-32b.html",
+      "source_content_sha256": "fa32a551cfe905fa9443399887cc35c3505224889e35c63ab66d097ad8b8457c",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:12Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-15T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.ministral-3-14b-instruct",
+      "model_id": "mistral.ministral-3-14b-instruct",
+      "vendor": "Mistral AI",
+      "model_name": "Ministral 14B 3.0",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-14b-3-0.html",
+      "source_content_sha256": "c1ec7b160a85c0b1e5c70c9e84295c3201cf1e5929f15884a76a3f76b7986e29",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:04Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-4-6-v1",
+      "model_id": "anthropic.claude-opus-4-6-v1",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 4.6",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-02-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-6.html",
+      "source_content_sha256": "71d0b41834b08d5cdcb5c3e171f725b7b1a0b8e58e27817e8701be6035eb71ea",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:54Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-05T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "nvidia.nemotron-nano-9b-v2",
+      "model_id": "nvidia.nemotron-nano-9b-v2",
+      "vendor": "NVIDIA",
+      "model_name": "NVIDIA Nemotron Nano 9B v2",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-08-18",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nvidia-nemotron-nano-9b-v2.html",
+      "source_content_sha256": "a3fcd0e23b61b3b25ef56e2f18682c767d22408dd0489cc339e8e4a038091796",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:08Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.ministral-3-8b-instruct",
+      "model_id": "mistral.ministral-3-8b-instruct",
+      "vendor": "Mistral AI",
+      "model_name": "Ministral 3 8B",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html",
+      "source_content_sha256": "4fa4f7af9a65eea59eabeee5c6de0d906e3f1bddeca888c16f1954a168611598",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:04Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.voxtral-small-24b-2507",
+      "model_id": "mistral.voxtral-small-24b-2507",
+      "vendor": "Mistral AI",
+      "model_name": "Voxtral Small 24B 2507",
+      "capabilities": [
+        "input:SPEECH",
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-voxtral-small-24b-2507.html",
+      "source_content_sha256": "b601a7784bea4a2c71a3e5b1bc632e23faeec7c27e47b4187f255f11d38851df",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:06Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "zai.glm-5",
+      "model_id": "zai.glm-5",
+      "vendor": "Z.AI",
+      "model_name": "GLM 5",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2026-02-11",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-5.html",
+      "source_content_sha256": "8dcba702a2a1c970eb11e4cf1dd9a2f56cfdf7d39cf735142b68022cfb8d3d4c",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:19Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-03-18T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-oss-20b-1:0",
+      "model_id": "openai.gpt-oss-20b-1:0",
+      "vendor": "OpenAI",
+      "model_name": "gpt-oss-20b",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-08-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html",
+      "source_content_sha256": "db5f9d5d60aa5e557d2cf449191cae44fd48f38626bd23e560a7048bf3a809f3",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:11Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-08-06T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-5",
+      "model_id": "anthropic.claude-opus-5",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-07-24",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5.html",
+      "source_content_sha256": "66ff71a502956ab14f176950e6c922bc061ee6d2f7059ff8a878064ccdbf45b1",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:54Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-07-23T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "google.gemma-3-4b-it",
+      "model_id": "google.gemma-3-4b-it",
+      "vendor": "Google",
+      "model_name": "Gemma 3 4B IT",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-03-12",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-4b-it.html",
+      "source_content_sha256": "035ef24ccf7bb257e729ecee51c46cea46e7bf1e7efe750905015b8c523a84a6",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:58Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-fast-upscale-v1:0",
+      "model_id": "stability.stable-fast-upscale-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Fast Upscale",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-09-10",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-fast-upscale.html",
+      "source_content_sha256": "542dc005b3463d65c9b64c001aeadd80f47630c0284136fcd33c0c164c51ca55",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:15Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-4-8",
+      "model_id": "anthropic.claude-opus-4-8",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 4.8",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-05-28",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-8.html",
+      "source_content_sha256": "be174afe8cda68c766ff9f5ac6d8f926bb04d31035e54d256f08972cdb50f360",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:53Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-05-28T10:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-4-7",
+      "model_id": "anthropic.claude-opus-4-7",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 4.7",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-04-16",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html",
+      "source_content_sha256": "6968467e1e4310351d0a5c5717d1fe09035a9e031228f2e4f12c14d4fed94b36",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:54Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-04-16T14:30:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-image-erase-object-v1:0",
+      "model_id": "stability.stable-image-erase-object-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Erase Object",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-05-20",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-erase-object.html",
+      "source_content_sha256": "c13e5272b130da1afb9cace29b70f3f12a9afada0380461d1e85f34b6871ca61",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:14Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-oss-safeguard-120b",
+      "model_id": "openai.gpt-oss-safeguard-120b",
+      "vendor": "OpenAI",
+      "model_name": "GPT OSS Safeguard 120B",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-29",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-safeguard-120b.html",
+      "source_content_sha256": "fa8c12cc4b62738c63d0a6458f0aaa8150290dbb1f230d4e8e0d2dd5ddd3d0ee",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:11Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "google.gemma-3-27b-it",
+      "model_id": "google.gemma-3-27b-it",
+      "vendor": "Google",
+      "model_name": "Gemma 3 27B PT",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-03-12",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-3-27b-pt.html",
+      "source_content_sha256": "c4a38248535942c125add4101f539bacebb714d75ace582f9d00bd3d371d009a",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:58Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-image-control-structure-v1:0",
+      "model_id": "stability.stable-image-control-structure-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Control Structure",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2024-04-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-control-structure.html",
+      "source_content_sha256": "c7910b64a36dd8f0db3ef2093bc80c9b29106b39944c04ab34ff9bb518e03331",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:14Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "model_id": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "vendor": "Anthropic",
+      "model_name": "Claude Sonnet 4.5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-09-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.html",
+      "source_content_sha256": "72d7f3ce0c761b9ee1fffbf19df65c1773ea78e3422aac75be3e7d6a4a7197dd",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:54Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-29T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-vl-235b-a22b",
+      "model_id": "qwen.qwen3-vl-235b-a22b",
+      "vendor": "Qwen",
+      "model_name": "Qwen3 VL 235B A22B",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-09-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-vl-235b-a22b.html",
+      "source_content_sha256": "efd38c3c88b857eeccf6e350ed34f66025adaf5e9bb9b49252e7633877ae720b",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:13Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-fable-5-1",
+      "model_id": "anthropic.claude-fable-5-1",
+      "vendor": "Anthropic",
+      "model_name": "Claude Fable 5.1",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-09-01",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-fable-5-1.html",
+      "source_content_sha256": "44dbfa26f73496b1edf24f2ee853b1d494209632a3cf72ae9eea5b0c2102370b",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:51Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-08-31T16:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "zai.glm-4.7",
+      "model_id": "zai.glm-4.7",
+      "vendor": "Z.AI",
+      "model_name": "GLM 4.7",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-22",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-4-7.html",
+      "source_content_sha256": "59590bc9dc5538960a2ddaece69904ad77efc1fe8d26356257a991c06f715e7b",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:19Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-02-06T18:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "writer.palmyra-vision-7b",
+      "model_id": "writer.palmyra-vision-7b",
+      "vendor": "Writer",
+      "model_name": "Writer Palmyra Vision 7B",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-03-26",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-writer-palmyra-vision-7b.html",
+      "source_content_sha256": "b9bcae72ed42a79a9829b161b7f2e336055ea14dd8be117d638ddda473005ea7",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:17Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-03-20T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "stability.stable-outpaint-v1:0",
+      "model_id": "stability.stable-outpaint-v1:0",
+      "vendor": "Stability AI",
+      "model_name": "Stable Image Outpaint",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:IMAGE"
+      ],
+      "release_date": "2022-11-24",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-outpaint.html",
+      "source_content_sha256": "c0164204b9b7d25abb5a408af85a7b4fcc40c2c095e77945b6e625d7d470c036",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:15Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-03T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-5.6-luna",
+      "model_id": "openai.gpt-5.6-luna",
+      "vendor": "OpenAI",
+      "model_name": "GPT-5.6 Luna",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-07-13",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html",
+      "source_content_sha256": "70a3c6885ce4f081923e141b7b14d686ef1fbbebc9ddd553dd6975a5b6f647a8",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:09Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-08-13T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-sonnet-5",
+      "model_id": "anthropic.claude-sonnet-5",
+      "vendor": "Anthropic",
+      "model_name": "Claude Sonnet 5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-06-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html",
+      "source_content_sha256": "32f7e3f7197ca2518d0e93c27638707f2c66f1a4d8db3779fc105ffcd269f761",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:55Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-06-30T10:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-4-1-20250805-v1:0",
+      "model_id": "anthropic.claude-opus-4-1-20250805-v1:0",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 4.1",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-08-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-1.html",
+      "source_content_sha256": "f9149e13d93c3cfcf765e6b740ae9895b3655bb8c38e380526075f94d7d6a000",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:53Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "LEGACY",
+        "startOfLifeTime": "2025-08-05T00:00:00+00:00",
+        "endOfLifeTime": "2027-01-08T08:00:00+00:00",
+        "legacyTime": "2026-07-08T08:00:00+00:00",
+        "publicExtendedAccessTime": "2026-10-08T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-coder-480b-a35b-v1:0",
+      "model_id": "qwen.qwen3-coder-480b-a35b-v1:0",
+      "vendor": "Qwen",
+      "model_name": "Qwen3 Coder 480B A35B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-07-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-coder-480b-a35b-instruct.html",
+      "source_content_sha256": "d3c9124f304da2b1123a6e5a53d88bc8f61fbcab1fa52110d7ad73e2ccc91247",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:12Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-15T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-5.6-sol",
+      "model_id": "openai.gpt-5.6-sol",
+      "vendor": "OpenAI",
+      "model_name": "GPT-5.6 Sol",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2026-07-13",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html",
+      "source_content_sha256": "b7ac1a1730883df3c63cc80ea1be0e123d5adc57fb2005df78709ef5294d27d1",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:09Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2026-08-13T17:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "cohere.embed-v4:0",
+      "model_id": "cohere.embed-v4:0",
+      "vendor": "Cohere",
+      "model_name": "Embed v4",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2025-04-15",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-v4.html",
+      "source_content_sha256": "7246c9abda9317d5d50b8319c0af08418d78eb37a5cd6e8fd0322705030f445a",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-10-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "deepseek.v3-v1:0",
+      "model_id": "deepseek.v3-v1:0",
+      "vendor": "DeepSeek",
+      "model_name": "DeepSeek-V3.1",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-08-21",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-v3-1.html",
+      "source_content_sha256": "9d091d7be9fa54dd61490579fa75b63c6dfa9948ea6b3f72ba6247d360ba232d",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-15T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.ministral-3-3b-instruct",
+      "model_id": "mistral.ministral-3-3b-instruct",
+      "vendor": "Mistral AI",
+      "model_name": "Ministral 3B",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3b.html",
+      "source_content_sha256": "2aa3aab2c5afb63275354766b6a93f0c834f1ef6267dab98d88d9fee17c5fa51",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:04Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "anthropic.claude-opus-4-5-20251101-v1:0",
+      "model_id": "anthropic.claude-opus-4-5-20251101-v1:0",
+      "vendor": "Anthropic",
+      "model_name": "Claude Opus 4.5",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-11-24",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-5.html",
+      "source_content_sha256": "8a32ecc123f912a4691d9a4a691dcaddaabbc561b9ecc176b3eb0b9e7db0c949",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:53Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-11-24T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "qwen.qwen3-coder-30b-a3b-v1:0",
+      "model_id": "qwen.qwen3-coder-30b-a3b-v1:0",
+      "vendor": "Qwen",
+      "model_name": "Qwen3-Coder-30B-A3B-Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-07-31",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen-qwen3-coder-30b-a3b-instruct.html",
+      "source_content_sha256": "70b35ec6c25007ef49b06a6efafc8b2e4ad21687ebb1f524955d56f6d22375f6",
+      "supported_endpoints": [
+        "bedrock-mantle",
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:12Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-09-15T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "openai.gpt-oss-safeguard-20b",
+      "model_id": "openai.gpt-oss-safeguard-20b",
+      "vendor": "OpenAI",
+      "model_name": "GPT OSS Safeguard 20B",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-29",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-safeguard-20b.html",
+      "source_content_sha256": "492daf720721908c3fac4255032ac50d428131c97e2019f7b638eda3e9372b64",
+      "supported_endpoints": [
+        "bedrock-runtime",
+        "bedrock-mantle"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:11Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-12-02T00:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-premier-v1:0",
+      "model_id": "amazon.nova-premier-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova Premier",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "input:VIDEO",
+        "output:TEXT"
+      ],
+      "release_date": "2025-10-31",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-premier.html",
+      "source_content_sha256": "1467042c6d9735445ea1edba784a02c13ba7593d0f2118e7b39cb9ae8ba5312c",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:48Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "LEGACY",
+        "startOfLifeTime": "2025-04-30T08:00:00+00:00",
+        "endOfLifeTime": "2026-09-14T07:00:00+00:00",
+        "legacyTime": "2026-03-13T07:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-lite-v1:0",
+      "model_id": "amazon.nova-lite-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova Lite",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "input:VIDEO",
+        "output:TEXT"
+      ],
+      "release_date": "2024-12-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html",
+      "source_content_sha256": "52c8139bf12816dcdfac9e3f149fb1ef469470610bd143af0c96c4fe7e9caeda",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:48Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-12-03T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.nova-micro-v1:0",
+      "model_id": "amazon.nova-micro-v1:0",
+      "vendor": "Amazon",
+      "model_name": "Nova Micro",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-12-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html",
+      "source_content_sha256": "675153bb7157298836c2c37a659cf91ff9352a764aba2a6ed1497af272f859ba",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:48Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-12-03T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.titan-embed-text-v1",
+      "model_id": "amazon.titan-embed-text-v1",
+      "vendor": "Amazon",
+      "model_name": "Titan Embeddings G1 - Text",
+      "capabilities": [
+        "input:TEXT",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2023-09-28",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-embeddings-g1---text.html",
+      "source_content_sha256": "d2736bf98c761e136756a291c99ce7f18005104475f51d8b339fd563cc579cef",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:50Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-04-03T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.titan-embed-text-v2:0",
+      "model_id": "amazon.titan-embed-text-v2:0",
+      "vendor": "Amazon",
+      "model_name": "Titan Text Embeddings V2",
+      "capabilities": [
+        "input:TEXT",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2024-04-30",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html",
+      "source_content_sha256": "32c5cf3aad2a31999bead6ec88cf0d268c3a26dc729e7bf7ea92e69088fe112e",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:50Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-04-30T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "amazon.titan-embed-image-v1",
+      "model_id": "amazon.titan-embed-image-v1",
+      "vendor": "Amazon",
+      "model_name": "Titan Multimodal Embeddings G1",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2023-11-29",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-multimodal-embeddings-g1.html",
+      "source_content_sha256": "3826581ecc97d0cc34099e2ce0edac2d4ef05377b85eed9e046fdf4b30db6d8a",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:50Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2023-11-29T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "cohere.embed-english-v3",
+      "model_id": "cohere.embed-english-v3",
+      "vendor": "Cohere",
+      "model_name": "Embed English",
+      "capabilities": [
+        "input:TEXT",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2023-11-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-english.html",
+      "source_content_sha256": "914efd4ef636640b27e66b425307bd2df62915b2ff7cf7562cc34060539220a5",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:56Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-01-24T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "cohere.embed-multilingual-v3",
+      "model_id": "cohere.embed-multilingual-v3",
+      "vendor": "Cohere",
+      "model_name": "Embed Multilingual",
+      "capabilities": [
+        "input:TEXT",
+        "output:EMBEDDING"
+      ],
+      "release_date": "2023-11-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-multilingual.html",
+      "source_content_sha256": "fd3bb32d41bfacfec8e629faebd552d33191cb166f8a1a4decae4081fec6ccb8",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:56Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-01-24T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "cohere.rerank-v3-5:0",
+      "model_id": "cohere.rerank-v3-5:0",
+      "vendor": "Cohere",
+      "model_name": "Rerank 3.5",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-12-02",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-rerank-3-5.html",
+      "source_content_sha256": "f1d8538f8a38d31071cec7fee1323e67d2517282ddffa77b4c89dfb925cc873d",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-12-01T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "deepseek.r1-v1:0",
+      "model_id": "deepseek.r1-v1:0",
+      "vendor": "DeepSeek",
+      "model_name": "DeepSeek-R1",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2025-01-20",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-deepseek-r1.html",
+      "source_content_sha256": "304f4dc989f07e6381553e0bb98fc95e3b61a3ea099334665513a7e99f1d8c86",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:13:57Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-03-10T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama3-8b-instruct-v1:0",
+      "model_id": "meta.llama3-8b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 3 8B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-04-18",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-8b-instruct.html",
+      "source_content_sha256": "aed7502355c41b79063764c120b3c3e74fbbdd85e8694f99e6075e403f81a7b0",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:01Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-04-23T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama3-70b-instruct-v1:0",
+      "model_id": "meta.llama3-70b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 3 70B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-04-18",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-70b-instruct.html",
+      "source_content_sha256": "bd4b070298933dc98627bf942bd7f5f84fba044bf49ae4d4c80de9c91a7fbe49",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:01Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-04-23T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama3-1-8b-instruct-v1:0",
+      "model_id": "meta.llama3-1-8b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 3.1 8B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-07-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-1-8b-instruct.html",
+      "source_content_sha256": "7bb7e28214ce09d90413cb5d8549d38837b57919c3a6e5d77a77237a21890158",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:00Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-07-23T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama3-1-70b-instruct-v1:0",
+      "model_id": "meta.llama3-1-70b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 3.1 70B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-07-23",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-1-70b-instruct.html",
+      "source_content_sha256": "d3c9dc958662fce6b85156c2eae9261e0e652f0884b2fb5b027a9a84f7f9e1c2",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:00Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-07-23T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama3-3-70b-instruct-v1:0",
+      "model_id": "meta.llama3-3-70b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 3.3 70B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-12-06",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-3-70b-instruct.html",
+      "source_content_sha256": "d21d21cef894ff399f73ec06158f997998e5006ed616dbd94eabdc83fad6cbf9",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:01Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-12-19T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama4-scout-17b-instruct-v1:0",
+      "model_id": "meta.llama4-scout-17b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 4 Scout 17B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-04-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-scout-17b-instruct.html",
+      "source_content_sha256": "0d51bc6c960d5fa65e5b0f38db13368a9472ce1a07e4a456e6af195bb851294c",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:02Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-04-28T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "meta.llama4-maverick-17b-instruct-v1:0",
+      "model_id": "meta.llama4-maverick-17b-instruct-v1:0",
+      "vendor": "Meta",
+      "model_name": "Llama 4 Maverick 17B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2025-04-05",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-maverick-17b-instruct.html",
+      "source_content_sha256": "f1ee6c2a50df1b7bcf7c86609f0e09cff0b4ae36b65529ec2365e14a5be7596e",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:02Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-04-28T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.mistral-7b-instruct-v0:2",
+      "model_id": "mistral.mistral-7b-instruct-v0:2",
+      "vendor": "Mistral AI",
+      "model_name": "Mistral 7B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2023-09-28",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-7b-instruct.html",
+      "source_content_sha256": "5ed7ca6f161752579db9ced171bd37a4e26d6a330ba80e75fe9f737295bdeb04",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:05Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-03-01T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.mixtral-8x7b-instruct-v0:1",
+      "model_id": "mistral.mixtral-8x7b-instruct-v0:1",
+      "vendor": "Mistral AI",
+      "model_name": "Mixtral 8x7B Instruct",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2023-12-10",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mixtral-8x7b-instruct.html",
+      "source_content_sha256": "cf5b9ced133f44cf88b1a646e90478bb4d74044a8fb6a429fcb5fe69665830af",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:05Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-03-01T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.mistral-large-2402-v1:0",
+      "model_id": "mistral.mistral-large-2402-v1:0",
+      "vendor": "Mistral AI",
+      "model_name": "Mistral Large (24.02)",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2024-02-26",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large.html",
+      "source_content_sha256": "9866fd20e92cec737c36e730c28a1473ded2ab48a025b60e224579653929812b",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:05Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2024-04-03T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "mistral.pixtral-large-2502-v1:0",
+      "model_id": "mistral.pixtral-large-2502-v1:0",
+      "vendor": "Mistral AI",
+      "model_name": "Pixtral Large (25.02)",
+      "capabilities": [
+        "input:TEXT",
+        "input:IMAGE",
+        "output:TEXT"
+      ],
+      "release_date": "2024-11-19",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-pixtral-large.html",
+      "source_content_sha256": "5d9fe546bd667bef7509c837842035b9584aaa3feb16c131e661108fd8af5ca9",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:06Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-04-08T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    },
+    {
+      "record_id": "writer.palmyra-x5-v1:0",
+      "model_id": "writer.palmyra-x5-v1:0",
+      "vendor": "Writer",
+      "model_name": "Palmyra X5",
+      "capabilities": [
+        "input:TEXT",
+        "output:TEXT"
+      ],
+      "release_date": "2026-01-21",
+      "source_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-writer-palmyra-x5.html",
+      "source_content_sha256": "87c2482902fc0e623664e3e6904f10fd51494aa2677dd281689778c8424363d1",
+      "supported_endpoints": [
+        "bedrock-runtime"
+      ],
+      "verified": true,
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Owner-provided official-date evidence",
+        "reviewed_at": "2026-09-13T09:14:18Z"
+      },
+      "region_availability": "listed_in_account_snapshot",
+      "account_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",
+      "model_lifecycle": {
+        "status": "ACTIVE",
+        "startOfLifeTime": "2025-04-28T08:00:00+00:00"
+      },
+      "runtime_protocol": "unknown"
+    }
+  ],
+  "pending_verification": [
+    {
+      "model_id": "mistral.voxtral-mini-3b-2507",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "mistral.devstral-2-123b",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "stability.stable-image-inpaint-v1:0",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "stability.stable-image-style-guide-v1:0",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "mistral.magistral-small-2509",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "stability.stable-style-transfer-v1:0",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "stability.stable-image-search-replace-v1:0",
+      "reason": "date_precision_unverified"
+    },
+    {
+      "model_id": "amazon.nova-premier-v1:0:8k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.nova-premier-v1:0:20k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.nova-premier-v1:0:1000k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.nova-premier-v1:0:mm",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.titan-embed-g1-text-02",
+      "reason": "missing_verified_date_or_source"
+    },
+    {
+      "model_id": "amazon.titan-embed-text-v1:2:8k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.titan-embed-image-v1:0",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "amazon.rerank-v1:0",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "stability.sd3-5-large-v1:0",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "stability.stable-image-core-v1:1",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "stability.stable-image-ultra-v1:1",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "cohere.embed-english-v3:0:512",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "cohere.embed-multilingual-v3:0:512",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "meta.llama3-1-8b-instruct-v1:0:128k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "meta.llama3-1-70b-instruct-v1:0:128k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "meta.llama3-3-70b-instruct-v1:0:128k",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "mistral.mistral-large-2407-v1:0",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "luma.ray-v2:0",
+      "reason": "unmatched"
+    },
+    {
+      "model_id": "writer.palmyra-x4-v1:0",
+      "reason": "date_precision_unverified"
+    }
+  ]
+}

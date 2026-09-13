@@ -1,0 +1,17 @@
+{
+  "profile_id": "us.anthropic.claude-opus-5",
+  "model_ids": [
+    "anthropic.claude-opus-5"
+  ],
+  "target_arn_returned": false,
+  "target_identity_readback_matches": true,
+  "no_derived_target_arn": true,
+  "model_calls": 1,
+  "tools": 0,
+  "max_output_tokens": 256,
+  "stream": false,
+  "thinking": "disabled",
+  "schema_validation": "PASS",
+  "cedar_service_validation": "NOT_RUN",
+  "cloud_writes": false
+}

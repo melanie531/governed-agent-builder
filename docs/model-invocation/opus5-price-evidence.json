@@ -1,0 +1,232 @@
+{
+  "sources": [
+    {
+      "name": "aws.amazon.com/bedrock/pricing",
+      "url": "https://aws.amazon.com/bedrock/pricing/",
+      "retrieved": "2026-09-13"
+    },
+    {
+      "name": "awsstatic meteredUnitMaps (page price feed)",
+      "url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrockfoundationmodels/USD/current/bedrockfoundationmodels.json",
+      "publicationDate": "2026-09-11T12:44:10Z",
+      "currency": "USD"
+    },
+    {
+      "name": "AWS Price List API",
+      "service": "AmazonBedrockFoundationModels",
+      "regionCode": "us-west-2"
+    }
+  ],
+  "region": "US West (Oregon) / us-west-2",
+  "tables": [
+    {
+      "table": "Global Cross-region Inference",
+      "model_row": "Claude Opus 5",
+      "columns": [
+        {
+          "column": "Price per 1M input tokens",
+          "regionlessRateCode": "hwRLzHbz95iYPMgFeWcwEMiqD7ngHWN1XiZZ0KfrGrA",
+          "priceUSD": "5.0000000000",
+          "rateCode": "ZGECTCRSV2MJYEYF.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "ZGECTCRSV2MJYEYF",
+            "usagetype": "USW2-MP:USW2_input_tokens_global_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Input Tokens - Standard, Global",
+            "unit": "1M tokens",
+            "priceUSD": "5.0000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M output tokens",
+          "regionlessRateCode": "o5gxP1oPgdDlKB9eRoIUIuaRu94j_Vmi-qqr5ZAF48Q",
+          "priceUSD": "25.0000000000",
+          "rateCode": "22A39MCCQXRJZ8P7.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "22A39MCCQXRJZ8P7",
+            "usagetype": "USW2-MP:USW2_output_tokens_global_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Output Tokens - Standard, Global",
+            "unit": "1M tokens",
+            "priceUSD": "25.0000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (batch)",
+          "regionlessRateCode": "SGj1i2pXRE1LQ8_ocGBIGVwaUDt_BvPyrz2Mjsb7Cbw",
+          "priceUSD": "2.5000000000",
+          "rateCode": "BBK94PTHJWTXFJXQ.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "BBK94PTHJWTXFJXQ",
+            "usagetype": "USW2-MP:USW2_input_tokens_global_batch-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Input Tokens - Batch, Global",
+            "unit": "1M tokens",
+            "priceUSD": "2.5000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M output tokens (batch)",
+          "regionlessRateCode": "07X3rKg7Cvy3Yu1ZvZjer7SoGptm7ZLdKmqDAiRDMaU",
+          "priceUSD": "12.5000000000",
+          "rateCode": "ZYFGSHPTST2JJP46.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "ZYFGSHPTST2JJP46",
+            "usagetype": "USW2-MP:USW2_output_tokens_global_batch-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Output Tokens - Batch, Global",
+            "unit": "1M tokens",
+            "priceUSD": "12.5000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (5m cache write)",
+          "regionlessRateCode": "Bh2nq8t7MZkUVwE83wnJFgMK54kWNF97VVLfEfcRzXM",
+          "priceUSD": "6.2500000000",
+          "rateCode": "UGCJ9839PQH79ZMV.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "UGCJ9839PQH79ZMV",
+            "usagetype": "USW2-MP:USW2_cache_write_tokens_global_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Write Tokens - Standard, Global",
+            "unit": "1M tokens",
+            "priceUSD": "6.2500000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (1h cache write)",
+          "regionlessRateCode": "83nNWOKNW4kD1cAEVr5uqJqNocjRMyAm49AEnYFzIg4",
+          "priceUSD": "10.0000000000",
+          "rateCode": "JT3RJ78K83V4JT63.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "JT3RJ78K83V4JT63",
+            "usagetype": "USW2-MP:USW2_cache_write_tokens_1h_global_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Write Tokens (1h TTL) - Standard, Global",
+            "unit": "1M tokens",
+            "priceUSD": "10.0000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (cache read)",
+          "regionlessRateCode": "P45m_BhEEgQFgqew_Hi4AuG26f74kh6ekYP-u57SpYQ",
+          "priceUSD": "0.5000000000",
+          "rateCode": "TUHU3N43KWKREJH2.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "TUHU3N43KWKREJH2",
+            "usagetype": "USW2-MP:USW2_cache_read_tokens_global_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Read Tokens - Standard, Global",
+            "unit": "1M tokens",
+            "priceUSD": "0.5000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "table": "Geo and In-region Cross-region Inference",
+      "model_row": "Claude Opus 5",
+      "columns": [
+        {
+          "column": "Price per 1M input tokens",
+          "regionlessRateCode": "sbDyhkVnyuv89NUdw3WYcdUXx2XDClLi7M9dfY3bfHw",
+          "priceUSD": "5.5000000000",
+          "rateCode": "VPSX8DAZBRJ5FXAC.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "VPSX8DAZBRJ5FXAC",
+            "usagetype": "USW2-MP:USW2_input_tokens_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Input Tokens - Standard",
+            "unit": "1M tokens",
+            "priceUSD": "5.5000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M output tokens",
+          "regionlessRateCode": "vSiE91iz_fxFqUIW9kHDsurE1OjxXxQhXPK2clqyutQ",
+          "priceUSD": "27.5000000000",
+          "rateCode": "UV37DGD9852Q2CCN.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "UV37DGD9852Q2CCN",
+            "usagetype": "USW2-MP:USW2_output_tokens_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Output Tokens - Standard",
+            "unit": "1M tokens",
+            "priceUSD": "27.5000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (batch)",
+          "regionlessRateCode": "Y8elKk_m79kgy6Hau6IkYYEoiBPC2xK7xXE3rv8GhiQ",
+          "priceUSD": "2.7500000000",
+          "rateCode": "5AW57NMGKAJ7XFV9.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "5AW57NMGKAJ7XFV9",
+            "usagetype": "USW2-MP:USW2_input_tokens_batch-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Input Tokens - Batch",
+            "unit": "1M tokens",
+            "priceUSD": "2.7500000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M output tokens (batch)",
+          "regionlessRateCode": "jr2G30ahEjFSXzwA2ARH22ptHP9GSQ8PrmemV0BjczA",
+          "priceUSD": "13.7500000000",
+          "rateCode": "927MCTDKSDHFYVMA.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "927MCTDKSDHFYVMA",
+            "usagetype": "USW2-MP:USW2_output_tokens_batch-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Output Tokens - Batch",
+            "unit": "1M tokens",
+            "priceUSD": "13.7500000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (5m cache write)",
+          "regionlessRateCode": "1FWkRNFWciUov_Yrxgsx3BVPH6SrycbSr604JBOAOx8",
+          "priceUSD": "6.8750000000",
+          "rateCode": "H2GXVN8TVPU54UN8.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "H2GXVN8TVPU54UN8",
+            "usagetype": "USW2-MP:USW2_cache_write_tokens_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Write Tokens - Standard",
+            "unit": "1M tokens",
+            "priceUSD": "6.8750000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (1h cache write)",
+          "regionlessRateCode": "i7Xrzid4TW7SxYNqGWG4O5mhx3avnGv8HL0atI-owg4",
+          "priceUSD": "11.0000000000",
+          "rateCode": "FMGAMQU4HUF9RX6H.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "FMGAMQU4HUF9RX6H",
+            "usagetype": "USW2-MP:USW2_cache_write_tokens_1h_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Write Tokens (1h TTL) - Standard",
+            "unit": "1M tokens",
+            "priceUSD": "11.0000000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        },
+        {
+          "column": "Price per 1M input tokens (cache read)",
+          "regionlessRateCode": "h3sQHM6hAKf6yGLSnX79GUrrt3GgGijlgfWP1gBz2RM",
+          "priceUSD": "0.5500000000",
+          "rateCode": "X5MFHHC422G88XSH.4799GE89SK.6YS6EN2CT7",
+          "pricelist_api_crosscheck": {
+            "sku": "X5MFHHC422G88XSH",
+            "usagetype": "USW2-MP:USW2_cache_read_tokens_standard-Units",
+            "description": "AWS Marketplace software usage|us-west-2|Cache Read Tokens - Standard",
+            "unit": "1M tokens",
+            "priceUSD": "0.5500000000",
+            "effectiveDate": "2026-08-01T00:00:00Z"
+          }
+        }
+      ]
+    }
+  ],
+  "project_profile": "us.anthropic.claude-opus-5 (US geographic cross-region inference profile) -> Geo/In-region CRIS table applies"
+}

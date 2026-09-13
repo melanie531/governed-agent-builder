@@ -86,6 +86,22 @@ class CapabilityRequest(Strict):
     component_id: str
     reason: str = Field(min_length=5, max_length=1000)
 
+class GeneralRequest(Strict):
+    """A need outside the AI Catalog. Never a capability grant; no component."""
+    summary: str = Field(min_length=5, max_length=200)
+    details: str = Field(default="", max_length=2000)
+
+    @field_validator("summary")
+    @classmethod
+    def substantive_summary(cls, value):
+        if len(value.strip()) < 5:
+            raise ValueError("A substantive summary is required")
+        return value.strip()
+
+class GeneralRequestStatus(Strict):
+    status: Literal["IN_PROGRESS", "RESOLVED", "CLOSED"]
+    note: str = Field(min_length=5, max_length=1000)
+
 class Decision(Strict):
     approve: bool
     reason: str = Field(min_length=5, max_length=1000)

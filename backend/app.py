@@ -17,12 +17,14 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact
+from .diagnostic_approval import (SubmitDiagnostic, ReviewDiagnostic, handle as diagnostic_operator,
+                                  inspect_candidate as diagnostic_candidate)
 from . import self_service_admission as self_service
 from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
 from .harness import evaluate, run_case
-from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
+from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, GeneralRequest, GeneralRequestStatus, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
 from .hosted_auth import HostedAuth
 from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog, data_policy_allows
@@ -117,7 +119,16 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def catalog_records(db):
         if journey is not None:
             from .journey_catalog import records
-            return records(db)
+            published = records(db)
+            if catalog_provider is None:
+                return published
+            try:
+                discovery = [item for item in catalog_provider.records()
+                             if item.get("kind") == "model" and item.get("discovery_only") is True]
+            except Exception:
+                raise HTTPException(503, "Model discovery unavailable; published agent bindings are unchanged") from None
+            published_ids = {item["id"] for item in published}
+            return published + [item for item in discovery if item["id"] not in published_ids]
         if catalog_mode == "live":
             if catalog_provider is None:
                 raise HTTPException(503, "NotConnected: Live catalog configuration invalid; no fixture fallback" if catalog_configuration_invalid else "NotConnected: Live catalog integration is not configured; no fixture fallback")
@@ -666,8 +677,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             visible = {c['id'] for c in records if visibility(c, persona)}
             items = [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
                      and (p := projection(db, persona, c)) is not None]
+            # Model-only current-user summary uses exact/evidenced identity.
+            # Compute before response filtering so valid historical routes can
+            # contribute to an eligible model without changing component grants.
+            from .model_access_summary import model_access_summary
+            access_summary = model_access_summary(items)
+            # Filter the discovery response only. catalog_records/resource and
+            # version/draft lookup retain historical route identities unchanged.
+            from .model_access_summary import listed_model
+            items = [p for p in items if p['kind'] != 'model' or listed_model(p)]
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
             return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": "live" if journey else catalog_mode,
+                    "access_summary": access_summary,
                     "agent_listing_implemented": catalog_mode == "live",
                     "connection_state": "connected" if journey or catalog_mode == "live" else "fixture",
                     "native_connection_state": "connected" if journey or catalog_mode == "live" else "NotConnected",
@@ -686,7 +707,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/api/capabilities")
     def capabilities(request: Request):
-        return ai_catalog(request)['items']
+        # Compatibility/readiness consumers retain authorized historical rows.
+        persona = who(request)
+        with store.tx() as db:
+            records = catalog_records(db)
+            visible = {c['id'] for c in records if visibility(c, persona)}
+            return [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
+                    and (p := projection(db, persona, c)) is not None]
 
     @app.get("/api/requests")
     def requests(request: Request):
@@ -717,6 +744,46 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             audit(db, persona["id"], "capability_requested", request_id, data.component_id)
         return {"id": request_id}
 
+    # General platform requests: needs outside the AI Catalog. These are not
+    # capability grants — admin handling records a response and never touches
+    # grants, settings scopes or execution bindings.
+    @app.get("/api/general-requests")
+    def general_requests(request: Request):
+        persona = who(request)
+        with store.tx() as db:
+            if persona["role"] == "admin":
+                return [dict(r) for r in db.select('general_requests', order='created', descending=True)]
+            return [dict(r) for r in db.select('general_requests', where=[('requester', '=', persona['id']), ('workspace', '=', persona['workspace'])], order='created', descending=True)]
+
+    @app.post("/api/general-requests", status_code=201)
+    def submit_general_request(data: GeneralRequest, request: Request):
+        persona = who(request)
+        if persona["role"] != "business":
+            raise HTTPException(403, "Business identity required")
+        with store.tx() as db:
+            if db.select('general_requests', where=[('requester', '=', persona['id']), ('workspace', '=', persona['workspace']), ('summary', '=', data.summary), ('status', 'not_in', ('RESOLVED', 'CLOSED'))]).fetchone():
+                raise HTTPException(409, "An identical request is already open; wait for the administrator response")
+            if db.select('general_requests', count=True, where=[('requester', '=', persona['id']), ('created', '>', time.time() - 3600)]).fetchone()[0] >= 30:
+                raise HTTPException(429, 'General request budget: 30 per identity per hour')
+            request_id = uid()
+            now = time.time()
+            db.insert('general_requests', {'id': request_id, 'requester': persona['id'], 'workspace': persona['workspace'], 'summary': data.summary, 'details': data.details, 'status': 'SUBMITTED', 'resolution': None, 'created': now, 'updated': now})
+            audit(db, persona["id"], "general_request_submitted", request_id, json.dumps({"workspace": persona["workspace"]}))
+        return {"id": request_id}
+
+    @app.post("/api/admin/general-requests/{request_id}/status")
+    def handle_general_request(request_id: str, data: GeneralRequestStatus, request: Request):
+        persona = who(request, True)
+        with store.tx() as db:
+            row = db.select('general_requests', where=[('id', '=', request_id)]).fetchone()
+            if not row:
+                raise HTTPException(404, "Request not found")
+            if row["status"] in ("RESOLVED", "CLOSED"):
+                raise HTTPException(409, "Request already resolved or closed")
+            db.update('general_requests', {'status': data.status, 'resolution': data.note, 'updated': time.time()}, where=[('id', '=', request_id)])
+            audit(db, persona["id"], "general_request_updated", request_id, json.dumps({"status": data.status, "workspace": row["workspace"]}))
+        return {"ok": True, "notice": "Administrator response recorded; no access was granted or provisioned automatically"}
+
     @app.get("/api/admin/catalog")
     def admin_catalog(request: Request):
         who(request, True)
@@ -731,6 +798,31 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         platform = platform_metadata(data.config)
         with store.tx() as db:
             return register_source(db, actor, data, platform)
+
+    @app.post("/api/admin/diagnostic-capture/submissions", status_code=201)
+    def submit_diagnostic_capture(data: SubmitDiagnostic, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_operator(store, actor, data, session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
+
+    @app.get("/api/admin/diagnostic-capture/submissions/{candidate_ref}")
+    def get_diagnostic_candidate(candidate_ref: str, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_candidate(store, actor, candidate_ref,
+                                    session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
+
+    @app.post("/api/admin/diagnostic-capture/reviews")
+    def review_diagnostic_capture(data: ReviewDiagnostic, request: Request):
+        actor = who(request, True)
+        if not hosted:
+            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+        from .hosted_auth import SESSION_COOKIE, sha
+        return diagnostic_operator(store, actor, data, session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
 
     @app.post("/api/internal/m0/foundation-approvals")
     def approve_foundation(data: ApproveFoundation, request: Request):

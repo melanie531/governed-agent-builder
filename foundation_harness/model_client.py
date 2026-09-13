@@ -11,8 +11,21 @@ class ModelClient:
     def generate(self, authority, binding, system, messages, tools, budget, telemetry):
         recheck(authority, binding, 'model', self.model.route)
         budget.require_reservation(self.transport)
-        body = {'model': self.model.route, 'system': system, 'messages': messages,
-                'max_tokens': budget.limits.maxOutputTokens - budget.output_tokens, 'stream': False}
+        if self.model.protocol == 'messages-passthrough':
+            from .opus_messages import build_request
+            if (tools or budget.limits.maxModelCalls != 1 or budget.limits.maxToolCalls != 0
+                    or len(messages) != 1 or messages[0].get('role') != 'user'):
+                raise GatewayError('OPUS_FIRST_SINGLE_CALL_NO_TOOLS_REQUIRED')
+            content = messages[0].get('content')
+            if (not isinstance(content, list) or len(content) != 1
+                    or not isinstance(content[0], dict) or set(content[0]) != {'type','text'}
+                    or content[0]['type'] != 'text'):
+                raise GatewayError('OPUS_SINGLE_TEXT_INPUT_REQUIRED')
+            body = build_request(self.model.requestModel, system, content[0]['text'],
+                                 budget.limits.maxOutputTokens - budget.output_tokens)
+        else:
+            body = {'model': self.model.requestModel if self.model.transport == 'runtime-passthrough' else self.model.route, 'system': system, 'messages': messages,
+                    'max_tokens': budget.limits.maxOutputTokens - budget.output_tokens, 'stream': False}
         if tools:
             body['tools'] = [{'name': t.name, 'description': t.description, 'input_schema': t.inputSchema} for t in tools]
         budget.model(body)
@@ -25,9 +38,16 @@ class ModelClient:
                 raise GatewayError('INVALID_MODEL_RESPONSE')
             budget.usage(value.get('usage'))
             provider_model = value.get('model')
-            approved_model = self.model.route.split('/', 1)[1]
-            if provider_model not in (approved_model, approved_model.removeprefix('anthropic.')):
-                raise GatewayError('PROVIDER_MODEL_MISMATCH')
+            if self.model.protocol == 'messages-passthrough':
+                from .opus_messages import read_response
+                read_response(value, self.model.responseModelAllowlist, body['max_tokens'])
+            elif self.model.transport == 'runtime-passthrough':
+                if provider_model not in self.model.responseModels:
+                    raise GatewayError('PROVIDER_MODEL_MISMATCH')
+            else:
+                approved_model = self.model.route.split('/', 1)[1]
+                if provider_model not in (approved_model, approved_model.removeprefix('anthropic.')):
+                    raise GatewayError('PROVIDER_MODEL_MISMATCH')
             telemetry.attributes(span, {**metadata, 'input_tokens': value['usage']['input_tokens'],
                                         'output_tokens': value['usage']['output_tokens'],
                                         'provider_model': provider_model})

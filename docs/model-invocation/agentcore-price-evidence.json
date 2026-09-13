@@ -1,0 +1,194 @@
+{
+  "source": "https://aws.amazon.com/bedrock/agentcore/pricing/",
+  "retrieved": "2026-09-13",
+  "currency": "USD",
+  "note": "Official product pricing page table, parsed verbatim. Region column not present on page (single commercial-region table); cross-checked against Price List API us-west-2 where SKUs exist.",
+  "rows": [
+    [
+      "Service/Capability",
+      "Type",
+      "Resource",
+      "Price"
+    ],
+    [
+      "Runtime microVMs",
+      "Active Consumption Based",
+      "CPU",
+      "$0.0895 per vCPU-hour"
+    ],
+    [
+      "Active Consumption Based",
+      "Memory",
+      "$0.00945 per GB-hour"
+    ],
+    [
+      "Runtime instances",
+      "Instance-based",
+      "Managed instance",
+      "See Runtime instances pricing below."
+    ],
+    [
+      "Browser Tool",
+      "Active Consumption Based",
+      "CPU",
+      "$0.0895 per vCPU-hour"
+    ],
+    [
+      "Active Consumption Based",
+      "Memory",
+      "$0.00945 per GB-hour"
+    ],
+    [
+      "Code Interpreter",
+      "Active Consumption Based",
+      "CPU",
+      "$0.0895 per vCPU-hour"
+    ],
+    [
+      "Active Consumption Based",
+      "Memory",
+      "$0.00945 per GB-hour"
+    ],
+    [
+      "Web Search on AgentCore",
+      "&nbsp; Consumption Based &nbsp;",
+      "&nbsp; Queries &nbsp;",
+      "&nbsp; $7.00 per 1,000 queries &nbsp;"
+    ],
+    [
+      "Bedrock Managed Knowledge Base",
+      "Consumption Based",
+      "Storage",
+      "Please see the Amazon Bedrock pricing page for details."
+    ],
+    [
+      "Consumption Based",
+      "Queries",
+      "Please see the Amazon Bedrock pricing page for details."
+    ],
+    [
+      "Gateway",
+      "Consumption Based",
+      "API Invocations (e.g. ListTools, InvokeTool, Ping)",
+      "$0.005 per 1,000 invocations"
+    ],
+    [
+      "Consumption Based",
+      "Search API",
+      "$0.025 per 1,000 invocations"
+    ],
+    [
+      "Consumption Based",
+      "Tool Indexing",
+      "$0.02 per 100 tools indexed per month"
+    ],
+    [
+      "Identity",
+      "Consumption Based",
+      "Token or API key requests for non-AWS resources",
+      "$0.010 per 1,000 token or API keys requested by the agent (Note: AgentCore Identity is available at no additional charge to customers when they use it through either AgentCore Runtime or AgentCore Gateway)"
+    ],
+    [
+      "Memory",
+      "Consumption Based",
+      "Short-Term Memory",
+      "$0.25 per 1,000 new events"
+    ],
+    [
+      "Consumption Based",
+      "Long-Term Memory Storage",
+      "Using built-in memory strategies: $0.75 per 1000 memory records stored per month Using built-in with override or self-managed memory strategies: $0.25 per 1000 memory records stored per month* Note: Billed hourly assuming a 31 day month"
+    ],
+    [
+      "Consumption Based",
+      "Long-Term Memory Retrieval",
+      "$0.50 per 1000 memory record retrievals"
+    ],
+    [
+      "Observability",
+      "Consumption Based",
+      "Spans, logs, and metrics",
+      "Charged as per Amazon CloudWatch pricing"
+    ],
+    [
+      "Evaluations",
+      "Consumption Based",
+      "Built-in evaluators - input tokens",
+      "$0.0024 per 1000 input tokens"
+    ],
+    [
+      "Consumption Based",
+      "Built-in evaluators - output tokens",
+      "$0.012 per 1,000 output tokens"
+    ],
+    [
+      "Consumption Based",
+      "Custom evaluators",
+      "$1.50 per 1,000 evaluations (model usage billed separately)"
+    ],
+    [
+      "Consumption Based",
+      "Batch evaluations",
+      "$0.0018 per 1,000 input token $0.009 per 1,000 output tokens"
+    ],
+    [
+      "Optimization",
+      "Consumption Based",
+      "Insights (Preview)",
+      "Free during public preview; pricing will be announced before general availability"
+    ],
+    [
+      "Consumption Based",
+      "Recommendations",
+      "Recommendation generation is free; pay for any new Evaluations consumed as part of workflow"
+    ],
+    [
+      "Consumption Based",
+      "A/B Tests",
+      "Pay for underlying AgentCore resources consumed"
+    ],
+    [
+      "Policy",
+      "Consumption Based",
+      "Authorization Request",
+      "$0.000025 per request&nbsp; Your first 100 temporal policies per policy engine incur no additional authorization charges&nbsp;&nbsp;"
+    ],
+    [
+      "Consumption Based",
+      "Input Tokens Processed",
+      "$0.13 per 1,000 tokens&nbsp;&nbsp;"
+    ],
+    [
+      "Consumption Based",
+      "Guardrail safeguard usage",
+      "Pricing for Amazon Bedrock Guardrails is based on the usage of each safeguard. Please see the Amazon Bedrock pricing page for details."
+    ],
+    [
+      "AWS Agent Registry **",
+      "Consumption Based",
+      "Registry Records",
+      "First 5,000 records free monthly, then $0.400 per 1,000 records"
+    ],
+    [
+      "Consumption Based",
+      "Search API Invocation",
+      "First 1,000,000 invocations free monthly, then $0.020 per 1,000 invocations"
+    ],
+    [
+      "Consumption Based",
+      "List and Get API Invocations",
+      "First 2,000,000 combined invocations free monthly, then $0.004 per 1,000 invocations"
+    ],
+    [
+      "Payments",
+      "Consumption Based",
+      "CreateInstrument and ProcessPayment API invocations",
+      "Coinbase CDP Wallet: Wallet operations performed through the AgentCore Payments API are charged per Coinbase's published pricing:&nbsp; 1 CreateInstrument API invocation = 1 wallet operation fee 1 ProcessPayment API invocation = 1 wallet operation fee Stripe Privy Wallet: Wallet operations performed through the AgentCore Payments API are charged per Privy's published pricing: 1 CreateInstrument API invocation = No charge 1 ProcessPayment API invocation = 1 wallet operation fee"
+    ],
+    [
+      "Consumption Based",
+      "Rest of the API invocations",
+      "No charge"
+    ]
+  ]
+}
