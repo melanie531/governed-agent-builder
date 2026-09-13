@@ -45,6 +45,9 @@ def register(db, actor, data, platform):
     from scripts.package_foundation import source_digest
     foundation = resource(db, 'foundations', data.foundation_id)
     cfg = load_config(data.config, digest(data.config))
+    if (getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough'
+            and platform.get('model') != cfg.model.model_dump(mode='json')):
+        raise HTTPException(409, 'REGISTERED_RUNTIME_MODEL_BINDING_REQUIRED')
     if (not foundation['approved'] or cfg.foundation.digest != source_digest()
             or len(data.tool_ids) != len(cfg.tools) or len(set(data.tool_ids)) != len(data.tool_ids)):
         raise HTTPException(409, 'REGISTERED_SOURCE_BINDING_REQUIRED')
@@ -92,6 +95,7 @@ def compile_approval(db, actor, data, owner, platform):
     from scripts.package_foundation import source_digest
     if source['config']['foundation']['digest'] != source_digest():
         raise HTTPException(409, 'CURRENT_EXECUTABLE_SOURCE_REQUIRED')
+    registered_model(source, definition['model_id'])
     raw = copy.deepcopy(source['config'])
     if raw['model']['id'] != definition['model_id']:
         raise HTTPException(409, 'REGISTERED_MODEL_REQUIRED')
@@ -139,8 +143,16 @@ def platform_metadata(raw=None):
     endpoint = app['ApiEndpoint'].rstrip('/')+'/internal/foundation/exchange'
     role = foundation['FoundationRole']
     if raw is not None:
+        cfg = load_config(raw, digest(raw))
         control = target.client('bedrock-agentcore-control')
-        for output, expected_endpoint in [('ModelGateway', raw['model']['endpoint']), ('ToolsGateway', raw['tools'][0]['endpoint'] if raw['tools'] else None)]:
+        runtime_model = None
+        gateways = [('ModelGateway', raw['model']['endpoint']),
+                    ('ToolsGateway', raw['tools'][0]['endpoint'] if raw['tools'] else None)]
+        if getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough':
+            runtime_model = runtime_platform_model(control, target.account, cfg.model)
+            # No tool gateway/list permission is required for a no-tools source.
+            gateways = [('ToolsGateway', raw['tools'][0]['endpoint'])] if raw['tools'] else []
+        for output, expected_endpoint in gateways:
             gateway = control.get_gateway(gatewayIdentifier=foundation[output])
             base = gateway['gatewayUrl'].removesuffix('/mcp')
             suffix = '/inference/v1/messages' if output == 'ModelGateway' else '/mcp'
@@ -161,7 +173,48 @@ def platform_metadata(raw=None):
                     match = next((t for t in inline if detail['name']+'___'+t['name'] == tool['name']), None)
                     if not match or match['inputSchema'] != tool['inputSchema'] or tool['endpoint'] != base+suffix:
                         raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
-    return {'endpoint': endpoint, 'role': role}
+    result = {'endpoint': endpoint, 'role': role}
+    if raw is not None and runtime_model is not None:
+        result['model'] = runtime_model
+    return result
+
+
+def runtime_platform_model(control, account, model):
+    from .live_catalog import catalog_config
+    from .runtime_model_catalog import validate_source, foundation_model
+    config = catalog_config() or {}
+    if not isinstance(config, dict) or not isinstance(config.get('binding'), dict):
+        raise HTTPException(409, 'APPROVED_RUNTIME_SOURCE_REQUIRED')
+    binding = config['binding']
+    if (config.get('approved') is not True or binding.get('expected_account') != account
+            or binding.get('region') != 'us-west-2'):
+        raise HTTPException(409, 'APPROVED_RUNTIME_SOURCE_REQUIRED')
+    sources = config.get('runtime_model_routes', [])
+    if not isinstance(sources, list):
+        raise HTTPException(409, 'APPROVED_RUNTIME_SOURCE_REQUIRED')
+    matches = []
+    try:
+        for source in sources:
+            validate_source(source, account, 'us-west-2')
+            if model.id in source['exposure']:
+                matches.append(source)
+        if len(matches) != 1:
+            raise ValueError('Ambiguous or absent Runtime source')
+        return foundation_model(control, matches[0], model)
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(409, 'CURRENT_APPROVED_RUNTIME_BINDING_REQUIRED') from None
+
+
+def registered_model(source, selected):
+    """One reviewed source per model in this slice. Never replace its model by a dropdown ID."""
+    cfg = load_config(source['config'], digest(source['config']))
+    if cfg.model.id != selected:
+        raise HTTPException(409, 'REGISTERED_MODEL_REQUIRED')
+    if getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough':
+        if source['platform'].get('model') != cfg.model.model_dump(mode='json'):
+            raise HTTPException(409, 'REGISTERED_RUNTIME_MODEL_BINDING_REQUIRED')
+        if cfg.model.requestContract == 'opus5-text-v1' and not cfg.model.responseIdentityEvidence:
+            raise HTTPException(409, 'UNVERIFIED_RESPONSE_IDENTITY')
 
 
 class FinalizeFoundation(Strict):

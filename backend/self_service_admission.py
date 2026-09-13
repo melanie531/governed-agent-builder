@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from pydantic import Field
 from .schemas import Strict
 from . import foundation_runs as runs
-from .foundation_approval import admin
+from .foundation_approval import admin, registered_model
 from foundation_harness.config import digest, load_config
 from foundation_harness.package_admission import admission_config
 
@@ -99,6 +99,7 @@ def evaluate_policy(db, actor, definition):
             or source.get('foundation_digest') != digest(foundation)
             or source.get('config', {}).get('foundation', {}).get('digest') != source_digest()):
         raise HTTPException(403, 'FOUNDATION_POLICY_APPROVAL_REQUIRED')
+    registered_model(source, definition['model_id'])
     selected = [definition['model_id'], *definition['tools'], *definition['skills']]
     if any(source['catalog'].get(i) != digest(resource(db, 'components', i)) for i in selected):
         raise HTTPException(409, 'CURRENT_CATALOG_BINDING_REQUIRED')

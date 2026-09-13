@@ -531,16 +531,21 @@ class Sources:
         return [item for provider in self.providers for item in provider.records()]
 
 
+def catalog_config():
+    """One server-owned configuration source for catalog and Foundation registration."""
+    raw = os.getenv('NATIVE_CATALOG_CONFIG')
+    if not raw and os.getenv('NATIVE_CATALOG_PACKAGED_CONFIG') == '1':
+        from pathlib import Path
+        raw = Path(__file__).with_name('native_catalog_source.json').read_text()
+    return json.loads(raw) if raw else None
+
+
 def configured_catalog(config=None, client_factory=None, model_reader_factory=None, session=None):
     """Validate ALL approval input before SDK construction; bind one session via STS."""
     if config is None:
-        raw = os.getenv('NATIVE_CATALOG_CONFIG')
-        if not raw and os.getenv('NATIVE_CATALOG_PACKAGED_CONFIG') == '1':
-            from pathlib import Path
-            raw = Path(__file__).with_name('native_catalog_source.json').read_text()
-        if not raw:
+        config = catalog_config()
+        if config is None:
             return None
-        config = json.loads(raw)
     if not isinstance(config, dict):
         raise ValueError('Invalid catalog configuration')
     if config.get('approved') is not True:

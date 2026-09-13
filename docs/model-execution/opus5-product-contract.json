@@ -1,0 +1,85 @@
+{
+  "contract_version": "opus5-text-v1",
+  "status": "CODE_ONLY_UNVERIFIED",
+  "deployable": false,
+  "configuration_authority": "NATIVE_CATALOG_CONFIG or explicitly enabled packaged native_catalog_source.json; never Business request fields",
+  "catalog_binding": {
+    "target_name": "bedrockrt",
+    "request_model": "us.anthropic.claude-opus-5",
+    "response_models": [],
+    "path": "/v1/messages",
+    "request_contract": "opus5-text-v1",
+    "response_identity_evidence": null
+  },
+  "harness_model_contract": {
+    "transport": "runtime-passthrough",
+    "provider": "bedrock",
+    "protocol": "messages",
+    "requestContract": "opus5-text-v1",
+    "route": "bedrockrt/us.anthropic.claude-opus-5",
+    "requestModel": "us.anthropic.claude-opus-5",
+    "responseModels": [],
+    "responseIdentityEvidence": null
+  },
+  "harness_serialization": {
+    "legacy": "Omit new fields when unset; preserve existing manifest digests byte-for-byte",
+    "unverified_opus": "Omit responseIdentityEvidence when null; retain requestContract and empty responseModels",
+    "verified_opus": "Exact responseModels array plus responseIdentityEvidence SHA256 of reviewed actual response evidence; no candidate native ID or profile alias substitution"
+  },
+  "derived_fields": {
+    "model.id": "model:<exact gateway_id>:<exact target_id>:us.anthropic.claude-opus-5",
+    "model.version": "backend.runtime_model_catalog.route_revision(gateway_readback, target_readback, catalog_binding)",
+    "model.targetDigest": "Same route_revision as model.version, NOT digest(targetConfiguration) alone",
+    "model.endpoint": "Exact get_gateway.gatewayUrl with terminal /mcp removed, then /bedrockrt/v1/messages",
+    "source.exposure[model.id].version": "Same route_revision",
+    "source.exposure[model.id].approval_sha256": "Same route_revision",
+    "source.exposure[model.id].digest_format": "native-catalog-v2",
+    "source.config.foundation.digest": "scripts.package_foundation.source_digest() AFTER peer harness integration"
+  },
+  "limits": {
+    "maxIterations": 1,
+    "maxModelCalls": 1,
+    "maxToolCalls": 0,
+    "maxInputTokens": 2000,
+    "maxOutputTokens": 256,
+    "timeoutSeconds": 60
+  },
+  "wire_request": {
+    "model": "us.anthropic.claude-opus-5",
+    "system": "Summarize only the supplied synthetic text.",
+    "messages": [{"role": "user", "content": "Synthetic input from the saved dataset."}],
+    "max_tokens": 256,
+    "stream": false,
+    "thinking": {"type": "disabled"}
+  },
+  "wire_forbidden_fields": ["tools", "tool_choice", "anthropic_version"],
+  "gateway": {
+    "region": "us-west-2",
+    "authorizerType": "AWS_IAM",
+    "policy_mode": "ENFORCE",
+    "target_name": "bedrockrt",
+    "target_endpoint": "https://bedrock-runtime.us-west-2.amazonaws.com/anthropic",
+    "target_protocolType": "INFERENCE",
+    "inbound_signing_service": "bedrock-agentcore",
+    "outbound_signing_service": "bedrock",
+    "action": "bedrockrt___POST:/v1/messages",
+    "required_forwarded_headers": ["anthropic-version", "content-type"],
+    "anthropic-version": "2023-06-01",
+    "lookup": "GetGateway + exact GetGatewayTarget, never ListGatewayTargets for this no-tools binding"
+  },
+  "operator_inputs_still_required": [
+    "Exact verified account, gateway ARN/id, target id and actual gatewayUrl in existing runtime_model_routes source",
+    "Exact response identity evidence; currently unobserved, keep response_models=[] and evidence=null",
+    "Recomputed protected exposure approval/version after schema, role, engine or binding changes",
+    "Opus-specific Foundation library entry/source with exact model component and native_bindings; preserve Haiku source/history",
+    "Reviewed Foundation policy and ordinary owner's exact component grant",
+    "Exact package role proven unbound to another immutable package",
+    "Updated Business and Worker harness/package bytes reconciled independently against actual deployment",
+    "Protected Foundation source, approved base bundle, actual Linux proof and finalized artifact",
+    "Reviewed deployment account/region/roles/bucket/VPC network/producer_role/evaluation_collector settings",
+    "Reviewed all-service cost envelope, rate_card_digest and persistent lifetime reservation",
+    "Exact role-specific IAM/Cedar permits with 256 output limit, no tools, stream=false and thinking disabled"
+  ],
+  "unchanged_flags": ["FOUNDATION_LIVE_ENABLED", "FOUNDATION_PRODUCER_ENABLED", "FOUNDATION_M0_PROBE_ENABLED"],
+  "not_proven": ["actual response identity", "owned Foundation invocation", "product deployment", "Linux execution", "release readiness"]
+}

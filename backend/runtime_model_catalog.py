@@ -30,16 +30,31 @@ def validate_source(source, account, region):
         raise ValueError('Explicit Runtime model bindings required')
     seen = set()
     for binding in bindings:
-        if not isinstance(binding, dict) or set(binding) != {'target_name', 'request_model', 'response_models', 'path'}:
+        fields = {'target_name', 'request_model', 'response_models', 'path'}
+        opus = isinstance(binding, dict) and binding.get('request_contract') == 'opus5-text-v1'
+        if opus:
+            fields |= {'request_contract', 'response_identity_evidence'}
+        if not isinstance(binding, dict) or set(binding) != fields:
             raise ValueError('Exact Runtime binding fields required')
         name, model = binding['target_name'], binding['request_model']
         if (not isinstance(name, str) or not re.fullmatch('[A-Za-z0-9-]+', name)
                 or not isinstance(model, str) or not re.fullmatch(r'(?:us|global)\.anthropic\.claude-[A-Za-z0-9._:-]+', model)
                 or binding['path'] != '/v1/messages'):
             raise ValueError('Unsupported Runtime Messages binding')
+        if opus:
+            evidence = binding['response_identity_evidence']
+            if (model != 'us.anthropic.claude-opus-5'
+                    or (evidence is not None and (not isinstance(evidence, str)
+                        or not re.fullmatch('[a-f0-9]{64}', evidence)))
+                    or bool(binding['response_models']) != bool(evidence)):
+                raise ValueError('Exact Opus request and response evidence required')
+        elif model.endswith('claude-opus-5'):
+            raise ValueError('Explicit Opus text contract required')
         responses = binding['response_models']
-        if (not isinstance(responses, list) or not responses or len(responses) != len(set(responses))
-                or any(not isinstance(v, str) or not re.fullmatch(r'anthropic\.claude-[A-Za-z0-9._:-]+', v) for v in responses)):
+        pattern = r'[a-zA-Z0-9][a-zA-Z0-9:._-]{0,199}' if opus else r'anthropic\.claude-[A-Za-z0-9._:-]+'
+        if (not isinstance(responses, list) or (not responses and not opus)
+                or any(not isinstance(v, str) for v in responses) or len(responses) != len(set(responses))
+                or any(not isinstance(v, str) or not re.fullmatch(pattern, v) for v in responses)):
             raise ValueError('Exact provider response identities required')
         rid = f'model:{gid}:{tid}:{model}'
         if rid in seen:
@@ -54,7 +69,7 @@ class RuntimeModelCatalog:
     def __init__(self, client, source):
         self.client, self.source = client, copy.deepcopy(source)
 
-    def records(self):
+    def verified_target(self):
         s = self.source
         gateway = self.client.get_gateway(gatewayIdentifier=s['gateway_id'])
         target = self.client.get_gateway_target(gatewayIdentifier=s['gateway_id'], targetId=s['target_id'])
@@ -73,6 +88,11 @@ class RuntimeModelCatalog:
                     'credentialProvider': {'iamCredentialProvider': {'service': 'bedrock', 'region': s['region']}}}]
                 or not {'anthropic-version', 'content-type'} <= set(target.get('metadataConfiguration', {}).get('allowedRequestHeaders', []))):
             raise ValueError('Runtime route/signing contract changed')
+        return gateway, target
+
+    def records(self):
+        s = self.source
+        gateway, target = self.verified_target()
         rows = []
         for binding in s['bindings']:
             if target.get('name') != binding['target_name']:
@@ -90,3 +110,40 @@ class RuntimeModelCatalog:
             # A test-role 200 cannot confer workload authorization or a project grant.
             rows.append(item)
         return rows
+
+
+def foundation_model(client, source, model):
+    """Resolve one protected source binding, not a request-selected endpoint.
+
+    targetDigest uses the existing route_revision contract, including credentials,
+    headers, schema, policy-engine configuration and exact response evidence pin.
+    """
+    from foundation_harness.config import Model
+    catalog = RuntimeModelCatalog(client, source)
+    gateway, target = catalog.verified_target()
+    matches = [b for b in source['bindings']
+               if f"model:{source['gateway_id']}:{source['target_id']}:{b['request_model']}" == model.id]
+    if len(matches) != 1:
+        raise ValueError('EXACT_REGISTERED_RUNTIME_MODEL_REQUIRED')
+    binding = matches[0]
+    version = route_revision(gateway, target, binding)
+    approved = source['exposure'].get(model.id, {})
+    if (target.get('name') != binding['target_name']
+            or not approved_metadata(model.id, version, 'model', 'AgentCore Model Gateway',
+                                     source['exposure'], 'Amazon Bedrock')
+            or approved.get('approval_sha256') != version):
+        raise ValueError('Runtime route approval stale')
+    base = gateway.get('gatewayUrl', '').removesuffix('/mcp').rstrip('/')
+    raw = {'id': model.id, 'version': version, 'endpoint': base + '/' + binding['target_name'] + binding['path'],
+           'route': binding['target_name'] + '/' + binding['request_model'],
+           'provider': 'bedrock', 'protocol': 'messages', 'targetDigest': version,
+           'transport': 'runtime-passthrough', 'requestModel': binding['request_model'],
+           'responseModels': binding['response_models']}
+    if binding.get('request_contract'):
+        raw['requestContract'] = binding['request_contract']
+        if binding['response_identity_evidence'] is not None:
+            raw['responseIdentityEvidence'] = binding['response_identity_evidence']
+    expected = Model.model_validate(raw).model_dump(mode='json')
+    if model.model_dump(mode='json') != expected:
+        raise ValueError('REGISTERED_RUNTIME_MODEL_BINDING_MISMATCH')
+    return expected
