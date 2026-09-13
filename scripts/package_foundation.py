@@ -13,7 +13,7 @@ from foundation_harness.config import canonical, digest, load_config
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = tuple('foundation_harness/' + name + '.py' for name in (
     '__init__', 'config', 'context', 'admission', 'skills', 'budget', 'transport',
-    'model_client', 'opus_messages', 'opus_forensics', 'tool_client', 'telemetry', 'engine', 'backend_exchange', 'package_admission')) + (
+    'model_client', 'opus_messages', 'tool_client', 'telemetry', 'engine', 'backend_exchange', 'package_admission')) + (
     'runtime/__init__.py', 'runtime/custom_foundation/__init__.py',
     'runtime/custom_foundation/main.py', 'runtime/custom_foundation/requirements.lock')
 
