@@ -5,7 +5,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from .catalog import COMPONENTS, FOUNDATIONS, INITIAL_GRANTS
+from .catalog import COMPONENTS, FOUNDATIONS, INITIAL_GRANTS, discovery_components
 from .repository import SQLiteRepository
 
 class Store:
@@ -29,6 +29,11 @@ class Store:
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, body TEXT);
             ''')
             for component in COMPONENTS:
+                db.execute("INSERT OR IGNORE INTO components VALUES (?,?)", (component["id"], json.dumps(component)))
+            # Real Bedrock discovery rows (from cached ListFoundationModels). These
+            # drive the Models tab from real fields; they are discoverable-only and
+            # carry no grant/execution state.
+            for component in discovery_components():
                 db.execute("INSERT OR IGNORE INTO components VALUES (?,?)", (component["id"], json.dumps(component)))
             for foundation in FOUNDATIONS:
                 db.execute("INSERT OR IGNORE INTO foundations VALUES (?,?)", (foundation["id"], json.dumps({**foundation, "approved": True})))

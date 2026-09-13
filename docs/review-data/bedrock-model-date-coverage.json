@@ -1,0 +1,23 @@
+{
+  "index_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html",
+  "index_retrieved_at": "2026-09-13T09:13:46Z",
+  "index_content_sha256": "ed1bbe8bb163ac0c13f6c363b2af5e0f010f2cbdaafb7ed6c88b1c82a9dda30b",
+  "index_count": 127,
+  "fetched": 127,
+  "failed": 0,
+  "dated": 126,
+  "inwindow": 23,
+  "excluded_out_of_window": 103,
+  "excluded_unverified": 1,
+  "pending": 0,
+  "complete": true,
+  "notes": [
+    "index_count = unique model-card-*.html links on the official 'Models at a glance' index (model-cards.html). Provider hub pages (model-cards-<provider>.html) are navigation, not model cards, and are excluded from the denominator.",
+    "fetched + failed = 127 = index_count, so complete=true: every indexed card was fetched (HTTP 200) and parsed.",
+    "dated = cards whose page carries a parseable 'Model launch date:' field. The single undated card is model-card-amazon-titan-text-embeddings-v2-2.html (Titan Embeddings G1 - Text v2), which has NO 'Model launch date' field at all; it is marked excluded_unverified, not guessed.",
+    "inwindow = launch_date >= 2026-03-13 AND <= 2026-09-13 (inclusive both ends), applied to the card's own 'Model launch date' field only.",
+    "All launch dates on these cards resolved at day precision except several out-of-window legacy cards with month-only dates (e.g. 'Aug 2024'); month-only dates are clamped to day 1 of that month for window comparison and flagged launch_date_precision=month_only in inventory.json. No month-only date fell inside the window, so this clamping affected zero inclusion decisions.",
+    "Fetch etiquette: max 3 concurrent workers, 0.5s delay per request, exponential backoff honoring Retry-After on 429/503. No throttling was encountered.",
+    "Docs-only evidence: nothing here reflects any account's configured runtime state, entitlements, or regional enablement. No AWS API calls were made."
+  ]
+}

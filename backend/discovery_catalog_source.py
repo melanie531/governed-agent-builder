@@ -27,7 +27,9 @@ from pathlib import Path
 
 from .aws_adapter import IntegrationNotConfigured
 from . import model_discovery
+from . import model_recency
 from .live_catalog import revision
+from .model_recency import classify, load_launch_date_map
 
 CACHE_SCHEMA_VERSION = 1
 REVIEW_STATUSES = {'pending', 'complete'}
@@ -177,4 +179,30 @@ class DiscoveryCatalogSource:
         row.update(requestable=False, integration_ready=False, execution_ready=False,
                    execution_binding={'status': 'unverified', 'last_checked': None},
                    entitlement='unverified', gateway_enumeration='NotConnected')
+        # ADDITIVE recency layer: if the cache record carries an exact Bedrock
+        # modelId that matches the reviewer-verified launch-date evidence map
+        # (backend/model_launch_dates.json), attach the three-state recency
+        # classification (recent | out_of_window | pending_verification) plus
+        # the verified launch_date + source. This is a SEPARATE, exact-id join
+        # recomputed at call time; it never overrides the feed's own
+        # release_date/source_url or any readiness/access pin above. Rows with
+        # no matching verified evidence are left exactly as the feed built them.
+        model_id = item.get('model_id') or record_id
+        if model_id:
+            result = classify(model_id, self._launch_map())
+            if result.launch_date is not None or result.recency != model_recency.PENDING:
+                # Only attach when there is real verified evidence to add; keep
+                # existing keys (model_id passthrough for the exact-id join).
+                row.setdefault('model_id', model_id)
+                for key, value in result.as_row_fields().items():
+                    row.setdefault(key, value)
         return row
+
+    def _launch_map(self):
+        # Loaded once per source instance; the exact-id join is recomputed per
+        # classify() call against the current date.
+        cached = getattr(self, '_launch_map_cache', None)
+        if cached is None:
+            cached = load_launch_date_map()
+            self._launch_map_cache = cached
+        return cached

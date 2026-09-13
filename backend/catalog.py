@@ -1,4 +1,33 @@
 """Three separate catalog authorities, seeded only with synthetic local aliases."""
+import json
+from pathlib import Path
+
+
+def discovery_components():
+    """Real Bedrock discovery rows for the Models tab, built from a cached
+    bedrock:ListFoundationModels snapshot (real data, NOT a guessed list).
+
+    Used to seed the fixture/demo catalog so the Models tab is driven by real
+    ListFoundationModels fields (provider, modalities->category, lifecycle,
+    streaming, inference types) exactly like the live discovery source. Returns
+    [] if the snapshot is absent so seeding never fails closed.
+    """
+    snapshot = Path(__file__).with_name('foundation_models_snapshot.json')
+    if not snapshot.exists():
+        return []
+    from .discovery_catalog import normalize_model
+    from .model_recency import apply_recency, load_launch_date_map
+    data = json.loads(snapshot.read_text())
+    rows = []
+    for summary in data.get('modelSummaries', []):
+        if isinstance(summary, dict):
+            rows.append(normalize_model(summary))
+    # Enrich with VERIFIED launch-date recency (real rolling window). Lifecycle
+    # is NOT used for recency; it stays only as lifecycle-info display.
+    apply_recency(rows, load_launch_date_map())
+    return rows
+
+
 FOUNDATIONS = [
     {"id": "research", "name": "Research brief", "version": "1.0.0", "description": "Turn synthetic source material into a concise, cited research brief.", "icon": "↗", "capabilities": ["text", "citations"], "models": ["bedrock-claude", "bedrock-openai", "external-gemini"], "tools": ["synthetic-search", "restricted-insights"], "skills": ["concise", "citations"], "config_schema": {"format": ["text", "json"], "source": ["synthetic-local-only"]}, "mandatory_defaults": ["record execution events", "current-policy authorization", "deterministic evaluation", "no network or code execution"], "builder": "backend.harness:run_case"},
     {"id": "knowledge", "name": "Knowledge Q&A", "version": "1.0.0", "description": "Answer questions from a bounded synthetic knowledge collection, or refuse when evidence is missing.", "icon": "◈", "capabilities": ["text", "refusal"], "models": ["bedrock-claude", "bedrock-openai"], "tools": ["synthetic-search"], "skills": ["concise", "citations"], "config_schema": {"format": ["text", "json"], "source": ["synthetic-local-only"]}, "mandatory_defaults": ["record execution events", "current-policy authorization", "deterministic evaluation", "no network or code execution"], "builder": "backend.harness:run_case"},

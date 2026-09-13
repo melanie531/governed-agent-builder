@@ -32,7 +32,7 @@ def test_hidden_search_count_detail_versions_and_request(client,app):
         c=record();c.update(id='hidden',discoverable_workspaces=['operations'])
         db.insert('components',{'id':'hidden','body':json.dumps(c)})
     for path in ['/api/catalog?q=Safe','/api/catalog?kind=agent']:
-        assert client.get(path).json()['count']==0
+        assert not any(i['id']=='hidden' for i in client.get(path).json()['items'])
     for path in ['/api/catalog/hidden','/api/catalog/hidden/versions/7']:
         assert client.get(path).status_code==404
     assert client.post('/api/requests',json={'component_id':'hidden','reason':'Please grant access'}).status_code==404
@@ -44,7 +44,18 @@ def test_fixture_catalog_reports_native_not_connected_preserving_builder(client)
     catalog = client.get('/api/catalog').json()
     assert catalog['mode'] == 'fixture'
     assert catalog['native_connection_state'] == 'NotConnected'
-    assert catalog['items'] and all(item['fixture'] for item in catalog['items'])
+    # Synthetic aliases are fixtures; seeded Bedrock discovery rows carry real
+    # ListFoundationModels data (fixture=False) but must be discovery-only
+    # (never callable) in this mode.
+    assert catalog['items']
+    for item in catalog['items']:
+        if item.get('source_type') == 'discovery_catalog':
+            assert item['fixture'] is False
+            assert item['execution_ready'] is False and not item['usable']
+            assert item['provider'] and item.get('model_id')
+        else:
+            assert item['fixture']
+    assert any(item.get('source_type') == 'discovery_catalog' for item in catalog['items'])
     assert client.get('/api/build-options').json()['foundations']
 
 
