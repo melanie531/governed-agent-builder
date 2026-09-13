@@ -4,7 +4,7 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 from jsonschema import Draft202012Validator
 
 
@@ -39,14 +39,36 @@ class Model(Frozen):
     id: str
     version: str
     endpoint: str
-    route: str = Field(pattern=r'^claude/anthropic\.claude-[a-zA-Z0-9:._-]+$')
+    route: str
     provider: Literal['bedrock']
-    protocol: Literal['messages']
+    protocol: Literal['messages', 'messages-passthrough']
     targetDigest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    requestModel: str | None = Field(default=None, exclude=True)
+    responseModelAllowlist: tuple[str, ...] = Field(default=(), exclude=True)
+
+    @model_serializer(mode='wrap')
+    def serialized_binding(self, handler, info):
+        data = handler(self)
+        if self.protocol == 'messages-passthrough':
+            data['requestModel'] = self.requestModel
+            data['responseModelAllowlist'] = list(self.responseModelAllowlist) if info.mode == 'json' else self.responseModelAllowlist
+        return data
 
     @model_validator(mode='after')
     def check(self):
-        endpoint(self.endpoint, '/inference/v1/messages')
+        if self.protocol == 'messages-passthrough':
+            endpoint(self.endpoint, '/bedrockrt/v1/messages')
+            if self.requestModel != 'us.anthropic.claude-opus-5' or self.route != self.requestModel:
+                raise ValueError('EXACT_OPUS_PASSTHROUGH_BINDING_REQUIRED')
+            if (not self.responseModelAllowlist or len(self.responseModelAllowlist) > 4
+                    or len(set(self.responseModelAllowlist)) != len(self.responseModelAllowlist)
+                    or any(not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', x) for x in self.responseModelAllowlist)):
+                raise ValueError('EXPLICIT_RESPONSE_ID_ALLOWLIST_REQUIRED')
+        else:
+            endpoint(self.endpoint, '/inference/v1/messages')
+            if (not re.fullmatch(r'claude/anthropic\.claude-[a-zA-Z0-9:._-]+', self.route)
+                    or self.requestModel is not None or self.responseModelAllowlist):
+                raise ValueError('LEGACY_MESSAGES_BINDING_INVALID')
         return self
 
 
@@ -122,6 +144,11 @@ class HarnessConfig(Frozen):
 
     @model_validator(mode='after')
     def check(self):
+        if self.model.protocol == 'messages-passthrough':
+            if (self.tools or self.allowedTools or self.skills
+                    or self.limits.maxIterations != 1 or self.limits.maxModelCalls != 1
+                    or self.limits.maxToolCalls != 0):
+                raise ValueError('OPUS_FIRST_SINGLE_CALL_NO_TOOLS_REQUIRED')
         names = [t.name for t in self.tools]
         if (len(set(names)) != len(names) or sorted(names) != sorted(self.allowedTools)
                 or len({(s.id, s.version) for s in self.skills}) != len(self.skills)):
