@@ -40,6 +40,41 @@ class GatewayError(RuntimeError):
     pass
 
 
+class _FinalDeadlineTransport(httpx.AsyncBaseTransport):
+    """Enforce the capture deadline at the ABSOLUTE final send boundary.
+
+    The before_send event hook runs during request preparation; a deadline can
+    still be crossed AFTER that hook but BEFORE the actual dispatch (pool acquire,
+    DNS/TLS, etc.). This transport wraps the real one and re-checks the deadline as
+    the very first action of handle_async_request -- the last gate before bytes go
+    out -- so a deadline crossed during construction yields ZERO sends. No retry;
+    it only reads the ContextVar deadline and never mutates other state.
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    async def handle_async_request(self, request):
+        # Final gate: if the deadline has passed by now, do NOT dispatch.
+        remaining_timeout(_finite_positive_from(request))
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self):
+        await self._inner.aclose()
+
+
+def _finite_positive_from(request):
+    # Use the request's already-bounded timeout as the input ceiling; the deadline
+    # in the ContextVar is what actually gates. Fallback to a large finite ceiling.
+    extensions = getattr(request, 'extensions', {}) or {}
+    timeout = extensions.get('timeout')
+    if isinstance(timeout, dict):
+        values = [v for v in timeout.values() if isinstance(v, (int, float))]
+        if values:
+            return max(values)
+    return 60
+
+
 class IAMTransport:
     requires_reservation = True
 
@@ -81,6 +116,11 @@ class IAMTransport:
             async with httpx.AsyncClient(follow_redirects=False, trust_env=False,
                                          event_hooks={'request': [before_send]},
                                          timeout=httpx.Timeout(min(timeout, 10))) as client:
+                # Wrap whatever transport is in effect (real or injected) so the
+                # capture deadline is re-checked at the ABSOLUTE final gate --
+                # inside handle_async_request, after all request construction and
+                # event hooks, immediately before bytes are dispatched.
+                client._transport = _FinalDeadlineTransport(client._transport)
                 remaining = remaining_timeout(timeout)
                 async with client.stream('POST', url, content=data, headers=headers,
                                          timeout=httpx.Timeout(min(remaining, 10))) as response:
