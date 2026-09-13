@@ -1,0 +1,15 @@
+# Classified cost/configuration gaps; no activation
+
+## A. Existing values resolved (not missing resources)
+Fresh IAM GetRole plus S3 HeadBucket/GetBucketVersioning/GetBucketLocation/GetBucketLifecycleConfiguration completed with matching target STS. Foundation execution role matches prior snapshot; two existing buckets checked; exact versioned artifact bucket resolved. Private resolved-config.json is mode600 under mode700 agent-studio-cost-private. It contains exact runtime_role/artifact_bucket/existing lifecycle rules. No new role or bucket needed. Public candidate null identifiers are redactions,not lack of resource discovery. Proposed evidence prefix is NEW and not approved. Existing role/storage values do not imply deployment/network authorization.
+
+## B. Implementation gaps (must test, not fill verified=true)
+Input serialized UTF8-byte measurement/rejection must be wired before send,not misrepresented as provider token counting. Persistent server-owned session consumption and bounded application log writer are code-work items; no completion claimed in this commit. They must not modify peer-owned identity/admission or assert total platform telemetry bounded. Work on isolated code branch does not alter frozen transport/codec. Provider input token proof,platform/system logging overhead and native lifecycle configuration still need their own mechanisms/evidence.
+
+## C. Costs continue calculating before approval
+estimate_opus_review_scenario.py produces cost-scenario-estimate.json using Decimal and source-extracted unit prices,explicit quantities. Conditional PARTIAL scenario subtotal USD0.02122333333333333333333333333333333333333. Example assumptions:2000input/256output tokens,1vCPU and2GB for75s,10Gateway+Policy requests,1MB logs ingested and priced for1month,100RRU+100WRU and20HTTP API requests. These are NOT measured or enforced,NOT full cost,NOT approved budget. Runtime CPU/memory assumptions are not a service allocation guarantee. Unknown network,Lambda,S3,KMS,traces/system overhead remain listed and unpriced,never0. This demonstrates pricing computation is not blocked by absent budget approval; total_upper_bound remains unknown because technical quantity limits and service dimensions remain unresolved.
+
+## D. Requires consolidated approval after technical completion
+ONE new dedicated Runtime,exact VPC/SG/egress selection,admitted immutable artifact and upload/version,reviewed Opus permission delta and all-service budget. No implicit new VPC/NAT/endpoints/role/bucket. Lifecycle/readback and prefix-scoped storage policies remain candidates until applied under authorization. Price scenario cannot activate the ticket or produce Ready.
+
+This commit is configuration readback+calculation evidence only:zero cloud writes,zero inference,no transport tests rerun. Production identity/admission is peer-owned. A complete activation proposal must replace scenario quantities with verified bounded quantities or explicitly approved risk allowances,then rerun the calculation.
