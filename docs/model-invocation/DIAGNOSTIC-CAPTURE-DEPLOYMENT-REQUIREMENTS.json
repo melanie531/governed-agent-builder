@@ -1,0 +1,81 @@
+{
+  "schema": "diagnostic-capture-deployment-requirements-v1",
+  "activation_authorized": false,
+  "default_enabled": false,
+  "base_revision": "c2d377d",
+  "frozen_transport_revision": "154a811827a0c9d588e22fdbbadd8560aefd2ae9",
+  "arm_receipt_revision": "37e155985d1527e0bfffb6b375a4a3a658b58041",
+  "entry": {
+    "module": "runtime.diagnostic_capture",
+    "callable": "invoke",
+    "app_factory": "create_app",
+    "payload_keys": ["capture_ref"],
+    "product_run_ref_supported": false,
+    "authentication": "STS GetCallerIdentity from same boto3 workload session used by IAMTransport; never HTTP headers or payload identity",
+    "new_http_api_route": null,
+    "reason": "Standalone diagnostic AgentCore Runtime entry keeps existing transactional ticket sender and SigV4 Model send together under the dedicated Foundation workload role. No exchange Lambda may impersonate that role."
+  },
+  "immutable_settings": {
+    "path": "runtime/capture-settings.json",
+    "shipped": false,
+    "required_keys": ["region", "state_table"],
+    "region": "us-west-2",
+    "state_table": null,
+    "operator_must_bind_table_and_final_package": true
+  },
+  "cloud_requirements_not_applied": {
+    "dedicated_runtime_arn": null,
+    "numeric_runtime_version": null,
+    "endpoint_name": null,
+    "dedicated_workload_role": null,
+    "immutable_artifact_version": null,
+    "private_network": null,
+    "role_isolation": "Fresh reviewed actual trust/invoke policy content, complete attached Runtime-version inventory, exact only-one Runtime/version binding. STS role identity is NOT a Runtime-version attestation. If another workload/version can use this role, STOP; do not weaken this prerequisite.",
+    "invoke_boundary": "Backend/operator-only exact Runtime endpoint/version invoke permission; never general Studio/browser invoke. Endpoint liveVersion and targetVersion are re-read before reserve. Freeze role/network/artifact/endpoint policy through capture window.",
+    "read_actions": ["sts:GetCallerIdentity", "bedrock-agentcore:GetAgentRuntime", "bedrock-agentcore:GetAgentRuntimeEndpoint", "dynamodb:GetItem", "dynamodb:Query"],
+    "repository_read_partitions": ["settings", "agents", "versions", "principals", "audit", "_revision"],
+    "repository_write_action": "dynamodb:TransactWriteItems",
+    "repository_write_records_only": ["_revision/_revision", "settings/opus-capture:<capture_ref>", "settings/foundation-budget:account", "settings/foundation-budget:workspace:<derived>", "settings/foundation-budget:user:<derived>", "settings/foundation-budget:agent:<derived>", "settings/diagnostic-capture:evidence:<capture_ref>"],
+    "repository_iam_seam_blocker": "Existing DynamoStore queries entire logical partitions and uses settings for both authority and ledger. IAM LeadingKeys is partition-key-only: a grant to write settings cannot isolate authority vs ledger sort keys. Do NOT grant this Runtime unconstrained settings writes. Before deployment, separately reviewed server enforcement or isolated authority store is required. No IAM/config/route change is made here.",
+    "model_transport": "Existing IAMTransport and frozen /bedrockrt/v1/messages capture dispatch, same workload session, max_tokens <=256, thinking disabled, no retry/fallback/redirect",
+    "provider_iam": "Existing direct-provider Deny and production Model allowlists preserved. No permission is added by this code.",
+    "package": "Include new backend/diagnostic_capture.py and runtime/diagnostic_capture.py plus existing backend repository/DynamoStore/foundation_runs, scripts/opus_capture_ticket.py, foundation_harness modules and locked dependencies; final separate ARM artifact must be built and reviewed. Existing packager/source list is unchanged."
+  },
+  "protected_records": {
+    "root": "settings diagnostic-capture:*; only separately authenticated operator review workflow may write authority/review/pricing/runtime/source/revocation records",
+    "authority": "diagnostic-capture:authority:<canonical_sha256>",
+    "runtime": "diagnostic-capture:runtime:<canonical_sha256>",
+    "pricing": "diagnostic-capture:pricing:<canonical_sha256>",
+    "price_source": "diagnostic-capture:price-source:<canonical_sha256>; actual stored source excerpt and exact rate times quantity bound checked",
+    "isolation_source": "diagnostic-capture:isolation-source:<canonical_sha256>; stored trust policy, invoke policy and reviewed role attachment inventory",
+    "review": "diagnostic-capture:review:<subject_sha256>; purpose, reviewer, reviewed_at, expires_at, subject_digest; matching diagnostic_capture_reviewed audit entry required; current hosted platform admin required",
+    "revocation": "diagnostic-capture:revoked:<subject_sha256>; any present value denies",
+    "producers_shipped": false,
+    "hashes_are_approval_signatures": false,
+    "approval_requirement": "Actual authenticated operator approval with independent reviewer and immutable audited source records. Synthetic fixtures are NEVER loadable approval data. No auto trusted approved/ready booleans."
+  },
+  "budget": {
+    "approved_reservation_usd": null,
+    "existing_5usd_cap_is_authorization": false,
+    "required_categories": ["model_input", "model_output", "gateway_policy", "runtime_lifetime", "storage", "telemetry", "network", "state_store", "artifact", "authentication"],
+    "pricing_requirement": "Operator-approved all-service ceiling; actual bounded usage and retention evidence per selected service. Stored rate*quantity must equal category amount. Reviewer verifies source authenticity, units, completeness, token counts, overhead and applicable tariffs. No live price fetch by the adapter.",
+    "fanout_to_price": "One STS read, two Runtime control reads, serializable repository transactions including full-partition Query pagination and CAS amplification, one signed Model send, one evidence write. Metadata and final evidence failure have no retries. Repeated failed invocation attempts and Runtime idle/lifecycle costs need separate externally enforced invocation/lifetime bounds.",
+    "aggregate_scopes": ["account", "workspace", "user", "agent"],
+    "refund": "Never automatic; success and unknown retain full held reserve"
+  },
+  "evidence": {
+    "namespace": "diagnostic-capture:evidence:<capture_ref>",
+    "response": "Capture-only receipt, bounded unverified observed_model and response digest; no model content/raw headers/product approvals/Ready",
+    "raw_response_persisted": false,
+    "failure_after_send": "Ticket remains CAPTURED/UNKNOWN/CLAIMED and replay denied even if evidence persistence fails",
+    "retention_seconds": null
+  },
+  "review_status": {
+    "security": "Code gates implemented; settings writer isolation and unique Runtime-role/version invocation proof block deployment",
+    "reliability": "Atomic reserve and claim, persistent no-replay, no automatic retry; missing evidence after successful send remains possible and cannot authorize resend",
+    "performance": "Bounded model response; existing full-partition repository queries require externally bounded table scale",
+    "cost": "No approved dollars or finite deployment/lifecycle envelope supplied",
+    "operational_excellence": "Separate entry and restricted receipts; no deployment writer or auto-enabling",
+    "sustainability": "Single bounded capture; no compute created"
+  }
+}
