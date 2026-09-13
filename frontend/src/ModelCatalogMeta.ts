@@ -7,10 +7,13 @@
 // (invented model IDs + invented "official launch dates") was rejected because
 // the product must show the account's actual Bedrock catalog, not a guess.
 //
-// RECENCY / DATES: ListFoundationModels exposes NO launch or creation date, so
-// true "launched in last 6 months" filtering is not possible from the API. We do
-// NOT fabricate dates. The honest available signal is modelLifecycle.status
-// (ACTIVE | LEGACY), which is surfaced as the recency-adjacent badge/filter.
+// RECENCY / DATES: recency is a REAL rolling-window filter over VERIFIED launch
+// dates. ListFoundationModels itself exposes no date, so the backend joins each
+// modelId (exact match) against a reviewer-verified launch-date map sourced from
+// official AWS model cards (see backend/model_launch_dates.json + model_recency.py)
+// and emits recency ('recent' | 'pending_verification') + launch_date +
+// launch_date_source per row. Lifecycle (ACTIVE|LEGACY) is shown as separate
+// lifecycle-info ONLY and is NOT used for recency.
 
 export type ModelCategory = 'text' | 'multimodal' | 'image' | 'embeddings' | 'speech';
 
@@ -25,7 +28,7 @@ export function categoryLabel(category?: string): string {
   return (category && CATEGORY_LABELS[category as ModelCategory]) || 'Other';
 }
 
-// Lifecycle is the honest recency-adjacent signal (no launch date exists).
+// Lifecycle is lifecycle-info only (NOT a recency signal).
 export type Lifecycle = 'ACTIVE' | 'LEGACY';
 
 export function lifecycleLabel(lifecycle?: string | null): string {

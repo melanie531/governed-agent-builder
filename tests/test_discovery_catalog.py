@@ -1,4 +1,4 @@
-"""Governed Bedrock discovery-catalog data source: real fields only, no dates."""
+"""Governed Bedrock discovery-catalog data source: real fields + verified dates."""
 import json
 from pathlib import Path
 
@@ -37,11 +37,9 @@ def test_normalize_model_passes_through_real_fields_only():
     assert row['streaming'] is True
     assert row['inference_types'] == ['INFERENCE_PROFILE']
     assert row['provenance'] == 'bedrock:ListFoundationModels'
-    # Discovery is never presented as callable, and NO launch date is invented.
+    # Discovery is never presented as callable.
     assert row['execution_ready'] is False
     assert row['requestable'] is False
-    assert 'launch' not in json.dumps(row).lower() or 'launchDate' not in row
-    assert 'launchDate' not in row and 'launch_date' not in row
 
 
 def test_normalize_rejects_missing_provider():
@@ -60,8 +58,10 @@ def test_snapshot_source_is_real_and_datefree():
     assert 'Anthropic' in providers
     lifecycles = {r['lifecycle'] for r in rows}
     assert 'ACTIVE' in lifecycles and 'LEGACY' in lifecycles
-    # No date field anywhere: the API has none, so we never emit one.
-    assert all('date' not in k.lower() for r in rows for k in r)
+    # Recency now comes from a VERIFIED launch-date join (not lifecycle). Every
+    # emitted launch_date must trace to the verified map; rows without a verified
+    # match are pending, never fabricated.
+    assert all(r.get('recency') in ('recent', 'pending_verification') for r in rows)
 
 
 def test_client_backed_source():

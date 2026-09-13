@@ -10,10 +10,17 @@ What is real and passed through unchanged from ListFoundationModels:
 \nWhat is DERIVED (deterministically, from the real modality fields, not guessed):
   category  <- input/output modalities (see derive_category)
 
-What is NOT available from this API and is therefore NOT invented here:
-  launch / creation date. ListFoundationModels exposes no date field, so no
-  recency-by-date filtering is possible. modelLifecycle.status (ACTIVE|LEGACY)
-  is the honest recency-adjacent signal and is passed through as `lifecycle`.
+Recency (last-6-months) is a REAL rolling-window filter over VERIFIED launch
+dates, not a lifecycle proxy. ListFoundationModels itself carries no launch
+date, so each row is joined by EXACT modelId against a reviewer-verified
+launch-date map (backend/model_launch_dates.json, each entry sourced from an
+official AWS model card with source_url + content hash). See backend.model_recency.
+A model is `recency == 'recent'` ONLY IF its verified launch_date is within
+[today - 6 months, today] (window computed server-side). Missing date, future
+date, unmatched id, or a conflict -> `recency == 'pending_verification'`.
+
+modelLifecycle.status (ACTIVE|LEGACY) is passed through as `lifecycle` for
+lifecycle-info display ONLY. It is NOT used for recency.
 
 Discovery != callable. Every discovered row is `discoverable: True` but
 `execution_ready: False` with an unverified execution binding: a model appearing
@@ -27,6 +34,8 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from .model_recency import apply_recency, load_launch_date_map
 
 VALID_CATEGORIES = ('text', 'multimodal', 'image', 'embeddings', 'speech')
 
@@ -129,6 +138,7 @@ class DiscoveryFoundationCatalog:
     client: object = None
     snapshot_path: str | None = None
     region: str = 'us-west-2'
+    launch_date_map_path: str | None = None
     _cache: list = None
     _expires: float = 0
     ttl: float = 60
@@ -164,6 +174,10 @@ class DiscoveryFoundationCatalog:
             rows.append(row)
         if len(rows) > 500:
             raise ValueError('Discovery catalog too large')
+        # Enrich with VERIFIED launch-date recency (real rolling window), NOT
+        # a lifecycle proxy. Missing/future/out-of-window/unmatched -> pending.
+        launch_map = load_launch_date_map(self.launch_date_map_path)
+        apply_recency(rows, launch_map)
         self._cache = list(rows)
         self._expires = now + max(0, min(300, self.ttl))
         return rows
