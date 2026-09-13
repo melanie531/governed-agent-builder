@@ -50,6 +50,10 @@ submitted to AgentCore `Builtin.Correctness`. Native evaluation results are stor
 separately from deployment status. An uncertain paid request is not automatically
 replayed.
 
+Models that return opaque reasoning blocks retain those blocks unchanged for the
+next Converse request. Traces contain only visible text and tool input/output, so
+binary continuation data and private reasoning never enter evaluation evidence.
+
 The Knowledge MCP target intentionally serves synthetic Aurora documents. Replace
 it through platform publication when connecting a real business knowledge source.
 The current Runtime network mode is managed `PUBLIC`; inbound access remains IAM

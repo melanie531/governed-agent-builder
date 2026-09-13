@@ -91,7 +91,11 @@ def configure_app(resources, settings):
                    "bedrock-agentcore:InvokeAgentRuntime"], [runtime, runtime + "/runtime-endpoint/*"]),
         statement(["iam:PassRole"], settings["runtime_role"]),
         statement(["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"], bucket_arn + "/journey/*"),
-        statement(["bedrock-agentcore:Evaluate", "bedrock-agentcore:GetEvaluator"], settings["evaluator_arn"]),
+        # Built-in metadata uses a global ARN, while IAM also checks the
+        # region/account-scoped evaluator ARN for GetEvaluator/Evaluate.
+        statement(["bedrock-agentcore:Evaluate", "bedrock-agentcore:GetEvaluator"], [
+            settings["evaluator_arn"],
+            f"arn:aws:bedrock-agentcore:{region}:{account}:evaluator/{settings['evaluator_id']}"]),
         statement(["s3:GetObject", "s3:GetObjectVersion"],
                   "arn:aws:s3:::" + settings["artifact"]["bucket"] + "/journey/foundation/*"),
         statement(["bedrock-agentcore:ListAgentRuntimes"], "*"),

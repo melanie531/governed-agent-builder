@@ -211,8 +211,8 @@ try {
     await removeAgent(detail, 'failed-' + id);
   }
   const scenarios = process.env.GAB_CLEANUP_IDS ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
-    {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
     {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
+    {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
   ];
   for (const [index, scenario] of scenarios.entries()) {
     await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});

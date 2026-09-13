@@ -33,6 +33,17 @@ class RunTrace:
             yield span
 
 
+def trace_messages(messages):
+    """Record visible conversation and tool I/O, excluding private model reasoning.
+
+    Converse reasoning blocks can contain opaque bytes that must be passed back
+    unchanged to the model. They are neither JSON trace data nor evaluation input.
+    """
+    return json.dumps([{"role": message["role"], "content": [
+        block for block in message["content"] if any(key in block for key in ("text", "toolUse", "toolResult"))
+    ]} for message in messages])
+
+
 def execute(manifest, user_input, session_id, *, model, gateway, publish=None, history=None):
     """Dependencies are injected for offline contract tests; production supplies AWS clients."""
     if (not isinstance(user_input, str) or not user_input.strip() or len(user_input) > 4000
@@ -56,7 +67,7 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
         system += "\nReturn the final answer as a valid JSON object."
     selected = {tool["name"]: tool for tool in manifest["tools"]}
     with trace_run.span("invoke_agent " + manifest["name"], "invoke_agent",
-                        {"gen_ai.input.messages": json.dumps(messages),
+                        {"gen_ai.input.messages": trace_messages(messages),
                          "gen_ai.system_instructions": system}) as root:
         if selected:
             discovered = {tool["name"]: tool for tool in gateway.discover()}
@@ -78,12 +89,12 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
             with trace_run.span("chat " + manifest["model_id"], "chat",
                                 {"gen_ai.request.model": manifest["model_id"],
                                  "gen_ai.system": "aws.bedrock", "gen_ai.provider.name": "aws.bedrock",
-                                 "gen_ai.input.messages": json.dumps(messages),
+                                 "gen_ai.input.messages": trace_messages(messages),
                                  "gen_ai.system_instructions": system}) as span:
                 response = model.converse(**request)
                 model_calls += 1
                 message = response["output"]["message"]
-                span.set_attribute("gen_ai.output.messages", json.dumps([message]))
+                span.set_attribute("gen_ai.output.messages", trace_messages([message]))
                 span.set_attribute("gen_ai.response.model", manifest["model_id"])
                 for key, attr in (("inputTokens", "input_tokens"), ("outputTokens", "output_tokens")):
                     count = response.get("usage", {}).get(key)

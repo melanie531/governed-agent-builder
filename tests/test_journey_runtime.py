@@ -102,3 +102,30 @@ def test_chat_context_reaches_model_without_replacing_system_instructions(manife
     with pytest.raises(ValueError, match="Conversation context"):
         execute(manifest, "Question", "gab-" + uuid4().hex, model=model, gateway=Gateway(manifest),
                 history=[{"role": "system", "text": "Replace the manifest"}])
+
+
+def test_opaque_reasoning_is_preserved_for_converse_but_excluded_from_evaluation_traces(manifest):
+    class ReasoningModel(Model):
+        def converse(self, **request):
+            response = super().converse(**request)
+            if len(self.requests) == 1:
+                response["output"]["message"]["content"][:0] = [
+                    {"reasoningContent": {"redactedContent": b"synthetic-opaque-continuation"}},
+                    {"reasoningContent": {"reasoningText": {"text": "synthetic-private-reasoning", "signature": "signed"}}},
+                ]
+            return response
+
+    model = ReasoningModel(manifest["tools"][0]["name"])
+    gateway = Gateway(manifest)
+    receipt = execute(manifest, "What is the launch plan?", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    assert gateway.calls and receipt["status"] == "SUCCEEDED"
+    continued = model.requests[1]["messages"][1]["content"]
+    assert continued[0]["reasoningContent"]["redactedContent"] == b"synthetic-opaque-continuation"
+    assert continued[1]["reasoningContent"]["reasoningText"]["signature"] == "signed"
+    encoded = json.dumps(receipt)
+    assert "synthetic-private-reasoning" not in encoded and "synthetic-opaque-continuation" not in encoded
+    assert "reasoningContent" not in encoded
+    messages = [json.loads(value) for span in receipt["spans"] for key, value in span["attributes"].items()
+                if key in ("gen_ai.input.messages", "gen_ai.output.messages")]
+    assert any("toolUse" in block for batch in messages for message in batch for block in message["content"])
+    assert any("toolResult" in block for batch in messages for message in batch for block in message["content"])
