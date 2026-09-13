@@ -1,9 +1,13 @@
 --- readback-schema
 +++ proposed-schema
-@@ -46,6 +46,33 @@
+@@ -46,6 +46,37 @@
                          }
                        }
                      }
++                  },
++                  "system": {
++                    "type": "string",
++                    "maxLength": 2048
 +                  },
 +                  "thinking": {
 +                    "type": "object",

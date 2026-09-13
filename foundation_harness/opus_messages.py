@@ -18,7 +18,8 @@ def build_request(request_model, system, prompt, max_tokens):
     if request_model != REQUEST_MODEL:
         raise ValueError('OPUS_EXACT_PROFILE_REQUIRED')
     _limit(max_tokens)
-    if not isinstance(system, str) or not isinstance(prompt, str) or not prompt.strip():
+    if (not isinstance(system, str) or len(system) > 2048
+            or not isinstance(prompt, str) or not prompt.strip()):
         raise ValueError('OPUS_TEXT_INPUT_REQUIRED')
     body = {'model': request_model, 'system': system,
             'messages': [{'role': 'user', 'content': prompt}],

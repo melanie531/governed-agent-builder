@@ -20,6 +20,11 @@ def test_model_must_equal_reviewed_profile(model):
     with pytest.raises(ValueError):build_request(model,'s','q',16)
 
 
+def test_system_matches_gateway_schema_bound():
+    with pytest.raises(ValueError):
+        build_request('us.anthropic.claude-opus-5','s'*2049,'q',256)
+
+
 def test_response_identity_is_explicit_and_text_only():
     response={'type':'message','model':'synthetic-response','stop_reason':'end_turn',
               'content':[{'type':'text','text':'Synthetic answer.'}],

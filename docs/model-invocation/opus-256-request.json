@@ -1,5 +1,6 @@
 {
   "model": "us.anthropic.claude-opus-5",
+  "system": "Answer briefly and accurately.",
   "max_tokens": 256,
   "stream": false,
   "thinking": {
