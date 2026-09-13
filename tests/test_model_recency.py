@@ -107,10 +107,20 @@ def test_c_source_has_no_lifecycle_recency_proxy():
     # The discovery module must not equate ACTIVE/LEGACY with recency.
     src = Path('backend/discovery_catalog.py').read_text()
     assert "recency-adjacent" not in src
+    # The 6-month recency window is a REAL rolling window over VERIFIED launch
+    # dates, computed server-side (never a lifecycle proxy).
+    recency_src = Path('backend/model_recency.py').read_text()
+    assert "RECENCY_WINDOW_MONTHS = 6" in recency_src
     front = Path('frontend/src/AICatalog.tsx').read_text()
-    # Recency is verified-date driven, not lifecycle.
+    # The user-facing Recent badge and the All-discovered/Recent recency filter
+    # control were removed from the UI; the 6-month rule stays backend-only.
+    # Whatever remains in the frontend must NEVER derive recency from lifecycle.
     assert "isActive" not in front and "isLegacy" not in front
-    assert "recency==='recent'" in front or "recency === 'recent'" in front
+    assert "SegmentedControl" not in front
+    assert "All discovered" not in front
+    # No user-facing Recent/Not recent badge text remains in the catalog UI.
+    assert "Badge color=\"green\">Recent<" not in front
+    assert ">Not recent<" not in front
 
 
 # ---------------------------------------------------------------------------

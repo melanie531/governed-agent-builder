@@ -36,7 +36,7 @@ const SESSION_DENIED_MESSAGE='Access was denied. Sign in or retry the session ch
 const SERVICE_UNAVAILABLE_MESSAGE='Studio is unavailable. Try again.';
 async function api<T>(path:string, body?:unknown):Promise<T>{
  const r=await fetch('/api'+path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(body!==undefined?{'X-CSRF-Token':csrf}:{})},method:body!==undefined?'POST':'GET',body:body!==undefined?JSON.stringify(body):undefined});
- if(r.status===401&&hosted){window.dispatchEvent(new Event('studio-session-expired'));} if(!r.ok){const e=await r.json().catch(()=>null) as {detail?:unknown}|null;const detail=e&&typeof e==='object'&&e.detail!==undefined?(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail)):(r.status===403?'Forbidden':r.status>=500?'Server unavailable':'Request failed');throw new Error(detail);} return r.json();
+ if(r.status===401&&hosted){window.dispatchEvent(new Event('studio-session-expired'));} if(!r.ok){const e=await r.json().catch(()=>null) as {detail?:unknown}|null;const detail=e&&typeof e==='object'&&e.detail!==undefined?(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail)):(r.status===403?'Forbidden':r.status>=500?'Server unavailable':'Request failed');const err=new Error(detail) as Error&{status?:number};err.status=r.status;throw err;} return r.json();
 }
 // The export route currently packages only the local fixture harness.
 const supportsFixtureExport=(definition:Def)=>definition.catalog_mode!=='live'&&definition.foundation_id!=='web-research';
