@@ -633,8 +633,29 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             visible = {c['id'] for c in records if visibility(c, persona)}
             items = [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
                      and (p := projection(db, persona, c)) is not None]
+            # Per-user, DEDUPLICATED authorization summary for the authenticated
+            # caller (Task 3, 哥哥 refinement 2). Computed from the caller's own
+            # projections (has_grant is per persona+component), NOT the catalog
+            # total. Granted / requestable / callable are DISTINCT categories:
+            #   granted     = the caller actually holds a grant for this component,
+            #   requestable = not granted, access can be requested (never counted
+            #                 as granted),
+            #   callable    = granted AND execution binding verified ("can invoke";
+            #                 judged separately from granted).
+            # Deduplicated by top-level component id so one grant is never counted
+            # twice. Child tool operations and parent duplicates are excluded.
+            top_level = {p['id']: p for p in items if p['kind'] != 'tool' and not p.get('parent_id')}
+            granted_ids = {cid for cid, p in top_level.items() if p.get('granted') is True}
+            requestable_ids = {cid for cid, p in top_level.items()
+                               if p.get('granted') is not True and p.get('requestable') is True}
+            callable_ids = {cid for cid in granted_ids
+                            if top_level[cid].get('execution_ready') is True
+                            or (top_level[cid].get('execution_binding') or {}).get('status') == 'verified'}
+            access_summary = {"granted": len(granted_ids), "requestable": len(requestable_ids),
+                              "callable": len(callable_ids), "available": len(top_level)}
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
             return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": catalog_mode,
+                    "access_summary": access_summary,
                     "agent_listing_implemented": catalog_mode == "live",
                     "connection_state": "connected" if catalog_mode == "live" else "fixture",
                     "native_connection_state": "connected" if catalog_mode == "live" else "NotConnected",

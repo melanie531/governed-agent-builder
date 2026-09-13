@@ -160,3 +160,47 @@ def test_historical_binding_outside_window_still_resolvable(tmp_path, monkeypatc
     assert resolved['status'] == 'resolved' and resolved['binding_retained'] is True
     assert resolved['in_discovery_window'] is False
     assert resolved['execution_ready'] is False
+
+
+def test_default_models_list_excludes_out_of_window_even_though_raw_feed_returns_them(tmp_path, monkeypatch):
+    """Refinement 1: the DEFAULT /api/catalog Models list must return ONLY
+    last-6-months models server-side, even though the raw owner-reviewed feed
+    ALSO contains an older, out-of-window model. The recency window is a real
+    backend filter (model_discovery.discover -> outside_six_month_window), not a
+    frontend visual hide. AND a saved draft binding to the out-of-window model
+    must be preserved (binding_retained), never broken."""
+    from datetime import date
+
+    from backend import model_discovery
+
+    recent = synthetic_record()  # release_date 2026-08-01 -> in window @2026-09-13
+    old = synthetic_record(record_id='synthetic-old-bound', release_date='2026-01-01')
+    # The RAW feed carries BOTH the recent and the out-of-window model.
+    body = cache_body([recent, old])
+    cache_path = write_cache(tmp_path, body)
+    with live_client(tmp_path, monkeypatch, cache_path) as c:
+        login(c)
+        payload = c.get('/api/catalog').json()
+        ids = {i['id'] for i in payload['items']}
+        model_ids = {i['id'] for i in payload['items'] if i['kind'] == 'model'}
+        # DEFAULT list: recent present; out-of-window filtered out SERVER-SIDE.
+        assert 'discovery:synthetic-discovery:synthetic-recent-model' in ids
+        assert 'discovery:synthetic-discovery:synthetic-old-bound' not in ids
+        # Every served discovery model is within the recent window.
+        assert model_ids == {'discovery:synthetic-discovery:synthetic-recent-model'}
+
+    # The exclusion reason is the real six-month window (server-side proof) at
+    # the discovery source that feeds the live /api/catalog chain.
+    from backend.discovery_catalog_source import DiscoveryCatalogSource
+    src = DiscoveryCatalogSource(source_id='synthetic-discovery', cache_path=cache_path,
+                                 scope=scope(), today='2026-09-13')
+    served = [r['record_id'] for r in src.records()]
+    assert served == ['synthetic-recent-model']
+    reasons = {e['record_id']: e['reason'] for e in src.last_excluded}
+    assert reasons.get('synthetic-old-bound') == 'outside_six_month_window'
+
+    # Binding preservation for an existing draft pinned to the out-of-window model.
+    lookup = model_discovery.binding_lookup([recent, old], today=date(2026, 9, 13))
+    resolved = lookup.resolve('synthetic-old-bound')
+    assert resolved['binding_retained'] is True
+    assert resolved['in_discovery_window'] is False
