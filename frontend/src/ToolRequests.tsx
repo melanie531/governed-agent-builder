@@ -45,8 +45,8 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
       ...(admin ? [{id: 'requester', header: 'Requester', cell: (item: ToolRequest) => item.requester_name}] : []),
       {id: 'title', header: 'Tool requested', cell: item => item.title},
       {id: 'details', header: 'Details', cell: item => item.details || '—'},
-      {id: 'status', header: 'Status', cell: item => <StatusIndicator type={item.status === 'FULFILLED' ? 'success' : item.status === 'DECLINED' ? 'stopped' : 'pending'}>{labels[item.status]}</StatusIndicator>},
-      {id: 'response', header: 'Administrator response', cell: item => admin ? <SpaceBetween size="s">
+      {id: 'status', header: 'Status', minWidth: 140, width: 140, cell: item => <StatusIndicator type={item.status === 'FULFILLED' ? 'success' : item.status === 'DECLINED' ? 'stopped' : 'pending'}>{labels[item.status]}</StatusIndicator>},
+      {id: 'response', header: 'Administrator response', minWidth: 200, cell: item => admin ? <SpaceBetween size="s">
         <Textarea ariaLabel={`Response for ${item.title}`} value={responses[item.id] ?? item.response}
           onChange={({detail}) => setResponses({...responses, [item.id]: detail.value})}/>
         <Select ariaLabel={`Status for ${item.title}`} selectedOption={{value: statusFor(item), label: labels[statusFor(item)]}}

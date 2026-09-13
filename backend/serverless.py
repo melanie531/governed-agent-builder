@@ -4,6 +4,7 @@ Hosted execution uses DynamoDB only; no lifespan or background worker.
 """
 import copy
 import json
+import logging
 import os
 from functools import lru_cache
 from http.cookies import SimpleCookie
@@ -104,10 +105,11 @@ def dispatch_handler(event, context):
 
 def worker_handler(event, context):
     failures = []
-    app = application(worker=True) if (os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' or os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1') else application()
     for record in event.get("Records", []):
+        job_id = None
         try:
             job_id = json.loads(record["body"])["job_id"]
+            app = application(worker=True) if (os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' or os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1') else application()
             for _ in ACTIVE:
                 if context.get_remaining_time_in_millis() < 10000:
                     raise TimeoutError("Durable continuation required")
@@ -124,7 +126,20 @@ def worker_handler(event, context):
                         boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
                             MessageBody=json.dumps({'job_id': job_id}), DelaySeconds=10)
                     break
-        except Exception:
+        except Exception as exc:
+            # A governance read can race another transaction before a job is
+            # claimed. Resume the same durable job promptly, preserving its
+            # claim/receipt recovery rules instead of waiting the 30m visibility.
+            if (job_id and isinstance(exc, HTTPException) and exc.status_code == 409
+                    and exc.detail == "Concurrent governance update; reload and retry"):
+                try:
+                    boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
+                        MessageBody=json.dumps({'job_id': job_id}), DelaySeconds=10)
+                    continue
+                except Exception:
+                    pass
+            # Never log event bodies, tokens or raw SDK exception payloads.
+            logging.getLogger(__name__).warning("Worker delivery requires retry: %s", type(exc).__name__)
             failures.append({"itemIdentifier": record["messageId"]})
     return {"batchItemFailures": failures}
 

@@ -34,6 +34,10 @@ provide identity and persistence. External AWS calls are outside database
 transactions. A saved definition pins its Catalog versions, bindings, Foundation
 ZIP version, and manifest digest.
 
+If a Worker status read conflicts with another governance transaction, the same
+durable job is queued again after ten seconds. Its claim and execution receipt
+still control recovery; queue redelivery does not authorize another model call.
+
 `runtime/journey/main.py` runs the platform Foundation on AgentCore Runtime.
 `foundation_harness/journey_runtime.py` executes Bedrock Converse and only the
 selected Gateway MCP operations. The native Runtime accepts user input and a

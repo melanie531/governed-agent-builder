@@ -134,6 +134,30 @@ def test_worker_remaining_time_preserves_retry(cloud, payload):
     assert serverless.worker_handler(event, SimpleNamespace(get_remaining_time_in_millis=lambda: 60000)) == {"batchItemFailures": []}
 
 
+@pytest.mark.parametrize("during_startup", [True, False])
+def test_worker_governance_race_resumes_same_job_without_long_visibility_wait(cloud, payload, monkeypatch, during_startup):
+    sign_in(cloud)
+    app, client, _ = cloud
+    job_id = enqueue(client, create(client, payload))
+    queue = boto3.client("sqs").create_queue(QueueName="synthetic-recovery")["QueueUrl"]
+    monkeypatch.setenv("JOB_QUEUE_URL", queue)
+    def conflict(*args, **kwargs):
+        raise HTTPException(409, "Concurrent governance update; reload and retry")
+    if during_startup:
+        monkeypatch.setattr(serverless, "application", conflict)
+    else:
+        monkeypatch.setattr(app.state, "step_job", conflict)
+    event = {"Records": [{"messageId": "race", "body": json.dumps({"job_id": job_id})}]}
+    assert serverless.worker_handler(event, SimpleNamespace(get_remaining_time_in_millis=lambda: 60000)) == {"batchItemFailures": []}
+    attributes = boto3.client("sqs").get_queue_attributes(QueueUrl=queue, AttributeNames=["ApproximateNumberOfMessagesDelayed"])["Attributes"]
+    assert attributes["ApproximateNumberOfMessagesDelayed"] == "1"
+    with app.state.store.tx() as db:
+        assert db.select("jobs", where=[("id", "=", job_id)]).fetchone()["stage"] == "VALIDATING"
+    # Losing the continuation must leave the original delivery retryable.
+    boto3.client("sqs").delete_queue(QueueUrl=queue)
+    assert serverless.worker_handler(event, SimpleNamespace(get_remaining_time_in_millis=lambda: 60000)) == {"batchItemFailures": [{"itemIdentifier": "race"}]}
+
+
 def test_authorizer_revocation_and_route_separation(cloud):
     cookie = sign_in(cloud)
     event = {"cookies": [SESSION_COOKIE + "=" + cookie]}
