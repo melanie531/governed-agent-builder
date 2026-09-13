@@ -125,13 +125,15 @@ test('Tool requests only submits missing tools and shows the administrator respo
   await nav('Tool requests');
   await expect(page.getByRole('heading', {name: 'Request a new tool'})).toBeVisible();
   await expect(page.getByLabel('Requested capability')).toHaveCount(0);
-  await page.getByRole('textbox', {name: 'What tool do you need?'}).fill('Synthetic CRM lookup');
+  await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeDisabled();
+  await page.getByRole('textbox', {name: 'What tool do you need?'}).fill('CRM');
+  await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeEnabled();
   await page.getByRole('textbox', {name: 'Details', exact: true}).fill('Look up test account summaries.');
   await page.getByRole('button', {name: 'Send request', exact: true}).click();
   await expect(page.getByText('Submitted', {exact: true})).toBeVisible();
   await signin('admin');
   await nav('Policies & approvals');
-  await page.getByRole('textbox', {name: 'Response for Synthetic CRM lookup'}).fill('Reviewing the requested CRM connector.');
+  await page.getByRole('textbox', {name: 'Response for CRM', exact: true}).fill('Reviewing the requested CRM connector.');
   await page.getByRole('button', {name: 'Save response', exact: true}).click();
   await expect(page.getByText('Response saved.', {exact: true})).toBeVisible();
   await signin('alex');
