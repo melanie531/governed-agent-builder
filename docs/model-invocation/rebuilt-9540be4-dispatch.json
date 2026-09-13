@@ -1,0 +1,35 @@
+{
+  "source_commit": "9540be4706f93dadf100023d1e08658187be71b3",
+  "package": {
+    "source_digest": "26582a5eb853130ef15f10e94af0ea6ca1c38706cc73c32bdc6e01046ad9fa01",
+    "manifest_digest": "f79c64d1e525c1bf57f464324ff69272c8429014671dac454645b94906b76c74",
+    "package_digest": "e564e3b4445f347c5266297335da97e2ae2fef731ee7883310df9e4f06d6179c",
+    "package_mode": "base",
+    "admission_config_present": false,
+    "deploy_ready": false,
+    "artifact_kind": "source-only; install locked Linux ARM64 dependencies before deployment",
+    "runtime_created": false,
+    "production_ready": false
+  },
+  "zip_sha256": "e564e3b4445f347c5266297335da97e2ae2fef731ee7883310df9e4f06d6179c",
+  "probe_exit": 0,
+  "probe": {
+    "opus": {
+      "zip_import": true,
+      "endpoint_gate": true,
+      "signed_service": "bedrock-agentcore",
+      "synthetic_transport_returned": true
+    },
+    "haiku": {
+      "zip_import": true,
+      "endpoint_gate": true,
+      "signed_service": "bedrock-agentcore",
+      "synthetic_transport_returned": true
+    },
+    "direct_runtime_rejected": true
+  },
+  "network_calls": 0,
+  "real_credentials_used": false,
+  "arm64_runtime_tested": false,
+  "backend_integrated_60aa14e": false
+}
