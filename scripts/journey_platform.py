@@ -49,7 +49,15 @@ def upload(target):
     source = ROOT / "artifacts/serverless-release.zip"
     sha = hashlib.sha256(source.read_bytes()).hexdigest()
     key = f"releases/{sha}/lambda.zip"
-    s3 = target.session.client("s3")
+    from botocore.config import Config
+    from boto3.s3.transfer import TransferConfig
+    # Sign the payload hash instead of streaming an optional checksum trailer.
+    # Some operator HTTPS proxies stall large aws-chunked request bodies.
+    s3 = target.session.client("s3", config=Config(
+        connect_timeout=5, read_timeout=60, retries={"max_attempts": 2},
+        request_checksum_calculation="when_required", response_checksum_validation="when_required",
+        s3={"payload_signing_enabled": True}))
+    transfer = TransferConfig(multipart_threshold=5 * 1024 * 1024, multipart_chunksize=5 * 1024 * 1024, max_concurrency=2)
     runtime = ROOT / "artifacts/journey-runtime.zip"
     with zipfile.ZipFile(source) as original, zipfile.ZipFile(runtime, "w", zipfile.ZIP_DEFLATED) as output:
         for info in original.infolist():
@@ -68,13 +76,14 @@ def upload(target):
         print("Reusing verified release artifact", flush=True)
         return bucket, key, artifact
     print("Uploading versioned deployment artifacts", flush=True)
-    s3.upload_file(str(source), bucket, key, ExtraArgs={"ServerSideEncryption": "AES256"})
+    s3.upload_file(str(source), bucket, key, ExtraArgs={"ServerSideEncryption": "AES256"}, Config=transfer)
+    print("Lambda artifact uploaded", flush=True)
     if previous.get("artifact", {}).get("sha256") == runtime_sha and previous["artifact"]["bucket"] == bucket:
         artifact = previous["artifact"]
         s3.head_object(Bucket=bucket, Key=runtime_key, VersionId=artifact["version_id"])
     else:
-        with runtime.open("rb") as body:
-            uploaded = s3.put_object(Bucket=bucket, Key=runtime_key, Body=body, ServerSideEncryption="AES256")
+        s3.upload_file(str(runtime), bucket, runtime_key, ExtraArgs={"ServerSideEncryption": "AES256"}, Config=transfer)
+        uploaded = s3.head_object(Bucket=bucket, Key=runtime_key)
         if uploaded.get("VersionId") in (None, "null"):
             raise RuntimeError("Foundation artifact bucket must be versioned")
         artifact = {"bucket": bucket, "key": runtime_key, "version_id": uploaded["VersionId"], "sha256": runtime_sha}

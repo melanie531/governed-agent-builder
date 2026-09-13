@@ -33,6 +33,10 @@ async function waitStatus(agentId, field, expected) {
   let previous;
   while (Date.now() < deadline) {
     const response = await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/agents/' + agentId);
+    if (response.status() === 409 && (await response.json()).detail === 'Concurrent governance update; reload and retry') {
+      await pause(1000);
+      continue;
+    }
     if (!response.ok()) throw new Error(`Hosted status returned HTTP ${response.status()}`);
     const detail = await response.json();
     const status = detail[field].status;
@@ -40,21 +44,115 @@ async function waitStatus(agentId, field, expected) {
     if (status !== previous) console.log(`${field}: ${status}`);
     previous = status;
     if (status === expected) return detail;
-    if (['FAILED', 'ERROR', 'UNKNOWN', 'STALE', 'FAILED_QUALITY'].includes(status)) {
+    if (['FAILED', 'ERROR', 'UNKNOWN', 'STALE', 'FAILED_QUALITY', 'DELETE_FAILED'].includes(status)) {
       throw new Error(`${field}: ${status}: ${detail[field].error || 'Review the recorded cases'}`);
     }
     await pause(10000);
   }
   throw new Error(`${field} did not complete within the test deadline`);
 }
+async function runChat(question) {
+  await page.getByRole('textbox', {name: 'Your question', exact: true}).fill(question);
+  const submitted = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/invoke'));
+  await page.getByRole('button', {name: 'Run agent', exact: true}).click();
+  const response = await submitted;
+  if (!response.ok()) throw new Error(`Chat submission failed: HTTP ${response.status()}`);
+  const accepted = await response.json();
+  await expect.poll(async () => {
+    const r = await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/jobs/' + accepted.job_id);
+    if (r.status() === 409) return 'RETRY';
+    if (!r.ok()) throw new Error(`Chat status HTTP ${r.status()}`);
+    const result = await r.json();
+    if (['FAILED', 'UNKNOWN', 'ERROR'].includes(result.phase)) throw new Error(result.error);
+    return result.phase;
+  }, {timeout: 300000, intervals: [5000, 10000], message: 'Actual Runtime chat invocation succeeds'}).toBe('SUCCEEDED');
+  await expect(page.getByLabel('Agent output')).toBeVisible();
+}
+
+function nativeApi(detail) {
+  const result = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
+import boto3,json,sys,uuid
+from botocore.config import Config
+d=json.loads(sys.argv[1])
+s=boto3.Session(profile_name='account-820',region_name='us-west-2')
+assert s.client('sts').get_caller_identity()['Account']=='820242898417'
+request_id=uuid.uuid4().hex
+r=s.client('bedrock-agentcore',config=Config(read_timeout=210,retries={'total_max_attempts':1})).invoke_agent_runtime(
+ agentRuntimeArn=d['deployment']['binding']['arn'],qualifier='DEFAULT',runtimeSessionId='gab-'+request_id,
+ contentType='application/json',payload=json.dumps({'input':'Use web search to explain what AgentCore Gateway does. Cite AWS documentation.','request_id':request_id}).encode())
+v=json.loads(r['response'].read())
+assert v['status']=='SUCCEEDED' and v['definition_digest']==d['definition']['digest'] and v['tool_calls']
+print(json.dumps({k:v[k] for k in ('status','output','model_id','tool_calls','trace_id','session_id')}))
+`, JSON.stringify(detail)], {encoding: 'utf8', cwd: root, timeout: 240000});
+  if (result.status !== 0) throw new Error('Native API verification failed: ' + result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  writeFileSync(resolve(directory, 'native-api-receipt.json'), JSON.stringify(receipt, null, 2), {mode: 0o600});
+  console.log('Native Runtime API + Gateway tool call: PASS');
+}
+
+async function removeAgent(detail, index) {
+  await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+  await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill('incorrect confirmation');
+  await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+  await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+  await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(detail.definition.name);
+  await page.screenshot({path: resolve(directory, `delete-confirm-${index}.png`), fullPage: true});
+  await dialog.getByRole('button', {name: 'Permanently delete', exact: true}).click();
+  const removed = await waitStatus(detail.id, 'deletion', 'DELETED');
+  await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+  await page.reload({waitUntil: 'domcontentloaded'});
+  await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+  const verified = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
+import boto3,json,sys
+from botocore.exceptions import ClientError
+d=json.loads(sys.argv[1]);s=boto3.Session(profile_name='account-820',region_name='us-west-2')
+assert s.client('sts').get_caller_identity()['Account']=='820242898417'
+b=d['deployment'].get('binding')
+if b:
+ try:s.client('bedrock-agentcore-control').get_agent_runtime(agentRuntimeId=b['id'])
+ except ClientError as e:assert e.response['Error']['Code']=='ResourceNotFoundException'
+ else:raise AssertionError('Runtime still exists')
+ s3=s.client('s3');bucket=b['manifest']['bucket']
+ for prefix in (b['manifest']['key'],'journey/evidence/'+d['definition']['digest']+'/'):
+  r=s3.list_object_versions(Bucket=bucket,Prefix=prefix)
+  assert not r.get('Versions') and not r.get('DeleteMarkers'), 'Agent objects remain'
+print('Native resources removed')
+`, JSON.stringify(detail)], {encoding: 'utf8', cwd: root, timeout: 60000});
+  if (verified.status !== 0) throw new Error('Cleanup verification failed: ' + verified.stderr);
+  writeFileSync(resolve(directory, `deleted-${index}.json`), JSON.stringify(removed, null, 2), {mode: 0o600});
+  console.log('Confirmed deletion + native resource cleanup: PASS', detail.id);
+}
 try {
   await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});
   await page.getByRole('button', {name: 'Sign in / Open Studio', exact: true}).click();
-  await page.locator('input[name="username"]:visible').fill(credentials.username);
-  await page.locator('input[name="password"]:visible').fill(credentials.password);
-  await page.getByRole('button', {name: 'Sign in', exact: true}).click();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const username = page.locator('input[name="username"]:visible');
+    const password = page.locator('input[name="password"]:visible');
+    await username.waitFor();
+    await page.waitForLoadState('networkidle', {timeout: 15000}).catch(() => {});
+    await expect.poll(async () => {
+      await username.fill(credentials.username);
+      await password.fill(credentials.password);
+      await password.press('Tab');
+      await pause(250);
+      return await username.inputValue() === credentials.username
+        && await password.inputValue() === credentials.password;
+    }, {message: 'Cognito form hydrated and retained input', timeout: 15000}).toBe(true);
+    await page.getByRole('button', {name: 'Sign in', exact: true}).click();
+    const state = await Promise.race([
+      page.getByRole('heading', {name: 'My agents', exact: true}).waitFor({timeout: 60000}).then(() => 'signed-in'),
+      page.getByText('Missing email address.', {exact: true}).waitFor({timeout: 60000}).then(() => 'empty-form'),
+    ]).catch(() => 'failed');
+    if (state === 'signed-in') break;
+    // Cognito can hydrate its server-rendered form after an initial fast fill.
+    // Retry only its local empty-form validation, never rejected credentials.
+    if (state !== 'empty-form' || attempt === 1) throw new Error('Hosted Cognito sign-in did not complete');
+  }
   delete credentials.password;
-  await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible({timeout: 60000});
   const me = await (await page.request.get(state.app.outputs.ApplicationOrigin + '/api/me')).json();
   if (me.persona.id !== state.journeyQA.subject || me.persona.role !== 'business') throw new Error('Incorrect hosted business identity');
   console.log('Hosted Cognito business sign-in: PASS');
@@ -94,19 +192,26 @@ try {
     const question = scenario.template === 'Research'
       ? 'Use web search to explain the difference between Amazon Bedrock AgentCore Runtime and Gateway. Cite AWS documentation.'
       : 'What is the Aurora support response target? Search the knowledge documents and cite the source.';
-    await page.getByRole('textbox', {name: 'Your question', exact: true}).fill(question);
-    await page.getByRole('button', {name: 'Run agent', exact: true}).click();
-    await expect(page.getByLabel('Agent output')).toBeVisible({timeout: 300000});
+    await runChat(question);
+    await runChat('Summarize your previous answer in one sentence, retaining its source references.');
+    await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
+    await page.reload({waitUntil: 'domcontentloaded'});
+    await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
     const detail = await (await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/agents/' + saved.agent_id)).json();
-    if (detail.last_invocation?.phase !== 'SUCCEEDED' || !detail.last_invocation.tool_calls?.length) throw new Error('Missing actual Gateway call evidence');
+    const conversationTools = detail.conversation?.messages.flatMap(message => message.tools || []) || [];
+    if (detail.last_invocation?.phase !== 'SUCCEEDED' || !conversationTools.length) throw new Error('Missing actual Gateway call evidence');
     if (scenario.eval && (detail.evaluation.cases.length !== 2 || detail.evaluation.cases.some(c => !c.request_id || c.evaluator_id !== 'Builtin.Correctness'))) throw new Error('Missing native evaluation receipts');
     if (!scenario.eval && (detail.evaluation.status !== 'SKIPPED' || detail.evaluation.cases.length)) throw new Error('Evaluation was not skipped');
     receipts.push({scenario, ...detail});
     writeFileSync(resolve(directory, 'receipts.json'), JSON.stringify(receipts, null, 2), {mode: 0o600});
     await page.screenshot({path: resolve(directory, `result-${index}.png`), fullPage: true});
+    await page.getByRole('tab', {name: 'API access', exact: true}).click();
+    await expect(page.getByRole('textbox', {name: 'Python API example'})).toHaveValue(/invoke_agent_runtime/);
+    if (index === 0 && scenario.template === 'Research') nativeApi(detail);
     console.log('Hosted journey PASS:', JSON.stringify({scenario, agent_id: saved.agent_id,
-      model: detail.last_invocation.model_id, tools: detail.last_invocation.tool_calls.map(c => c.name),
+      model: detail.last_invocation.model_id, tools: conversationTools,
       evaluation: detail.evaluation.status}));
+    await removeAgent(detail, index);
   }
 } catch (error) {
   // Only the application page can be captured, never the credential form.

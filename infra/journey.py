@@ -84,13 +84,23 @@ def configure_app(resources, settings):
         resources[name]["Properties"]["Environment"]["Variables"]["JOURNEY_ENABLED"] = "1"
     worker_statements = [
         statement(["bedrock-agentcore:CreateAgentRuntime"], "*"),
-        statement(["bedrock-agentcore:GetAgentRuntime", "bedrock-agentcore:GetAgentRuntimeEndpoint",
+        statement(["bedrock-agentcore:GetAgentRuntime", "bedrock-agentcore:GetAgentRuntimeEndpoint", "bedrock-agentcore:TagResource",
+                   "bedrock-agentcore:CreateAgentRuntimeEndpoint", "bedrock-agentcore:DeleteAgentRuntime",
+                   "bedrock-agentcore:ListTagsForResource",
                    "bedrock-agentcore:InvokeAgentRuntime"], [runtime, runtime + "/runtime-endpoint/*"]),
         statement(["iam:PassRole"], settings["runtime_role"]),
         statement(["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"], bucket_arn + "/journey/*"),
         statement(["bedrock-agentcore:Evaluate", "bedrock-agentcore:GetEvaluator"], settings["evaluator_arn"]),
         statement(["s3:GetObject", "s3:GetObjectVersion"],
                   "arn:aws:s3:::" + settings["artifact"]["bucket"] + "/journey/foundation/*"),
+        statement(["bedrock-agentcore:ListAgentRuntimes"], "*"),
+        {**statement(["s3:ListBucketVersions"], bucket_arn),
+         "Condition": {"StringLike": {"s3:prefix": ["journey/manifests/*", "journey/evidence/*", "journey/evaluations/*"]}}},
+        statement(["s3:DeleteObject", "s3:DeleteObjectVersion"], [
+            bucket_arn + "/journey/manifests/*", bucket_arn + "/journey/evidence/*", bucket_arn + "/journey/evaluations/*"]),
+        {**statement(["logs:DescribeLogGroups"], "*"), "Condition": {"StringEquals": {"aws:RequestedRegion": region}}},
+        statement(["logs:DeleteLogGroup"], f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/gab_journey_*:*"),
+        statement(["logs:DeleteLogStream"], f"arn:aws:logs:{region}:{account}:log-group:{settings['log_group']}:log-stream:agent-*"),
     ]
     worker_statements[0]["Condition"] = {"StringEquals": {"aws:RequestTag/project": "governed-agent-builder",
                                                           "aws:RequestTag/journey": "create-agent"}}

@@ -13,10 +13,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from foundation_harness.config import canonical, digest
 from . import journey_catalog as catalog
+from . import journey_lifecycle as lifecycle
 from .foundation_runs import get, put
-from .journey_schema import AgentDefinition, InvokeAgent, SaveAgent, VersionAction
+from .journey_schema import AgentDefinition, InvokeAgent, SaveAgent, VersionAction, DeletePreview, DeleteAgent
 
-TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE"}
+TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED"}
 PREFIX = "journey-job:"
 
 
@@ -129,16 +130,16 @@ class Journey:
                 "evidence_bucket": self.settings["bucket"], "evidence_prefix": "journey/evidence",
                 "log_group": self.settings["log_group"]}
 
-    def enqueue(self, db, actor, definition, kind, token, *, session_hash=None, text=None):
+    def enqueue(self, db, actor, definition, kind, token, *, session_hash=None, text=None, conversation_id=None):
         request_key = "journey-request:" + digest([actor["id"], kind, token])
         previous = get(db, request_key)
-        signature = digest([definition["digest"], kind, text])
+        signature = digest([definition["digest"], kind, text, conversation_id])
         if previous:
             if previous["signature"] != signature:
                 raise HTTPException(409, "This request key already belongs to another operation")
             return previous["job_id"]
         recent = db.select("jobs", count=True, where=[("requester", "=", actor["id"]), ("created", ">", time.time() - 3600)]).fetchone()[0]
-        if recent >= 100:
+        if recent >= 100 and kind != "delete":
             raise HTTPException(429, "Workspace job budget reached; try again later")
         if kind == "deploy":
             deployment = get(db, self.deployment_key(definition))
@@ -148,6 +149,21 @@ class Journey:
             deployment = get(db, self.deployment_key(definition))
             if not deployment or deployment["status"] != "DEPLOYED":
                 raise HTTPException(409, "Deploy this version successfully before running it")
+        conversation = None
+        if kind == "invoke":
+            if db.select("jobs", where=[("agent", "=", definition["agent_id"]),
+                                       ("stage", "not_in", sorted(TERMINAL))]).fetchone():
+                raise HTTPException(409, "Wait for the current operation before sending another message")
+            conversation_key = f"journey-conversation:{definition['agent_id']}:{definition['version']}:"
+            if conversation_id:
+                conversation = get(db, conversation_key + conversation_id)
+                if not conversation:
+                    raise HTTPException(404, "Conversation not found for this agent version")
+            else:
+                conversation_id = uuid4().hex
+                conversation = {"id": conversation_id, "messages": []}
+                put(db, conversation_key + conversation_id, conversation)
+            put(db, f"journey-chat:{definition['agent_id']}:{definition['version']}", conversation_id)
         if kind == "evaluation":
             evaluation = get(db, self.evaluation_key(definition))
             if evaluation and evaluation["status"] not in TERMINAL | {"NOT_STARTED", "SKIPPED"}:
@@ -157,6 +173,10 @@ class Journey:
                  "agent": definition["agent_id"], "version": definition["version"], "definition_digest": definition["digest"],
                  "phase": "QUEUED", "created": now, "deadline": now + 3600, "claim": None,
                  "case_index": 0, "cases": [], "input": text, "mode": self.cloud.mode}
+        if conversation is not None:
+            state.update(conversation_id=conversation_id,
+                         history=[{"role": item["role"], "text": item["text"][:4000]}
+                                  for item in conversation["messages"][-6:]])
         db.insert("jobs", {"id": job_id, "agent": definition["agent_id"], "version": definition["version"],
                           "requester": actor["id"], "idem": token, "stage": "QUEUED",
                           "created": now, "updated": now, "deadline": state["deadline"]})
@@ -195,6 +215,7 @@ class Journey:
             template, resolved = self.validate(db, actor, payload)
             if agent_id:
                 row, _ = self.owned(db, actor, agent_id)
+                lifecycle.ensure_available(db, agent_id)
                 if request.base_version != row["current_version"]:
                     raise HTTPException(409, "Agent changed; reload before saving a new version")
                 version = row["current_version"] + 1
@@ -203,7 +224,9 @@ class Journey:
             else:
                 if request.base_version is not None:
                     raise HTTPException(422, "A new agent cannot have a base version")
-                if db.select("agents", count=True, where=[("owner", "=", actor["id"])]).fetchone()[0] >= 100:
+                active_agents = [row for row in db.select("agents", where=[("owner", "=", actor["id"])])
+                                 if (get(db, lifecycle.deletion_key(row["id"])) or {}).get("status") != "DELETED"]
+                if len(active_agents) >= 100:
                     raise HTTPException(429, "Agent limit reached")
                 current_id, version = uuid4().hex, 1
                 db.insert("agents", {"id": current_id, "owner": actor["id"], "workspace": actor["workspace"],
@@ -231,6 +254,12 @@ class Journey:
     def detail(self, actor, agent_id):
         def load(db):
             agent, definition = self.owned(db, actor, agent_id)
+            deletion = get(db, lifecycle.deletion_key(agent_id))
+            if deletion and deletion["status"] == "DELETED":
+                return {**agent, "definition": definition, "deletion": deletion,
+                        "deployment": {"status": "DELETED"}, "evaluation": {"status": "SKIPPED", "score": None, "cases": []},
+                        "versions": [], "conversation": None, "last_invocation": None,
+                        "readiness": {"deployable": False, "issues": []}, "mode": self.cloud.mode}
             deployment = get(db, self.deployment_key(definition)) or {"status": "NOT_DEPLOYED"}
             evaluation = get(db, self.evaluation_key(definition)) or {"status": "NOT_STARTED", "score": None, "cases": []}
             versions = [dict(row) for row in db.select("versions", columns=["version", "digest", "created"],
@@ -244,7 +273,10 @@ class Journey:
             invocation = job_state(db, invocation_id) if invocation_id else None
             last_invocation = ({key: invocation[key] for key in ("id", "phase", "output", "error", "trace_id", "model_id", "tool_calls")
                                 if key in invocation} if invocation else None)
+            conversation_id = get(db, f"journey-chat:{agent_id}:{definition['version']}")
+            conversation = get(db, f"journey-conversation:{agent_id}:{definition['version']}:{conversation_id}") if conversation_id else None
             return {**agent, "definition": definition, "deployment": deployment, "evaluation": evaluation,
+                    "conversation": conversation, "deletion": deletion,
                     "last_invocation": last_invocation,
                     "versions": versions, "readiness": {"deployable": not issues, "issues": issues}, "mode": self.cloud.mode}
         return self.transaction(load)
@@ -252,13 +284,17 @@ class Journey:
     def action(self, actor, agent_id, request, kind, session_hash=None):
         def commit(db):
             agent, definition = self.owned(db, actor, agent_id)
+            lifecycle.ensure_available(db, agent_id)
             if request.version != agent["current_version"]:
                 raise HTTPException(409, "Use the current version of this agent")
             self.validate(db, actor, definition)
             if kind == "evaluation" and not definition["dataset"]:
                 raise HTTPException(422, "Add an evaluation dataset in a new version before running evaluation")
-            return {"job_id": self.enqueue(db, actor, definition, kind, request.idempotency_key,
-                                            session_hash=session_hash, text=getattr(request, "input", None))}
+            job_id = self.enqueue(db, actor, definition, kind, request.idempotency_key,
+                                  session_hash=session_hash, text=getattr(request, "input", None),
+                                  conversation_id=getattr(request, "conversation_id", None))
+            state = job_state(db, job_id)
+            return {"job_id": job_id, **({"conversation_id": state["conversation_id"]} if state.get("conversation_id") else {})}
         return self.transaction(commit)
 
     def result(self, actor, job_id):
@@ -291,7 +327,9 @@ class Journey:
         agent, definition = self.owned(db, actor, state["agent"], state["version"])
         if agent["current_version"] != state["version"] or definition["digest"] != state["definition_digest"]:
             raise HTTPException(409, "Agent was revised while this task was running")
-        self.validate(db, actor, definition)
+        if state["kind"] != "delete":
+            lifecycle.ensure_available(db, state["agent"])
+            self.validate(db, actor, definition)
         return actor, definition
 
     def persist(self, db, state):
@@ -350,10 +388,14 @@ class Journey:
                     return
                 if task and (state.get("claim") or {}).get("token") != task[4]:
                     return
-                state["phase"] = "UNKNOWN" if uncertain else "ERROR" if state["kind"] == "evaluation" else "FAILED"
+                state["phase"] = ("DELETE_FAILED" if state["kind"] == "delete" else
+                                  "UNKNOWN" if uncertain else "ERROR" if state["kind"] == "evaluation" else "FAILED")
                 state["error"] = ("The service outcome is uncertain. No automatic replay was sent." if uncertain else message[:400])
                 state["claim"] = None
                 self.persist(db, state)
+                if state["kind"] == "delete":
+                    put(db, lifecycle.deletion_key(state["agent"]), {
+                        "status": "DELETE_FAILED", "job_id": job_id, "error": state["error"]})
                 key = (f"journey-evaluation:{state['agent']}:{state['version']}" if state["kind"] == "evaluation" else
                        f"journey-deployment:{state['agent']}:{state['version']}" if state["kind"] == "deploy" else None)
                 if key:
@@ -368,10 +410,13 @@ class Journey:
             if receipt is None:
                 return None
             return receipt
-        return self.cloud.invoke(binding, definition, text, request_id)
+        return self.cloud.invoke(binding, definition, text, request_id,
+                                 **({"history": state["history"]} if state.get("history") else {}))
 
     def perform(self, state, definition, deployment, recovery):
         phase, kind = state["phase"], state["kind"]
+        if kind == "delete":
+            return lifecycle.perform(self, state)
         if kind == "deploy":
             if phase == "QUEUED":
                 manifest = self.transaction(lambda db: get(db, "journey-manifest:" + definition["digest"]))
@@ -432,6 +477,18 @@ class Journey:
         return checks
 
     def finish_step(self, db, state, definition, actor):
+        if state["kind"] == "delete":
+            lifecycle.finish(self, db, state, definition)
+        if state["kind"] == "invoke" and state["phase"] == "SUCCEEDED":
+            key = f"journey-conversation:{state['agent']}:{state['version']}:{state['conversation_id']}"
+            conversation = get(db, key)
+            if not any(item.get("job_id") == state["id"] for item in conversation["messages"]):
+                conversation["messages"] = [*conversation["messages"][-18:],
+                    {"role": "user", "text": state["input"], "job_id": state["id"]},
+                    {"role": "assistant", "text": state["output"], "job_id": state["id"],
+                     "trace_id": state["trace_id"], "model_id": state["model_id"],
+                     "tools": [call["name"] for call in state["tool_calls"]]}]
+                put(db, key, conversation)
         if state["kind"] == "deploy":
             deployment = {"status": state["phase"], "job_id": state["id"]}
             if state.get("binding"):
@@ -495,6 +552,16 @@ def router(journey, who):
     @routes.post("/agents/{agent_id}/evaluate", status_code=202)
     def evaluate(agent_id: str, body: VersionAction, request: Request):
         result = journey.action(who(request), agent_id, body, "evaluation", session_hash(request))
+        request.app.state.wake.set()
+        return result
+
+    @routes.post("/agents/{agent_id}/deletion-preview")
+    def deletion_preview(agent_id: str, body: DeletePreview, request: Request):
+        return lifecycle.preview(journey, who(request), agent_id, body, session_hash(request))
+
+    @routes.post("/agents/{agent_id}/delete", status_code=202)
+    def delete(agent_id: str, body: DeleteAgent, request: Request):
+        result = lifecycle.confirm(journey, who(request), agent_id, body, session_hash(request))
         request.app.state.wake.set()
         return result
 

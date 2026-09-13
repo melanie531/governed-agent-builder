@@ -38,8 +38,18 @@ const journeyEnabled = studioConfig.journey_enabled === true;
 const SESSION_DENIED_MESSAGE='Access was denied. Sign in or retry the session check.';
 const SERVICE_UNAVAILABLE_MESSAGE='Studio is unavailable. Try again.';
 async function api<T>(path:string, body?:unknown):Promise<T>{
- const r=await fetch('/api'+path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(body!==undefined?{'X-CSRF-Token':csrf}:{})},method:body!==undefined?'POST':'GET',body:body!==undefined?JSON.stringify(body):undefined});
- if(r.status===401&&hosted){window.dispatchEvent(new Event('studio-session-expired'));} if(!r.ok){const e=await r.json().catch(()=>null) as {detail?:unknown}|null;const detail=e&&typeof e==='object'&&e.detail!==undefined?(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail)):(r.status===403?'Forbidden':r.status>=500?'Server unavailable':'Request failed');throw new Error(detail);} return r.json();
+ for(let attempt=0;attempt<6;attempt++){
+  const r=await fetch('/api'+path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(body!==undefined?{'X-CSRF-Token':csrf}:{})},method:body!==undefined?'POST':'GET',body:body!==undefined?JSON.stringify(body):undefined});
+  if(r.status===401&&hosted){window.dispatchEvent(new Event('studio-session-expired'));}
+  if(r.ok)return r.json();
+  const e=await r.json().catch(()=>null) as {detail?:unknown}|null;
+  const detail=e&&typeof e==='object'&&e.detail!==undefined?(typeof e.detail==='string'?e.detail:JSON.stringify(e.detail)):(r.status===403?'Forbidden':r.status>=500?'Server unavailable':'Request failed');
+  if(body===undefined&&r.status===409&&detail==='Concurrent governance update; reload and retry'&&attempt<5){
+   await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));continue;
+  }
+  throw new Error(detail);
+ }
+ throw new Error('Studio is busy. Refresh and try again.');
 }
 // The export route currently packages only the local fixture harness.
 const supportsFixtureExport=(definition:Def)=>!['live','journey'].includes(definition.catalog_mode||'')&&definition.foundation_id!=='web-research';

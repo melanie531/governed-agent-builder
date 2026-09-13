@@ -46,6 +46,37 @@ The current Runtime network mode is managed `PUBLIC`; inbound access remains IAM
 authenticated. This release does not provision customer VPC endpoints or Cedar
 policies.
 
+## Chat, API calls and deletion
+
+The agent detail page supports conversation after deployment. Conversation IDs
+are bound to the owner, agent and immutable version. Follow-up messages receive
+the previous three complete turns from server storage; the latest ten turns are
+displayed and survive reload. Starting a new conversation clears that context.
+Each turn has a new execution receipt and trace, and uses the saved model and
+Gateway tool permissions. Failed or uncertain turns are not silently replayed.
+
+The API access tab provides a Python `boto3` example with the actual Runtime ARN.
+The caller uses its own AWS credentials with `bedrock-agentcore:InvokeAgentRuntime`
+permission on that ARN. Native API calls remain subject to the immutable Runtime
+manifest. Browser chat uses the signed-in business identity and CSRF protection:
+`POST /api/journey/agents/{id}/invoke` accepts input, version, idempotency key and an
+optional conversation ID; `GET /api/journey/jobs/{job_id}` returns the result.
+
+Deletion requires a separate review request and explicit confirmation. The user
+types the exact agent name; a five-minute one-time confirmation token binds the
+agent, saved version, owner and signed-in session. The backend rejects direct,
+expired or mismatched confirmations. Active operations must finish before
+deletion can start. Cleanup can also remove failed deployments and agents whose
+Catalog grants were revoked.
+
+The durable cleanup job finds only the agent's server-derived Runtime names,
+verifies ownership tags and the execution role, deletes every Runtime version,
+waits for deletion, then removes versioned manifests, execution/evaluation
+objects, agent log streams, chat and saved definition data. Shared Gateway
+targets, credentials, roles, Foundation ZIPs and Catalog records are retained.
+An audit tombstone records the cleanup outcome. Failed cleanup is visible and
+can be reviewed and confirmed again; it is never reported as successful deletion.
+
 ## Target-bound deployment
 
 Use the already bound target state. Every AWS command checks STS account, region,
@@ -90,7 +121,9 @@ The ordinary suite preserves legacy behavior when the journey feature is disable
 
 The separate `frontend/journey-e2e/live.mjs` script drives the real hosted UI,
 Cognito login, Catalog selections, deployment, dataset evaluation, refresh and
-invocation. It does not intercept API responses. Provision a temporary business QA
+two-turn conversation. It also calls the native Runtime API and confirms deletion,
+then checks that Runtime and versioned storage objects are absent. It does not
+intercept API responses. Provision a temporary business QA
 identity with `scripts/journey_qa_identity.py`, then pass its generated enrollment
 file to `scripts/serverless_package.py --qa-enrollments <path>` before deployment.
 The existing protected QA mechanism keeps the test email unverified and binds the

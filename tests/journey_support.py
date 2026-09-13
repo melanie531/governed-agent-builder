@@ -29,8 +29,21 @@ class OfflineCloud:
     def ready(self, binding):
         return self.ready_result
 
-    def invoke(self, binding, definition, text, request_id):
-        self.invocations.append({"request_id": request_id, "text": text})
+    def find_agent_runtimes(self, agent_id, workspace, plans):
+        return [plan["binding"] for plan in plans if plan.get("binding")]
+
+    def delete_runtime(self, binding):
+        self.created.pop(binding["id"], None)
+        return True
+
+    def purge_agent_objects(self, entry):
+        return True
+
+    def delete_agent_log_streams(self, agent_id, versions):
+        pass
+
+    def invoke(self, binding, definition, text, request_id, history=None):
+        self.invocations.append({"request_id": request_id, "text": text, "history": history})
         receipt = {"status": "SUCCEEDED", "output": "Aurora launches in October. Support responds in four hours. [aurora-launch] [aurora-support]",
                    "trace_id": request_id, "session_id": "gab-" + request_id, "definition_digest": definition["digest"],
                    "model_id": definition["resolved_model_id"], "tool_calls": [{"name": "knowledge___search", "arguments": {"query": text}}],

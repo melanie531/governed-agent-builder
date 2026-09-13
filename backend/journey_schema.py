@@ -81,3 +81,13 @@ class VersionAction(Strict):
 
 class InvokeAgent(VersionAction):
     input: str = Field(min_length=1, max_length=4000)
+    conversation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+
+
+class DeletePreview(Strict):
+    version: int = Field(ge=1)
+
+
+class DeleteAgent(VersionAction):
+    confirmation_token: str = Field(min_length=40, max_length=100)
+    confirm_name: str = Field(min_length=1, max_length=100)

@@ -5,6 +5,7 @@ import {
 } from '@cloudscape-design/components';
 import type {Api, Definition, Revision} from './JourneyBuilder';
 import {ResearchReport} from './ResearchReport';
+import JourneyDelete from './JourneyDelete';
 
 type Invocation = {id: string; phase: string; output?: string; error?: string; trace_id?: string; model_id?: string;
   tool_calls?: {name: string; arguments: unknown}[]};
@@ -16,14 +17,18 @@ type Detail = {
   evaluation: {status: string; reason?: string; score: number | null; cases: EvaluationCase[]; error?: string; total?: number};
   versions: {version: number; digest: string; created: number}[];
   readiness: {deployable: boolean; issues: string[]}; last_invocation?: Invocation | null; mode: string;
+  conversation?: {id: string; messages: {role: string; text: string; job_id: string; trace_id?: string}[]} | null;
+  deletion?: {status: string; error?: string; runtimes?: number} | null;
 };
-const final = new Set(['DEPLOYED', 'SUCCEEDED', 'PASSED', 'FAILED_QUALITY', 'FAILED', 'ERROR', 'UNKNOWN', 'STALE', 'SKIPPED', 'NOT_STARTED', 'NOT_DEPLOYED']);
+const final = new Set(['DEPLOYED', 'SUCCEEDED', 'PASSED', 'FAILED_QUALITY', 'FAILED', 'ERROR', 'UNKNOWN', 'STALE', 'SKIPPED', 'NOT_STARTED', 'NOT_DEPLOYED', 'DELETED', 'DELETE_FAILED']);
 const label = (status: string) => ({
   QUEUED: 'Queued', WAIT_RUNTIME: 'Preparing AgentCore Runtime', SMOKE: 'Verifying the deployed agent', DEPLOYED: 'Deployed',
   EVAL_INVOKE: 'Running evaluation cases', EVAL_SCORE: 'Scoring with AgentCore', PASSED: 'Evaluation passed',
   FAILED_QUALITY: 'Needs improvement', SKIPPED: 'Skipped — no dataset', NOT_STARTED: 'Not started',
   NOT_DEPLOYED: 'Draft', FAILED: 'Deployment failed', ERROR: 'Evaluation could not complete',
   UNKNOWN: 'Outcome needs review', STALE: 'Version changed', SUCCEEDED: 'Completed',
+  DELETE_RUNTIMES: 'Deleting AgentCore Runtimes', DELETE_DATA: 'Deleting agent data',
+  DELETE_RECORDS: 'Removing saved records', DELETED: 'Deleted', DELETE_FAILED: 'Cleanup needs attention',
 }[status] || status);
 const statusType = (status: string): 'success' | 'error' | 'warning' | 'pending' | 'loading' =>
   ['DEPLOYED', 'PASSED', 'SUCCEEDED'].includes(status) ? 'success' :
@@ -38,6 +43,7 @@ export default function JourneyDetail({api, agentId, onRevise}: {api: Api; agent
   const [invocation, setInvocation] = useState<Invocation | null>(null);
   const [tab, setTab] = useState('try');
   const [pollVersion, setPollVersion] = useState(0);
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const mounted = useRef(true);
   const inFlight = useRef(false);
   useEffect(() => {
@@ -49,9 +55,11 @@ export default function JourneyDetail({api, agentId, onRevise}: {api: Api; agent
         const current = await api<Detail>(`/journey/agents/${agentId}`);
         if (cancelled) return;
         setDetail(current);
+        setError('');
         if (current.last_invocation) setInvocation(current.last_invocation);
         const running = !final.has(current.deployment.status) || !final.has(current.evaluation.status) ||
-          (current.last_invocation && !final.has(current.last_invocation.phase));
+          (current.last_invocation && !final.has(current.last_invocation.phase)) ||
+          (current.deletion && !final.has(current.deletion.status));
         if (running) timer = setTimeout(poll, 2500);
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); timer = setTimeout(poll, 5000); }
@@ -65,24 +73,51 @@ export default function JourneyDetail({api, agentId, onRevise}: {api: Api; agent
     inFlight.current = true;
     setBusy(true); setError('');
     try {
-      await api(`/journey/agents/${agentId}/${kind}`, {version: detail.current_version, idempotency_key: crypto.randomUUID(),
-        ...(kind === 'invoke' ? {input} : {})});
+      const result = await api<{conversation_id?: string}>(`/journey/agents/${agentId}/${kind}`, {version: detail.current_version, idempotency_key: crypto.randomUUID(),
+        ...(kind === 'invoke' ? {input, conversation_id: (conversationId ?? detail.conversation?.id) || null} : {})});
+      if (kind === 'invoke') { setConversationId(result.conversation_id); setInput(''); }
       if (mounted.current) setPollVersion(value => value + 1);
     } catch (e) { if (mounted.current) setError((e as Error).message); }
     finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   if (!detail) return <SpaceBetween size="l">{error && <Alert type="error">{error}</Alert>}<StatusIndicator type="loading">Loading agent</StatusIndicator></SpaceBetween>;
-  const deployed = detail.deployment.status === 'DEPLOYED';
+  if (detail.deletion?.status === 'DELETED') return <Alert type="success" header="Agent deleted">
+    AgentCore Runtimes and this agent's saved data have been removed. Shared Gateway connections and the AI Catalog remain available.
+  </Alert>;
+  const deleting = !!detail.deletion;
+  const deployed = detail.deployment.status === 'DEPLOYED' && !deleting;
   const evaluationRunning = !final.has(detail.evaluation.status);
   const invocationRunning = !!invocation && !final.has(invocation.phase);
+  const currentConversation = conversationId ?? detail.conversation?.id;
+  const messages = detail.conversation && detail.conversation.id === currentConversation ? detail.conversation.messages : [];
+  const arn = detail.deployment.binding?.arn;
+  const apiExample = arn ? `import boto3, json, uuid
+
+client = boto3.client("bedrock-agentcore", region_name="${arn.split(':')[3]}")
+request_id = uuid.uuid4().hex
+response = client.invoke_agent_runtime(
+    agentRuntimeArn="${arn}",
+    qualifier="DEFAULT",
+    runtimeSessionId="gab-" + request_id,
+    contentType="application/json",
+    payload=json.dumps({"input": "Ask your question here", "request_id": request_id}).encode(),
+)
+result = json.loads(response["response"].read())
+print(result["output"])
+print(result["tool_calls"])
+print(result["trace_id"])` : '';
   return <SpaceBetween size="l">
     {error && <Alert type="error">{error}</Alert>}
+    {detail.deletion && <Alert type={detail.deletion.status === 'DELETE_FAILED' ? 'error' : 'info'}
+      header={label(detail.deletion.status)}>{detail.deletion.error || 'Cleanup is running. You can leave this page and return to check its result.'}</Alert>}
     {!!detail.readiness.issues.length && <Alert type="warning" header="Review catalog capabilities">{detail.readiness.issues.join(' ')}</Alert>}
     <Container header={<Header variant="h2" actions={<SpaceBetween direction="horizontal" size="xs">
-      <Button onClick={() => onRevise({agentId, version: detail.current_version, definition: detail.definition})}>Revise agent</Button>
+      <Button disabled={deleting} onClick={() => onRevise({agentId, version: detail.current_version, definition: detail.definition})}>Revise agent</Button>
       <Button iconName="refresh" onClick={() => setPollVersion(value => value + 1)}>Refresh status</Button>
-      {!deployed && final.has(detail.deployment.status) && <Button variant="primary" disabled={busy || !detail.readiness.deployable}
+      {!deployed && !deleting && final.has(detail.deployment.status) && <Button variant="primary" disabled={busy || !detail.readiness.deployable}
         onClick={() => void action('deploy')}>Deploy to AgentCore</Button>}
+      {(!deleting || detail.deletion?.status === 'DELETE_FAILED') && <JourneyDelete api={api} agentId={agentId}
+        version={detail.current_version} onStarted={() => setPollVersion(value => value + 1)}/>}
     </SpaceBetween>}>Agent overview</Header>}>
       <KeyValuePairs columns={3} items={[
         {label: 'Template', value: detail.definition.foundation_name}, {label: 'Version', value: `v${detail.current_version}`},
@@ -94,18 +129,32 @@ export default function JourneyDetail({api, agentId, onRevise}: {api: Api; agent
       {detail.evaluation.error && <Alert type="warning">{detail.evaluation.error} Deployment remains available if its status is Deployed.</Alert>}
     </Container>
     <Tabs activeTabId={tab} onChange={({detail}) => setTab(detail.activeTabId)} tabs={[
-      {id: 'try', label: 'Try agent', content: <Container header={<Header variant="h2">Run your deployed agent</Header>}><SpaceBetween size="l">
+      {id: 'try', label: 'Try agent', content: <Container header={<Header variant="h2" description="Chat with your deployed agent. Each reply uses the previous three turns; the latest ten turns are saved."
+        actions={<Button disabled={busy || invocationRunning} onClick={() => {setConversationId(''); setInput(''); setInvocation(null);}}>New conversation</Button>}>
+        Chat with your agent</Header>}><SpaceBetween size="l">
+        {messages.map((message, index) => <Container key={message.job_id + message.role} header={<Header variant="h3">{message.role === 'user' ? 'You' : 'Agent'}</Header>}>
+          <div aria-label={message.role === 'assistant' && index === messages.length - 1 ? 'Agent output' : undefined}>
+            <ResearchReport report={{report: message.text, citations: []}}/>
+          </div>
+        </Container>)}
         <FormField label="Your question"><Textarea rows={4} value={input} onChange={({detail}) => setInput(detail.value)}
           placeholder="Ask your agent a question"/></FormField>
         <Button variant="primary" loading={busy || invocationRunning} disabled={!deployed || !detail.readiness.deployable || !input.trim() || invocationRunning}
           onClick={() => void action('invoke')}>Run agent</Button>
         {!deployed && <Box>Run becomes available after AgentCore deployment and its health check succeed.</Box>}
         {invocation?.error && <Alert type="warning">{invocation.error}</Alert>}
-        {invocation?.output && <div aria-label="Agent output"><ResearchReport report={{report: invocation.output, citations: []}}/></div>}
+        {!messages.length && currentConversation !== '' && invocation?.output && <div aria-label="Agent output"><ResearchReport report={{report: invocation.output, citations: []}}/></div>}
         {invocation?.trace_id && <ExpandableSection headerText="Execution details"><KeyValuePairs columns={1} items={[
           {label: 'Trace', value: invocation.trace_id}, {label: 'Model', value: invocation.model_id},
           {label: 'Gateway tools called', value: invocation.tool_calls?.map(call => call.name).join(', ') || 'None'},
         ]}/></ExpandableSection>}
+      </SpaceBetween></Container>},
+      {id: 'api', label: 'API access', content: <Container header={<Header variant="h2">Call this deployed agent</Header>}><SpaceBetween size="m">
+        <Box>Use an AWS identity allowed to invoke this Runtime. The call uses the same deployed model, instructions and Gateway tools as this chat.</Box>
+        {deployed ? <><KeyValuePairs columns={1} items={[{label: 'AgentCore Runtime ARN', value: arn},
+          {label: 'Required IAM action', value: 'bedrock-agentcore:InvokeAgentRuntime'}]}/>
+          <FormField label="Python API example"><Textarea readOnly rows={17} value={apiExample} ariaLabel="Python API example"/></FormField>
+        </> : <Box>The API example becomes available after deployment succeeds.</Box>}
       </SpaceBetween></Container>},
       {id: 'evaluation', label: 'Evaluation results', content: <SpaceBetween size="l">
         <Container header={<Header variant="h2" actions={detail.definition.dataset.length > 0 &&

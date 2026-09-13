@@ -41,6 +41,22 @@ class JourneyCloud:
             raise ValueError("Versioned storage is required")
         return {"bucket": self.settings["bucket"], "key": key, "version_id": version, "digest": digest(value)}
 
+    def find_agent_runtimes(self, agent_id, workspace, plans):
+        from .journey_cleanup_cloud import find_runtimes
+        return find_runtimes(self, agent_id, workspace, plans)
+
+    def delete_runtime(self, binding):
+        from .journey_cleanup_cloud import delete_runtime
+        return delete_runtime(self, binding)
+
+    def purge_agent_objects(self, entry):
+        from .journey_cleanup_cloud import purge_objects
+        return purge_objects(self, entry)
+
+    def delete_agent_log_streams(self, agent_id, versions):
+        from .journey_cleanup_cloud import delete_streams
+        return delete_streams(self, agent_id, versions)
+
     def read(self, location):
         response = self.s3.get_object(Bucket=self.settings["bucket"], Key=location["key"],
                                       VersionId=location["version_id"])
@@ -98,12 +114,12 @@ class JourneyCloud:
                 and endpoint["liveVersion"] == binding["version"]
                 and endpoint.get("targetVersion", binding["version"]) == binding["version"])
 
-    def invoke(self, binding, definition, text, request_id):
+    def invoke(self, binding, definition, text, request_id, history=None):
         if not self.ready(binding):
             raise ValueError("Runtime endpoint is not ready for the deployed version")
         response = self.data.invoke_agent_runtime(
             agentRuntimeArn=binding["arn"], qualifier="DEFAULT", runtimeSessionId="gab-" + request_id,
-            payload=canonical({"input": text, "request_id": request_id}), contentType="application/json",
+            payload=canonical({"input": text, "request_id": request_id, **({"history": history} if history else {})}), contentType="application/json",
             accept="application/json")
         stream = response["response"]
         try:

@@ -30,7 +30,8 @@ from . import builder_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED",
-            "DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE"}
+            "DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE",
+            "DELETED", "DELETE_FAILED"}
 ACTIVE = ("VALIDATING", "PREPARING", "LOCAL_RUNTIME_READY", "TESTING", "EVALUATING")
 
 
@@ -506,6 +507,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             rows = db.select('agents', where=[('owner', '=', persona['id']), ('workspace', '=', persona['workspace'])], order='created', descending=True).fetchall()
             result = []
             for row in rows:
+                deletion = get_foundation_record(db, "journey-deletion:" + row["id"])
+                if deletion and deletion["status"] == "DELETED":
+                    continue
                 definition = get_version(db, row["id"], row["current_version"])
                 latest = db.select('jobs', columns=['id', 'stage', 'version'], where=[('agent', '=', row['id'])], order='created', descending=True, limit=1).fetchone()
                 result.append({**dict(row), "name": definition["name"], "foundation_id": definition["foundation_id"],
@@ -521,7 +525,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             versions = [dict(r) for r in db.select('versions', columns=['version', 'digest', 'created'], where=[('agent', '=', agent_id)], order='version', descending=True)]
             jobs = [dict(r) for r in db.select('jobs', columns=['id', 'version', 'stage', 'created'], where=[('agent', '=', agent_id)], order='created', descending=True)]
             definition = get_version(db, agent_id, agent["current_version"])
-            if catalog_mode == 'live' and definition['foundation_id'] != 'web-research':
+            if catalog_mode == 'live' and definition.get('catalog_mode') != 'journey' and definition['foundation_id'] != 'web-research':
                 foundation = resource(db, 'foundations', definition['foundation_id'])
                 definition['readiness'] = live_readiness(db, who(request), definition, foundation, definition)
             return {**agent, "definition": definition, "versions": versions, "jobs": jobs}

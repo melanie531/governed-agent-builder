@@ -12,6 +12,8 @@ from backend.journey_schema import AgentDefinition, InvokeAgent, SaveAgent, Vers
 from backend.live_catalog import grant_scope
 from backend.store import Store
 from tests.journey_support import definition, drain, make_journey
+from backend import journey_lifecycle as lifecycle
+from backend.journey_schema import DeleteAgent, DeletePreview
 
 
 @pytest.fixture
@@ -80,6 +82,87 @@ def test_double_submit_and_duplicate_worker_do_not_duplicate_cloud_work(setup):
     assert len(cloud.invocations) == 1
     repeated = journey.action(PERSONAS["alex"], first["agent_id"], VersionAction(version=1, idempotency_key=uuid4().hex), "deploy")
     assert repeated["job_id"] == first["job_id"]
+
+
+def test_chat_reuses_server_history_and_isolates_agent_conversations(setup):
+    journey, cloud = setup
+    first, second = save(journey), save(journey)
+    drain(journey)
+    request = InvokeAgent(version=1, idempotency_key=uuid4().hex, input="My project is Aurora.")
+    started = journey.action(PERSONAS["alex"], first["agent_id"], request, "invoke")
+    assert journey.action(PERSONAS["alex"], first["agent_id"], request, "invoke") == started
+    drain(journey)
+    followup = InvokeAgent(version=1, idempotency_key=uuid4().hex, input="What is its support target?",
+                           conversation_id=started["conversation_id"])
+    with pytest.raises(HTTPException, match="Conversation not found"):
+        journey.action(PERSONAS["alex"], second["agent_id"], followup, "invoke")
+    journey.action(PERSONAS["alex"], first["agent_id"], followup, "invoke")
+    drain(journey)
+    assert cloud.invocations[-1]["history"][0]["text"] == "My project is Aurora."
+    assert len(journey.detail(PERSONAS["alex"], first["agent_id"])["conversation"]["messages"]) == 4
+
+
+def delete_request(journey, agent_id):
+    preview = lifecycle.preview(journey, PERSONAS["alex"], agent_id, DeletePreview(version=1), "session-a")
+    return DeleteAgent(version=1, idempotency_key=uuid4().hex,
+                       confirmation_token=preview["confirmation_token"], confirm_name=preview["name"])
+
+
+def test_delete_requires_second_confirmation_then_removes_resources_and_private_records(setup):
+    journey, cloud = setup
+    saved, other = save(journey), save(journey)
+    drain(journey)
+    request = delete_request(journey, saved["agent_id"])
+    assert len(cloud.created) == 2
+    for changed, session in (({"confirm_name": "wrong agent"}, "session-a"), ({}, "different-session"),
+                             ({"confirmation_token": "x" * 43}, "session-a")):
+        with pytest.raises(HTTPException):
+            lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request.model_copy(update=changed), session)
+    accepted = lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request, "session-a")
+    assert lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request, "session-a") == accepted
+    with pytest.raises(HTTPException, match="being deleted"):
+        journey.action(PERSONAS["alex"], saved["agent_id"], InvokeAgent(
+            version=1, idempotency_key=uuid4().hex, input="Do not run"), "invoke")
+    drain(journey)
+    assert len(cloud.created) == 1
+    deleted = journey.detail(PERSONAS["alex"], saved["agent_id"])
+    assert deleted["deletion"]["status"] == "DELETED"
+    assert "prompt" not in deleted["definition"] and "dataset" not in deleted["definition"]
+    assert journey.detail(PERSONAS["alex"], other["agent_id"])["deployment"]["status"] == "DEPLOYED"
+    with journey.store.tx() as db:
+        assert get(db, "journey-manifest:" + deleted["definition"]["digest"]) is None
+        assert db.select("components", where=[("id", "=", "mcp-tavily")]).fetchone()
+
+
+def test_delete_works_for_failed_deployment_and_revoked_catalog(setup):
+    journey, cloud = setup
+    cloud.create = lambda *args: (_ for _ in ()).throw(ValueError("Creation rejected"))
+    saved = save(journey)
+    drain(journey)
+    with journey.store.tx() as db:
+        db.delete("grants", where=[("persona", "=", "alex")])
+    request = delete_request(journey, saved["agent_id"])
+    lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request, "session-a")
+    drain(journey)
+    assert journey.detail(PERSONAS["alex"], saved["agent_id"])["deletion"]["status"] == "DELETED"
+
+
+def test_cleanup_failure_is_visible_and_can_be_confirmed_again(setup):
+    journey, cloud = setup
+    saved = save(journey)
+    drain(journey)
+    original = cloud.delete_runtime
+    cloud.delete_runtime = lambda *args: (_ for _ in ()).throw(ValueError("Cleanup denied"))
+    request = delete_request(journey, saved["agent_id"])
+    lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request, "session-a")
+    drain(journey)
+    assert journey.detail(PERSONAS["alex"], saved["agent_id"])["deletion"]["status"] == "DELETE_FAILED"
+    assert len(cloud.created) == 1
+    cloud.delete_runtime = original
+    request = delete_request(journey, saved["agent_id"])
+    lifecycle.confirm(journey, PERSONAS["alex"], saved["agent_id"], request, "session-a")
+    drain(journey)
+    assert not cloud.created
 
 
 def test_catalog_new_skill_is_dynamic_and_old_pins_fail_after_revision(setup):

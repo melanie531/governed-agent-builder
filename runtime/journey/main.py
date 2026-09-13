@@ -24,8 +24,9 @@ def load_manifest():
 
 
 def invoke(payload, context):
-    if not isinstance(payload, dict) or set(payload) != {"input", "request_id"}:
-        raise ValueError("Only input and request_id may be supplied")
+    if (not isinstance(payload, dict) or not {"input", "request_id"} <= set(payload)
+            or set(payload) - {"input", "request_id", "history"}):
+        raise ValueError("Only input, request_id and conversation history may be supplied")
     import boto3
     import re
     import time
@@ -55,7 +56,8 @@ def invoke(payload, context):
                               ContentType="application/json", ServerSideEncryption="AES256", IfNoneMatch="*")
         return {"key": key, "version_id": result["VersionId"], "digest": digest(receipt)}
 
-    return execute(manifest, payload["input"], session_id, model=model, gateway=gateway, publish=publish)
+    return execute(manifest, payload["input"], session_id, model=model, gateway=gateway, publish=publish,
+                   history=payload.get("history"))
 
 
 def create_app():

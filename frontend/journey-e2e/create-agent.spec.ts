@@ -35,6 +35,29 @@ for (const template of ['Research', 'Knowledge Q&A']) {
       await page.getByRole('textbox', {name: 'Your question'}).fill('What is Aurora’s support target? Search the documents.');
       await page.getByRole('button', {name: 'Run agent', exact: true}).click();
       await expect(page.getByLabel('Agent output')).toContainText('Aurora launches in October. Support responds in four hours.');
+      if (template === 'Knowledge Q&A' && !evaluation) {
+        await page.getByRole('textbox', {name: 'Your question'}).fill('Repeat the support target from your previous answer.');
+        await page.getByRole('button', {name: 'Run agent', exact: true}).click();
+        await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
+        await page.reload();
+        await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
+        await page.getByRole('tab', {name: 'API access', exact: true}).click();
+        await expect(page.getByRole('textbox', {name: 'Python API example'})).toHaveValue(/invoke_agent_runtime/);
+        await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+        await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill('wrong name');
+        await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+        await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
+        await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
+        await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+        const heading = await dialog.getByText(/^Type .+ to confirm$/).innerText();
+        await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(heading.slice(5, -11));
+        await dialog.getByRole('button', {name: 'Permanently delete', exact: true}).click();
+        await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+        await page.reload();
+        await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+      }
       if (template === 'Research' && !evaluation) {
         await page.getByRole('button', {name: 'Revise agent', exact: true}).click();
         await page.getByRole('button', {name: 'Next', exact: true}).click();

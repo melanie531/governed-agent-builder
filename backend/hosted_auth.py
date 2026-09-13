@@ -118,6 +118,19 @@ class HostedAuth:
         return principal
 
     def authenticate(self, request):
+        # Retry the complete identity check after a rejected serializable read.
+        # A deployment worker can advance the global fence during authentication;
+        # that conflict must not become an API Gateway authorization denial.
+        for attempt in range(6):
+            try:
+                return self._authenticate(request)
+            except HTTPException as exc:
+                if (exc.status_code != 409 or exc.detail != "Concurrent governance update; reload and retry"
+                        or attempt == 5):
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+
+    def _authenticate(self, request):
         if PENDING_COOKIE in request.cookies:
             raise HTTPException(401, "Verify your email before entering Studio")
         cookie = request.cookies.get(SESSION_COOKIE, "")

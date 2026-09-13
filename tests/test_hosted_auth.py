@@ -11,6 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 from backend.app import create_app
 from backend.hosted_auth import FLOW_COOKIE, SESSION_COOKIE, sha
@@ -49,6 +50,29 @@ def authenticate(app, client, key, subject="subject-a", group="studio-research",
     client.cookies.set(SESSION_COOKIE, cookie)
     client.headers.update({"Origin": ORIGIN, "X-CSRF-Token": csrf})
     return cookie
+
+
+@pytest.mark.parametrize("status,detail,expected_calls", [
+    (409, "Concurrent governance update; reload and retry", 2),
+    (403, "No approved Studio membership", 1),
+    (409, "Other conflict", 1),
+])
+def test_authentication_retries_only_serializable_conflicts(hosted, monkeypatch, status, detail, expected_calls):
+    app, client, key = hosted
+    authenticate(app, client, key)
+    original = app.state.hosted_auth._authenticate
+    calls = []
+
+    def interrupted(request):
+        calls.append(1)
+        if len(calls) == 1:
+            raise HTTPException(status, detail)
+        return original(request)
+
+    monkeypatch.setattr(app.state.hosted_auth, "_authenticate", interrupted)
+    response = client.get("/api/me")
+    assert len(calls) == expected_calls
+    assert response.status_code == (200 if expected_calls == 2 else status)
 
 
 @pytest.mark.parametrize("path", ["/api", "/api/me", "/api/agents", "/api/jobs/unknown", "/api/admin/catalog", "/api/agents/unknown/export", "/api/unknown"])
