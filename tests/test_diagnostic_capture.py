@@ -255,29 +255,30 @@ def test_review_does_not_substitute_for_price_evidence(fixture_capture, fault):
 
 def test_entry_composes_actual_adapter_ignores_context_headers(fixture_capture, monkeypatch):
     import boto3
-    import backend.dynamo_store
-    import foundation_harness.transport
+    import foundation_harness.diagnostic_exchange as adapter
     from runtime import diagnostic_capture as entry
+    from tests.test_diagnostic_exchange import client, ENDPOINT
     f = fixture_capture
+    exchange, calls = client(f, monkeypatch)
     class Settings:
         def is_file(self): return True
-        def read_bytes(self): return json.dumps({'region': 'us-west-2', 'state_table': 'fixture-only'}).encode()
+        def read_bytes(self):
+            return json.dumps({'region': 'us-west-2', 'exchange_endpoint': ENDPOINT,
+                               'manifest_digest': f.runtime['manifest_digest']}).encode()
     class File:
         def with_name(self, name):
             assert name == 'capture-settings.json'
             return Settings()
     monkeypatch.setattr(entry, 'Path', lambda _: File())
-    def client(name, config):
+    def aws_client(name, config):
+        assert name == 'sts'  # No DynamoDB or Runtime control clients in Runtime.
         assert config.retries == {'total_max_attempts': 1}
-        return {'sts': f.sts, 'bedrock-agentcore-control': f.control}[name]
-    session = SimpleNamespace(client=client, resource=lambda *a, **k: object())
+        return f.sts
+    session = exchange.transport.session
+    session.client = aws_client
     monkeypatch.setattr(boto3, 'Session', lambda **k: session)
-    monkeypatch.setattr(backend.dynamo_store, 'DynamoStore', lambda *a, **k: f.store)
-    monkeypatch.setattr(foundation_harness.transport, 'IAMTransport', lambda same_session: f.wire if same_session is session else pytest.fail('session mismatch'))
-    # The real resolver uses its real wall-clock by default. Fixture timestamps
-    # are intentionally finite; wrap only the clock, never the admission callback.
-    import backend.diagnostic_capture as adapter
-    real_capture = adapter.capture
-    monkeypatch.setattr(adapter, 'capture', lambda *a, **k: real_capture(*a, **k, clock=lambda: 100))
+    original_capture = adapter.capture
+    monkeypatch.setattr(adapter, 'capture', lambda *a, **k: original_capture(*a, **k, clock=lambda: 100))
     receipt = entry.invoke({'capture_ref': f.ref}, {'headers': {'role': 'attacker', 'runtime_version': '999'}})
     assert receipt['outcome'] == 'CAPTURED' and len(f.sends) == 1
+    assert calls == ['reserve', 'claim', 'complete']
