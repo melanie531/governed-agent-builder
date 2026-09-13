@@ -30,9 +30,13 @@ def test_timeout_consumes_once_and_holds_aggregate_budget(tmp_path):
                 assert get(db,'opus-capture:one')['state']=='CLAIMED'
                 assert get(db,'foundation-budget:account')['held_usd']=='0.06'
             calls.append(args);raise TimeoutError('unknown')
-    for error in [TimeoutError,ValueError]:
-        with pytest.raises(error):dispatch_capture(s,'one',role='r',workspace='w',request=REQUEST,transport=Wire(),admission_check=admit,clock=lambda:101)
-    assert len(calls)==1
+    with pytest.raises(TimeoutError):
+        dispatch_capture(s,'one',role='r',workspace='w',request=REQUEST,transport=Wire(),admission_check=admit,clock=lambda:101)
+    assert len(calls)==1  # A send already occurred before the timeout.
+    reopened=Store(str(tmp_path/'db'));before_retry=len(calls)
+    with pytest.raises(ValueError,match='CONSUMED'):
+        dispatch_capture(reopened,'one',role='r',workspace='w',request=REQUEST,transport=Wire(),admission_check=admit,clock=lambda:102)
+    assert len(calls)-before_retry==0  # No new sends after persistence reopen.
     with s.tx() as db:
         assert get(db,'opus-capture:one')['state']=='UNKNOWN'
         assert get(db,'foundation-budget:account')['held_usd']=='0.06'
@@ -66,6 +70,20 @@ def test_revoke_after_reservation_prevents_send(tmp_path):
         def post(self,*args):raise AssertionError('must not dispatch')
     with pytest.raises(ValueError,match='ADMISSION'):
         dispatch_capture(s,'one',role='r',workspace='w',request=REQUEST,transport=Wire(),admission_check=admit,clock=lambda:101)
+
+
+def test_claimed_then_crashed_before_send_has_zero_sends_after_reopen(tmp_path):
+    from scripts.opus_capture_ticket import consume_capture
+    s=prepared(tmp_path)
+    consume_capture(s,'one',role='r',workspace='w',request_digest=digest(REQUEST),now=101,admission_check=admit)
+    calls=[]
+    class Wire:
+        def post(self,*args):calls.append(args)
+    reopened=Store(str(tmp_path/'db'))
+    with pytest.raises(ValueError,match='CONSUMED'):
+        dispatch_capture(reopened,'one',role='r',workspace='w',request=REQUEST,transport=Wire(),admission_check=admit,clock=lambda:102)
+    assert calls==[]
+    with reopened.tx() as db:assert get(db,'foundation-budget:account')['held_usd']=='0.06'
 
 
 def test_overall_cap_rolls_back_ticket_and_all_buckets(tmp_path):
