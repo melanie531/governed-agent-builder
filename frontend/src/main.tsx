@@ -89,7 +89,7 @@ function App(){
  useEffect(()=>{if(!hosted)api<{personas:Persona[]}>('/demo/personas').then(x=>setPersonas(x.personas)).catch(e=>setError(e.message));void checkSession();},[]);
  useEffect(()=>{const expire=()=>{csrf='';setMe(null);setAgents([]);setJobId('');setJob(null);setDetail(null);setNotice('');if(!pending){void checkSession();}};window.addEventListener('studio-session-expired',expire);return()=>window.removeEventListener('studio-session-expired',expire);},[pending]);
  async function signOut(){await act(async()=>{const x=await api<{logout_url:string}>('/auth/logout',{});csrf='';setMe(null);window.location.assign(x.logout_url);});}
- useEffect(()=>{if(me)void act(refresh);},[me]);
+ useEffect(()=>{if(me&&page==='agents')void act(refresh);},[me,page]);
  useEffect(()=>{if(me&&journeyEnabled&&/^#agent\/[a-f0-9]{32}$/.test(location.hash))void openAgent(location.hash.slice(7));},[me]);
  useEffect(()=>{if(!me)return;void act(async()=>{if(['library','tools','models','policies'].includes(page)){setCatalog(await api<Catalog>('/admin/catalog'));if(page==='policies')setRequests(await api<RequestItem[]>('/requests'));}if(page==='audit')setAudit(await api('/admin/audit'));});},[page,me]);
  useEffect(()=>{if(!jobId||!me)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;async function poll(){try{const j=await api<Job>('/jobs/'+jobId);if(cancelled)return;setJob(j);if(!['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'].includes(j.stage)){timer=setTimeout(poll,450);}else{const d=await api<Detail>('/agents/'+detail!.id);if(!cancelled){setDetail(d);setAgents(await api<Agent[]>('/agents'));}}}catch(e){if(!cancelled)setError((e as Error).message);}}void poll();return()=>{cancelled=true;clearTimeout(timer);};},[jobId,me]);

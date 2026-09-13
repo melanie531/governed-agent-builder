@@ -4,6 +4,10 @@
     "target": "tavily",
     "operation": "tavily_search",
     "probe_arguments": {"query": "Amazon Bedrock AgentCore Runtime Gateway AWS documentation", "max_results": 1},
+    "argument_controls": {
+      "fixed": {"include_raw_content": false, "include_images": false, "include_image_descriptions": false},
+      "maximums": {"max_results": 5}
+    },
     "name": "Web search · Tavily",
     "workspaces": ["research"],
     "external": true,

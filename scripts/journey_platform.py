@@ -232,15 +232,19 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
                           approved_external_workspaces=server["workspaces"] if server["external"] else [],
                           data_handling=server["data_handling"], default_tool_ids=server["default_tool_ids"]))
     for tool in tool_inputs:
+        from foundation_harness.journey_tools import model_schema
         name = tool["target"] + "___" + tool["operation"]
         descriptor = next((entry for entry in discovered if entry["name"] == name), None)
         if descriptor is None:
             raise RuntimeError("Approved tool was not discovered through Gateway: " + name)
         binding = {"type": "mcp", "gateway_id": gateway["id"], "target_id": targets[tool["target"]],
                    "name": name, "inputSchema": descriptor["inputSchema"], "schema_digest": digest(descriptor["inputSchema"])}
+        if tool.get("argument_controls"):
+            binding["argument_controls"] = tool["argument_controls"]
+        effective_schema = model_schema(binding)
         items.append(item(tool["id"], tool["name"], "tool", descriptor["description"], binding, tool["workspaces"],
                           provider=tool["target"], protocol="MCP", parent_id="mcp-" + tool["target"],
-                          operation=tool["operation"], inputSchema=descriptor["inputSchema"], external=tool["external"],
+                          operation=tool["operation"], inputSchema=effective_schema, external=tool["external"],
                           approved_external_workspaces=tool["workspaces"] if tool["external"] else [],
                           data_handling=tool["data_handling"]))
     store = DynamoStore(target.state["app"]["outputs"]["StateTable"], target.session.resource("dynamodb"))

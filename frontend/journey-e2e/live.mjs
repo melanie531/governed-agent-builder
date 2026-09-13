@@ -244,6 +244,7 @@ try {
     await waitStatus(saved.agent_id, 'evaluation', scenario.eval ? 'PASSED' : 'SKIPPED');
     await expect(page.getByText(scenario.eval ? 'Evaluation passed' : 'Skipped — no dataset', {exact: true})).toBeVisible();
     await page.reload({waitUntil: 'domcontentloaded'});
+    await expect(page.getByRole('heading', {name: 'Agent overview', exact: true})).toBeVisible();
     await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
     const question = scenario.template === 'Research'
       ? 'Use web search to explain the difference between Amazon Bedrock AgentCore Runtime and Gateway. Cite AWS documentation.'

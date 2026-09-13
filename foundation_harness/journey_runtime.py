@@ -3,13 +3,13 @@ import json
 import time
 from contextlib import contextmanager
 
-from jsonschema import Draft202012Validator
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 
 from .config import canonical, digest
 from .journey_mcp import GatewayMCP
+from .journey_tools import model_schema, tool_arguments
 from .telemetry import ExecutionSpans
 
 
@@ -78,7 +78,7 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
                 if name not in discovered or digest(discovered[name]["inputSchema"]) != tool["schema_digest"]:
                     raise ValueError("Selected Gateway tool schema changed; revise and deploy again")
         specs = [{"toolSpec": {"name": tool["name"], "description": tool["description"][:1024],
-                               "inputSchema": {"json": tool["inputSchema"]}}} for tool in selected.values()]
+                               "inputSchema": {"json": model_schema(tool)}}} for tool in selected.values()]
         # Six tool turns plus a final answer. The last request has no tools and
         # uses observed evidence in a fresh context, so provider-specific tool
         # history/opaque continuation rules cannot reopen the call budget.
@@ -125,17 +125,16 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
                 raise ValueError("Model requested tools during the final answer")
             # Validate the whole request, including operations beyond the
             # remaining budget, before executing any external call.
+            normalized = []
             for call in calls:
                 tool = selected.get(call["name"])
-                if tool is None or not Draft202012Validator(tool["inputSchema"]).is_valid(call["input"]):
+                if tool is None:
                     raise ValueError("Model requested an unselected tool or invalid arguments")
+                normalized.append(tool_arguments(tool, call["input"]))
             results = []
-            allowed = calls[:6 - len(tool_calls)]
-            for call in allowed:
-                name, arguments = call["name"], call["input"]
-                # Keep read-only research bounded even if a provider accepts larger values.
-                if "max_results" in arguments and arguments["max_results"] > 5:
-                    arguments = {**arguments, "max_results": 5}
+            allowed = list(zip(calls, normalized))[:6 - len(tool_calls)]
+            for call, arguments in allowed:
+                name = call["name"]
                 with trace_run.span("execute_tool " + name, "execute_tool",
                                     {"gen_ai.tool.name": name, "gen_ai.tool.call.id": call["toolUseId"],
                                      "gen_ai.tool.call.arguments": json.dumps(arguments)}) as span:

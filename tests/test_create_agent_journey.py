@@ -59,6 +59,21 @@ def test_synthetic_cases_use_independent_sessions_and_evaluation_jobs(setup, tem
     assert len({item["request_id"] for item in cloud.invocations}) == 3
 
 
+def test_deployed_tool_argument_controls_come_from_the_catalog_binding(setup):
+    from foundation_harness.config import digest
+    journey, cloud = setup
+    controls = {"fixed": {"query": "Aurora"}}
+    with journey.store.tx() as db:
+        row = db.select("components", where=[("id", "=", "knowledge-search")]).fetchone()
+        item = json.loads(row["body"])
+        item["binding"]["argument_controls"] = controls
+        item["binding_digest"] = digest(item["binding"])
+        db.update("components", {"body": json.dumps(item)}, where=[("id", "=", item["id"])])
+    save(journey)
+    drain(journey)
+    assert next(iter(cloud.created.values()))["tools"][0]["argument_controls"] == controls
+
+
 @pytest.mark.parametrize("failure", ["quality", "service"])
 def test_evaluation_failure_preserves_deployed_runtime(setup, failure):
     journey, cloud = setup

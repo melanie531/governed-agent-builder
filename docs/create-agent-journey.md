@@ -15,6 +15,12 @@ permissions section contains each selected server's tools. Platform-recommended
 tools are initially selected. Only explicitly selected tool IDs are compiled into
 the saved manifest; adding tools to a server later does not expand existing agents.
 
+Tool argument controls also come from Catalog bindings. They constrain both the
+model's schema and the arguments sent to Gateway. The Web search publication
+returns at most five results with full page content and images disabled. These
+controls are pinned with the tool version; the Foundation contains no provider
+names or provider-specific parameter limits.
+
 `examples/journey/*.json` are operator publication inputs, not application runtime
 constants. `POST /api/journey/catalog/skills` is a platform-admin-only publication
 API with optimistic version checking. Workspace grants remain separate from

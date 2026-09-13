@@ -125,7 +125,9 @@ class Journey:
                 "capability_versions": definition["component_versions"],
                 "tools": [{"name": resolved[cid]["binding"]["name"], "description": resolved[cid]["description"],
                            "inputSchema": resolved[cid]["binding"]["inputSchema"],
-                           "schema_digest": resolved[cid]["binding"]["schema_digest"]} for cid in definition["tools"]],
+                           "schema_digest": resolved[cid]["binding"]["schema_digest"],
+                           **({"argument_controls": resolved[cid]["binding"]["argument_controls"]}
+                              if resolved[cid]["binding"].get("argument_controls") else {})} for cid in definition["tools"]],
                 "region": self.settings["region"], "gateway_url": self.settings["gateway_url"],
                 "evidence_bucket": self.settings["bucket"], "evidence_prefix": "journey/evidence",
                 "log_group": self.settings["log_group"]}

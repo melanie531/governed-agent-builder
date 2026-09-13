@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from foundation_harness.config import digest
 from backend.catalog import PERSONAS
 from backend.foundation_runs import get
 from backend.journey_schema import AgentDefinition, SaveAgent
@@ -159,3 +160,38 @@ def test_tool_budget_finishes_from_collected_evidence_without_exceeding_gateway_
     assert root["attributes"]["gab.tool_budget_exhausted"] is True
     assert root["attributes"]["gab.tool_calls_skipped"] == (2 if parallel else 0)
     assert len([s for s in receipt["spans"] if s["attributes"]["gen_ai.operation.name"] == "execute_tool"]) == 6
+
+
+def test_catalog_argument_controls_reach_model_and_gateway_without_mutating_provider_messages(manifest):
+    tool = manifest["tools"][0]
+    tool["inputSchema"]["properties"].update(raw={"type": "boolean"}, limit={"type": "integer"})
+    tool["schema_digest"] = digest(tool["inputSchema"])
+    tool["argument_controls"] = {"fixed": {"raw": False}, "maximums": {"limit": 3}}
+    native = copy.deepcopy(tool["inputSchema"])
+
+    class BroadRequestModel(Model):
+        def converse(self, **request):
+            response = super().converse(**request)
+            if len(self.requests) == 1:
+                response["output"]["message"]["content"][0]["toolUse"]["input"].update(raw=True, limit=50)
+            return response
+
+    gateway, model = Gateway(manifest), BroadRequestModel(tool["name"])
+    receipt = execute(manifest, "Search Aurora.", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    effective = model.requests[0]["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"]
+    assert effective["properties"]["raw"]["enum"] == [False]
+    assert effective["properties"]["limit"]["maximum"] == 3
+    assert gateway.calls[0][1] == {"query": "Aurora launch", "raw": False, "limit": 3}
+    assert receipt["tool_calls"][0]["arguments"] == gateway.calls[0][1]
+    original = model.requests[1]["messages"][1]["content"][0]["toolUse"]["input"]
+    assert original["raw"] is True and original["limit"] == 50
+    assert tool["inputSchema"] == native and digest(native) == tool["schema_digest"]
+
+
+@pytest.mark.parametrize("controls", [{"fixed": {"unknown_field": False}}, {"maximums": {"query": 3}}])
+def test_invalid_catalog_argument_controls_fail_before_model_or_gateway_execution(manifest, controls):
+    manifest["tools"][0]["argument_controls"] = controls
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    with pytest.raises(ValueError, match="Catalog tool argument control"):
+        execute(manifest, "Search Aurora.", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    assert not model.requests and not gateway.calls

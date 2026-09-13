@@ -31,6 +31,7 @@ for (const template of ['Research', 'Knowledge Q&A']) {
       await expect(page.getByText(evaluation ? 'Evaluation passed' : 'Skipped — no dataset', {exact: true})).toBeVisible();
       expect(createRequests).toHaveLength(1);
       await page.reload();
+      await expect(page.getByRole('heading', {name: 'Agent overview', exact: true})).toBeVisible();
       await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
       await page.getByRole('textbox', {name: 'Your question'}).fill('What is Aurora’s support target? Search the documents.');
       await page.getByRole('button', {name: 'Run agent', exact: true}).click();
@@ -52,9 +53,14 @@ for (const template of ['Research', 'Knowledge Q&A']) {
         await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
         await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
         const heading = await dialog.getByText(/^Type .+ to confirm$/).innerText();
-        await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(heading.slice(5, -11));
+        const deletedName = heading.slice(5, -11), deletedUrl = page.url();
+        await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(deletedName);
         await dialog.getByRole('button', {name: 'Permanently delete', exact: true}).click();
         await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+        await page.getByRole('link', {name: 'My agents', exact: true}).click();
+        await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible();
+        await expect(page.getByText(deletedName, {exact: true})).toHaveCount(0);
+        await page.goto(deletedUrl);
         await page.reload();
         await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
       }
