@@ -471,6 +471,7 @@ class LiveCatalog:
     registry: CatalogProvider
     ttl: float = 30
     provider_metadata: CatalogProvider = None
+    discovery: CatalogProvider = None
     _snapshot: list = field(default_factory=list, init=False)
     _expires: float = field(default=0, init=False)
 
@@ -478,22 +479,40 @@ class LiveCatalog:
         # Registry-only connection is intentional: no model-list invocation grant.
         registry_connected = bool(getattr(self.registry, 'providers', [self.registry]))
         models_connected = bool(getattr(self.models, 'providers', [self.models]))
+        if self.discovery is not None:
+            providers = getattr(self.discovery, 'providers', [self.discovery])
+            statuses = [p.status() for p in providers if hasattr(p, 'status')]
+            discovery_status = {
+                'connection_state': 'connected' if statuses and all(
+                    s.get('connection_state') == 'connected' for s in statuses) else 'NotConnected',
+                'official_data_status': 'pending' if any(
+                    s.get('official_data_status') != 'complete' for s in statuses) else 'complete',
+                'discovered': sum(s.get('discovered', 0) for s in statuses),
+                'excluded': sum(s.get('excluded', 0) for s in statuses),
+                'reason': '; '.join(s['reason'] for s in statuses if s.get('reason'))}
+        else:
+            discovery_status = {'connection_state': 'NotConnected',
+                                'reason': 'No owner-approved discovery cache source configured'}
         return {
             'Registry': {'connection_state': 'connected' if registry_connected else 'NotConnected'},
             'ModelGateway': {'connection_state': 'connected' if models_connected else 'NotConnected',
                              'reason': '' if models_connected else 'Production model-list permission not approved; BedrockClaude and OpenAI execution routes unchanged'},
             'ProviderMetadata': {'connection_state': 'connected' if self.provider_metadata else 'NotConnected',
                                  'reason': 'Provider metadata only; not entitlement, Gateway enumeration or execution'},
+            'Discovery': discovery_status,
             'FoundationLibrary': {'connection_state': 'platform-owned', 'authority': 'separate'}
         }
 
     def records(self):
-        if self.provider_metadata is None and time.monotonic() < self._expires:
+        if (self.provider_metadata is None and self.discovery is None
+                and time.monotonic() < self._expires):
             return copy.deepcopy(self._snapshot)
         try:
             items = self.models.records() + self.registry.records()
             if self.provider_metadata is not None:
                 items += self.provider_metadata.records()
+            if self.discovery is not None:
+                items += self.discovery.records()
             if len(items) > 200 or len({i['id'] for i in items}) != len(items):
                 raise ValueError('Invalid snapshot')
             self._snapshot = copy.deepcopy(items)
@@ -532,7 +551,10 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     metadata = config.get('provider_metadata', [])
     if not isinstance(metadata, list):
         raise ValueError('Invalid provider metadata sources')
-    if not registries and not models and not metadata:
+    discovery = config.get('discovery_sources', [])
+    if not isinstance(discovery, list):
+        raise ValueError('Invalid discovery sources')
+    if not registries and not models and not metadata and not discovery:
         return None
     binding = config.get('binding', {})
     account, region = binding.get('expected_account'), binding.get('region')
@@ -544,7 +566,7 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     ttl = config.get('cache_seconds', 30)
     if type(ttl) not in (int, float) or not 0 <= ttl <= 60:
         raise ValueError('Invalid cache interval')
-    if len(registries) + len(models) + len(metadata) > 10:
+    if len(registries) + len(models) + len(metadata) + len(discovery) > 10:
         raise ValueError('Too many catalog sources')
     for sources, service, key in ((registries, 'agent-registry', 'registry'), (models, 'bedrock-agentcore', 'gateway')):
         for source in sources:
@@ -572,6 +594,17 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     from .provider_model_metadata import validate_source, ProviderModelMetadata
     for source in metadata:
         validate_source(source, account, region)
+    from .discovery_catalog_source import DiscoveryCatalogSource, load_discovery_cache
+    for source in discovery:
+        if (not isinstance(source, dict) or source.get('approved') is not True
+                or not isinstance(source.get('source_id'), str)
+                or not re.fullmatch(r'[A-Za-z0-9-]+', source['source_id'])
+                or not isinstance(source.get('cache_path'), str) or not source['cache_path']):
+            raise ValueError('Explicitly approved discovery source with source_id and cache_path required')
+        # Fail loud at construction when the required cache is absent/corrupt:
+        # an enabled discovery source with missing data is a specific error,
+        # never a silently empty optional feature.
+        load_discovery_cache(source['cache_path'])
     from botocore.config import Config
     sdk_config = Config(connect_timeout=3, read_timeout=5, retries={'max_attempts': 1})
     if session is None:
@@ -595,7 +628,11 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
                   source['gateway_id'], region, source['exposure'], reader, tuple(source['target_ids']), source['gateway_arn']))
     pp = [ProviderModelMetadata(None, copy.deepcopy(source), account, region)
           for source in metadata]
-    return LiveCatalog(Sources(mp), Sources(rp), ttl, Sources(pp) if pp else None)
+    dp = [DiscoveryCatalogSource(source['source_id'], source['cache_path'],
+                                 copy.deepcopy(source.get('scope', {})), today=source.get('today'))
+          for source in discovery]
+    return LiveCatalog(Sources(mp), Sources(rp), ttl, Sources(pp) if pp else None,
+                       Sources(dp) if dp else None)
 
 
 def validate_model_endpoint(source):
@@ -663,7 +700,7 @@ def projection(db, persona, component):
     ready = component.get('integration_ready', True) and component.get('supported', True)
     usable = granted and ready
     requestable = not granted and component.get('requestable', True) and component.get('supported', True)
-    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement', 'native_model_id', 'approved_provider_api', 'supported_apis', 'documentation_only')
+    public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement', 'native_model_id', 'approved_provider_api', 'supported_apis', 'documentation_only', 'discovery_only', 'release_date', 'source_url', 'review', 'official_data_status', 'region_availability', 'runtime_protocol')
     public = {k: component[k] for k in public_fields if k in component}
     public.update({'record_id': component['id'], 'approved': True, 'external': component.get('external', False),
                    'discoverable': True, 'usable': usable, 'granted': granted, 'requestable': requestable,
