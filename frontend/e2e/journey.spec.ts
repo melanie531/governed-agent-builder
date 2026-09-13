@@ -87,21 +87,26 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await expect(page.getByText('Sample test passed',{exact:true}).first()).toBeVisible();
  await page.getByRole('tab',{name:'Versions and source'}).click();
  await expect(page.getByRole('cell',{name:'v4',exact:true}).first()).toBeVisible();
- // Request existing capability; Admin must decide; business sees effective result.
- await nav(page,'Capability requests');
- await selectOption(page,'Requested capability','Synthetic strategy insights');
- await page.getByRole('textbox',{name:/^Business reason/}).fill('Need synthetic strategy evidence for research briefs.');
+ // Business submits a general platform request (outside the catalog); Admin records handling; business sees the response.
+ await nav(page,'Requests');
+ await page.getByRole('textbox',{name:'Request summary'}).fill('Access to the quarterly market data feed');
+ await page.getByRole('textbox',{name:'Details',exact:true}).fill('Needed for research briefs; not available in the AI Catalog.');
  await page.getByRole('button',{name:'Send request'}).click();
- await expect(page.getByText('Pending approval',{exact:true})).toBeVisible();
+ await expect(page.getByText('Submitted',{exact:true}).first()).toBeVisible();
  await switchPersona(page,'Platform Admin');
  await nav(page,'Policies & approvals');
- await page.getByRole('textbox',{name:/Decision reason for restricted-insights/}).fill('Approved for synthetic research use.');
- await page.getByRole('button',{name:'Approve access',exact:true}).click();
- await expect(page.getByText('Approved',{exact:true})).toBeVisible();
+ await page.getByRole('textbox',{name:/Response for Access to the quarterly/}).fill('Feed onboarding scheduled with the data team.');
+ await page.getByRole('button',{name:'Resolve',exact:true}).click();
+ await expect(page.getByText('Resolved',{exact:true}).first()).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-admin-approval.png',fullPage:true});
+ // General requests never grant access; the admin grants the restricted tool explicitly.
+ await nav(page,'Tools & skills');
+ const insights=page.getByRole('checkbox',{name:'Alex Morgan access to Synthetic strategy insights',exact:true});
+ await expect(insights).not.toBeChecked();await insights.click();await expect(insights).toBeChecked();
  await switchPersona(page,'Alex Morgan');
- await nav(page,'Capability requests');
- await expect(page.getByText('Approved',{exact:true})).toBeVisible();
+ await nav(page,'Requests');
+ await expect(page.getByText('Resolved',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Feed onboarding scheduled with the data team.',{exact:true}).first()).toBeVisible();
  await nav(page,'Create agent');
  await page.getByRole('radio',{name:'Select Research brief'}).click();await next(page);
  await selectOption(page,'Model route','Claude · Bedrock');
