@@ -73,7 +73,7 @@ def assemble(current, *, bucket, key, version, runtime_arn, endpoint_arn):
         {'Effect': 'Allow', 'Action': ['bedrock-agentcore:GetAgentRuntime'], 'Resource': runtime_arn},
         {'Effect': 'Allow', 'Action': ['bedrock-agentcore:GetAgentRuntimeEndpoint'], 'Resource': endpoint_arn},
         {'Effect': 'Allow', 'Action': ['logs:CreateLogStream', 'logs:PutLogEvents'],
-         'Resource': sub('${DiagnosticCaptureLogs.Arn}:*')},
+         'Resource': attr('DiagnosticCaptureLogs')},
         {'Effect': 'Deny', 'Action': ['bedrock:*', 'bedrock-mantle:*',
             'bedrock-agentcore:InvokeAgentRuntime', 'bedrock-agentcore:InvokeGateway',
             'sts:AssumeRole', 'iam:PassRole'], 'Resource': '*'}]
