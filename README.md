@@ -136,8 +136,8 @@ See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for an explicit readiness check
 ## Verify
 
 ```bash
-uv sync --locked
-uv run --locked pytest -q
+uv sync --locked --extra foundation-runtime
+uv run --locked --extra foundation-runtime pytest -q
 npm --prefix frontend ci
 npm --prefix frontend run build
 npm --prefix frontend run test:e2e

@@ -33,11 +33,11 @@ node --version
 npm --version
 uv --version
 uv venv --python python3.13 .venv
-uv sync --locked --python .venv/bin/python
-uv run --locked pytest -q
+uv sync --locked --extra foundation-runtime --python .venv/bin/python
+uv run --locked --extra foundation-runtime pytest -q
 npm --prefix frontend ci
 npm --prefix frontend run build
-uv run --locked python scripts/serverless_package.py
+uv run --locked --extra foundation-runtime python scripts/serverless_package.py
 ```
 
 Dependency/build commands need approved access to public Python/npm registries (or populated caches); the ZIP does not vendor wheels, node_modules or compiled frontend assets. They do not require AWS or GitHub credentials. Do not copy any `.env`, `.venv`, session database, deployment outputs or credentials from the source machine. Deployment separately uses the peer's already-approved SDK identity.
@@ -51,19 +51,19 @@ Confirm the full approved target account out of band; a suffix alone is insuffic
 Every command requires all four inputs. Substitute placeholders before running; account IDs are identifiers, never credential values:
 
 ```sh
-uv run --locked python scripts/serverless_deploy.py preflight \
+uv run --locked --extra foundation-runtime python scripts/serverless_deploy.py preflight \
   --expected-account <APPROVED_FULL_ACCOUNT_ID> --profile <APPROVED_SDK_PROFILE> \
   --region <APPROVED_REGION> --state <ABSOLUTE_FRESH_TARGET_DIRECTORY>/release-state.json
-uv run --locked python scripts/serverless_deploy.py artifacts \
+uv run --locked --extra foundation-runtime python scripts/serverless_deploy.py artifacts \
   --expected-account <APPROVED_FULL_ACCOUNT_ID> --profile <APPROVED_SDK_PROFILE> \
   --region <APPROVED_REGION> --state <ABSOLUTE_FRESH_TARGET_DIRECTORY>/release-state.json
-uv run --locked python scripts/serverless_deploy.py deploy \
+uv run --locked --extra foundation-runtime python scripts/serverless_deploy.py deploy \
   --expected-account <APPROVED_FULL_ACCOUNT_ID> --profile <APPROVED_SDK_PROFILE> \
   --region <APPROVED_REGION> --state <ABSOLUTE_FRESH_TARGET_DIRECTORY>/release-state.json
-uv run --locked python scripts/serverless_deploy.py publish \
+uv run --locked --extra foundation-runtime python scripts/serverless_deploy.py publish \
   --expected-account <APPROVED_FULL_ACCOUNT_ID> --profile <APPROVED_SDK_PROFILE> \
   --region <APPROVED_REGION> --state <ABSOLUTE_FRESH_TARGET_DIRECTORY>/release-state.json
-uv run --locked python scripts/serverless_deploy.py status \
+uv run --locked --extra foundation-runtime python scripts/serverless_deploy.py status \
   --expected-account <APPROVED_FULL_ACCOUNT_ID> --profile <APPROVED_SDK_PROFILE> \
   --region <APPROVED_REGION> --state <ABSOLUTE_FRESH_TARGET_DIRECTORY>/release-state.json
 ```
