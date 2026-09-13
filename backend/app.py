@@ -633,19 +633,15 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             visible = {c['id'] for c in records if visibility(c, persona)}
             items = [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
                      and (p := projection(db, persona, c)) is not None]
-            # Per-user, DEDUPLICATED authorization summary for the authenticated
-            # caller (Task 3, 哥哥 refinement 2). Computed from the caller's own
-            # projections (has_grant is per persona+component), NOT the catalog
-            # total. Granted / requestable / callable are DISTINCT categories:
-            #   granted     = the caller actually holds a grant for this component,
-            #   requestable = not granted, access can be requested (never counted
-            #                 as granted),
-            #   callable    = granted AND execution binding verified ("can invoke";
-            #                 judged separately from granted).
-            # Deduplicated by top-level component id so one grant is never counted
-            # twice. Child tool operations and parent duplicates are excluded.
+            # Model-only current-user summary uses exact/evidenced identity.
+            # Compute before response filtering so valid historical routes can
+            # contribute to an eligible model without changing component grants.
             from .model_access_summary import model_access_summary
             access_summary = model_access_summary(items)
+            # Filter the discovery response only. catalog_records/resource and
+            # version/draft lookup retain historical route identities unchanged.
+            from .model_access_summary import listed_model
+            items = [p for p in items if p['kind'] != 'model' or listed_model(p)]
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
             return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": catalog_mode,
                     "access_summary": access_summary,
@@ -667,7 +663,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/api/capabilities")
     def capabilities(request: Request):
-        return ai_catalog(request)['items']
+        # Compatibility/readiness consumers retain authorized historical rows.
+        persona = who(request)
+        with store.tx() as db:
+            records = catalog_records(db)
+            visible = {c['id'] for c in records if visibility(c, persona)}
+            return [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
+                    and (p := projection(db, persona, c)) is not None]
 
     @app.get("/api/requests")
     def requests(request: Request):

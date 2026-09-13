@@ -75,6 +75,12 @@ def test_unapproved_discovery_source_rejected(tmp_path):
 
 
 def live_client(tmp_path, monkeypatch, cache_path):
+    # Synthetic IDs need explicit synthetic date evidence; production must not
+    # admit an unclassified row merely because a discovery cache contains it.
+    from backend.discovery_catalog_source import DiscoveryCatalogSource
+    monkeypatch.setattr(DiscoveryCatalogSource, '_launch_map', lambda self: {
+        'synthetic-recent-model': {'launch_date':'2026-08-01',
+            'source_url':'https://example.invalid/synthetic-official-post','content_sha256':'a'*64}})
     monkeypatch.setenv('CATALOG_MODE', 'live')
     app = create_app(str(tmp_path / 'live.sqlite'), demo_mode=True, worker_enabled=False,
                      catalog_provider=build(cache_path))
