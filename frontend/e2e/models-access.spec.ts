@@ -54,8 +54,8 @@ const legacyHaiku={...base,id:'model:demo-gateway-record:tgt0000001:us.anthropic
 
 const items=[recentNoAccess,outOfWindow,grantedModel,legacyHaiku];
 
-async function openCatalog(page,rows){
- await page.route('**/api/catalog',r=>r.fulfill({json:{items:rows,count:rows.length,mode:'live',agent_listing_implemented:true}}));
+async function openCatalog(page,rows,summary?:{granted:number;available:number;callable:number;requestable:number}){
+ await page.route('**/api/catalog',r=>r.fulfill({json:{items:rows,count:rows.length,mode:'live',agent_listing_implemented:true,...(summary?{access_summary:summary}:{})}}));
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
@@ -110,6 +110,12 @@ test('same-model routes deduplicate; requestable and MCP do not increase grants'
  const mcp={...grantedModel,id:'server',kind:'mcp_server',protocol:'MCP',supported:true};
  await openCatalog(page,[...items,duplicate,requestable,mcp]);
  await expect(page.getByText('Access granted: 1 of 3 models',{exact:true})).toBeVisible();
+});
+
+test('server identity association summary is used without granting the discovery row',async({page})=>{
+ await openCatalog(page,[recentNoAccess,legacyHaiku],{granted:1,available:1,callable:0,requestable:0});
+ await expect(page.getByText('Access granted: 1 of 1 models',{exact:true})).toBeVisible();
+ await expect(page.getByText('Not configured',{exact:true})).toBeVisible();
 });
 
 test('all grants false -> count is 0, no invented access',async({page})=>{

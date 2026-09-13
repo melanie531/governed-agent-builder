@@ -1,0 +1,14 @@
+{
+  "source_api": "bedrock:GetInferenceProfile",
+  "region": "us-west-2",
+  "checked_at": "2026-09-13T11:42:06Z",
+  "aliases": {
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": "anthropic.claude-haiku-4-5-20251001-v1:0"
+  },
+  "evidence": {
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
+      "inferenceProfileId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "unique_foundation_model_ids": ["anthropic.claude-haiku-4-5-20251001-v1:0"]
+    }
+  }
+}
