@@ -45,7 +45,7 @@ def register(db, actor, data, platform):
     from scripts.package_foundation import source_digest
     foundation = resource(db, 'foundations', data.foundation_id)
     cfg = load_config(data.config, digest(data.config))
-    if (getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough'
+    if (runtime_model_config(cfg.model)
             and platform.get('model') != cfg.model.model_dump(mode='json')):
         raise HTTPException(409, 'REGISTERED_RUNTIME_MODEL_BINDING_REQUIRED')
     if (not foundation['approved'] or cfg.foundation.digest != source_digest()
@@ -60,6 +60,7 @@ def register(db, actor, data, platform):
         if not c['approved'] or c['kind'] != kind or c['version'] != version or cid not in foundation[kind+'s']:
             raise HTTPException(409, 'CATALOG_BINDING_REQUIRED')
         catalog[cid] = digest(c)
+    registered_model({'config': data.config, 'platform': platform}, cfg.model.id)
     key = 'foundation-source:' + data.foundation_id
     old = runs.get(db, key)
     if (old or {}).get('revision', 0) != data.expected_revision:
@@ -148,7 +149,7 @@ def platform_metadata(raw=None):
         runtime_model = None
         gateways = [('ModelGateway', raw['model']['endpoint']),
                     ('ToolsGateway', raw['tools'][0]['endpoint'] if raw['tools'] else None)]
-        if getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough':
+        if runtime_model_config(cfg.model):
             runtime_model = runtime_platform_model(control, target.account, cfg.model)
             # No tool gateway/list permission is required for a no-tools source.
             gateways = [('ToolsGateway', raw['tools'][0]['endpoint'])] if raw['tools'] else []
@@ -205,16 +206,26 @@ def runtime_platform_model(control, account, model):
         raise HTTPException(409, 'CURRENT_APPROVED_RUNTIME_BINDING_REQUIRED') from None
 
 
+def runtime_model_config(model):
+    return (model.protocol == 'messages-passthrough'
+            or getattr(model, 'transport', 'inference-provider') == 'runtime-passthrough')
+
+
 def registered_model(source, selected):
     """One reviewed source per model in this slice. Never replace its model by a dropdown ID."""
     cfg = load_config(source['config'], digest(source['config']))
     if cfg.model.id != selected:
         raise HTTPException(409, 'REGISTERED_MODEL_REQUIRED')
-    if getattr(cfg.model, 'transport', 'inference-provider') == 'runtime-passthrough':
+    if runtime_model_config(cfg.model):
         if source['platform'].get('model') != cfg.model.model_dump(mode='json'):
             raise HTTPException(409, 'REGISTERED_RUNTIME_MODEL_BINDING_REQUIRED')
-        if cfg.model.requestContract == 'opus5-text-v1' and not cfg.model.responseIdentityEvidence:
-            raise HTTPException(409, 'UNVERIFIED_RESPONSE_IDENTITY')
+    if cfg.model.protocol == 'messages-passthrough':
+        # The pure codec permits 1..256. This product's reviewed reservation and
+        # policy envelope is deliberately exactly one 256-output-token call.
+        if (cfg.limits.maxOutputTokens != 256 or cfg.limits.maxIterations != 1
+                or cfg.limits.maxModelCalls != 1 or cfg.limits.maxToolCalls != 0
+                or cfg.tools or cfg.allowedTools or cfg.skills):
+            raise HTTPException(409, 'OPUS5_ONE_CALL_TEXT_LIMITS_REQUIRED')
 
 
 class FinalizeFoundation(Strict):

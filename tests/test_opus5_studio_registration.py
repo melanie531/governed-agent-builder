@@ -18,12 +18,9 @@ RESPONSE = 'synthetic-opus-response'
 
 def opus_config(verified=True):
     raw = config()
-    raw['model'].update(transport='runtime-passthrough', requestContract='opus5-text-v1',
-        requestModel=REQUEST, responseModels=[RESPONSE] if verified else [],
-        route='bedrockrt/' + REQUEST,
+    raw['model'].update(protocol='messages-passthrough', requestModel=REQUEST,
+        responseModelAllowlist=[RESPONSE] if verified else [], route=REQUEST,
         endpoint=raw['model']['endpoint'].replace('/inference/', '/bedrockrt/'))
-    if verified:
-        raw['model']['responseIdentityEvidence'] = digest('synthetic offline response fixture')
     raw.update(tools=[], allowedTools=[], skills=[])
     raw['limits'].update(maxIterations=1, maxModelCalls=1, maxToolCalls=0,
                          maxOutputTokens=256, timeoutSeconds=60)
@@ -48,8 +45,8 @@ def route_fixture(verified=True):
     return gateway, target, source, Model.model_validate(raw)
 
 
-@pytest.mark.parametrize('verified', [False, True])
-def test_exact_config_to_registration_path_without_list_targets(monkeypatch, verified):
+def test_exact_config_to_registration_path_without_list_targets(monkeypatch):
+    verified = True
     g, t, s, model = route_fixture(verified)
     validate_source(s, ACCOUNT, REGION)
     client = Client(g, t)  # deliberately no list_gateway_targets method
@@ -114,8 +111,8 @@ def test_platform_metadata_uses_owned_target_not_legacy_cfn_model_gateway(monkey
     assert result['role'].endswith(':role/synthetic') and len(control.calls) == 2
 
 
-@pytest.mark.parametrize('verified', [True, False])
-def test_saved_immutable_version_uses_registered_source_not_selected_alias(app, client, payload, verified):
+def test_saved_immutable_version_uses_registered_source_not_selected_alias(app, client, payload):
+    verified = True
     from backend import foundation_runs as runs
     from backend.foundation_approval import RegisterFoundation, register
     from backend.self_service_admission import approve_policy
@@ -150,3 +147,23 @@ def test_saved_immutable_version_uses_registered_source_not_selected_alias(app, 
             assert record['config']['limits']['maxOutputTokens'] == 256
             assert record['admission']['manifest_digest'] == record['manifest_digest']
         assert list(db.select('jobs')) == []
+
+
+def test_unverified_catalog_binding_cannot_become_a_registered_model():
+    g, t, s, model = route_fixture()
+    binding = s['bindings'][0]
+    binding.update(response_models=[], response_identity_evidence=None)
+    version = route_revision(g, t, binding)
+    entry = next(iter(s['exposure'].values()))
+    entry.update(version=version, approval_sha256=version)
+    validate_source(s, ACCOUNT, REGION)  # discoverable configuration, not admission
+    with pytest.raises(ValueError, match='VERIFIED_OPUS_RESPONSE_IDENTITY_REQUIRED'):
+        foundation_model(Client(g,t), s, model)
+
+
+def test_product_rejects_smaller_codec_budget():
+    raw = opus_config()
+    raw['limits']['maxOutputTokens'] = 16
+    model = load_config(raw, digest(raw)).model
+    with pytest.raises(HTTPException, match='OPUS5_ONE_CALL_TEXT_LIMITS_REQUIRED'):
+        registered_model({'config': raw, 'platform': {'model': model.model_dump(mode='json')}}, model.id)

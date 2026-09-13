@@ -135,14 +135,20 @@ def foundation_model(client, source, model):
         raise ValueError('Runtime route approval stale')
     base = gateway.get('gatewayUrl', '').removesuffix('/mcp').rstrip('/')
     raw = {'id': model.id, 'version': version, 'endpoint': base + '/' + binding['target_name'] + binding['path'],
-           'route': binding['target_name'] + '/' + binding['request_model'],
-           'provider': 'bedrock', 'protocol': 'messages', 'targetDigest': version,
-           'transport': 'runtime-passthrough', 'requestModel': binding['request_model'],
-           'responseModels': binding['response_models']}
-    if binding.get('request_contract'):
-        raw['requestContract'] = binding['request_contract']
-        if binding['response_identity_evidence'] is not None:
-            raw['responseIdentityEvidence'] = binding['response_identity_evidence']
+           'provider': 'bedrock', 'targetDigest': version}
+    if binding.get('request_contract') == 'opus5-text-v1':
+        # The peer codec has a distinct versioned protocol. Never relabel existing
+        # Haiku runtime-passthrough manifests or rename their responseModels field.
+        if (not binding['response_models'] or not binding['response_identity_evidence']
+                or binding['target_name'] != 'bedrockrt'):
+            raise ValueError('VERIFIED_OPUS_RESPONSE_IDENTITY_REQUIRED')
+        raw.update(protocol='messages-passthrough', route=binding['request_model'],
+                   requestModel=binding['request_model'],
+                   responseModelAllowlist=binding['response_models'])
+    else:
+        raw.update(protocol='messages', route=binding['target_name'] + '/' + binding['request_model'],
+                   transport='runtime-passthrough', requestModel=binding['request_model'],
+                   responseModels=binding['response_models'])
     expected = Model.model_validate(raw).model_dump(mode='json')
     if model.model_dump(mode='json') != expected:
         raise ValueError('REGISTERED_RUNTIME_MODEL_BINDING_MISMATCH')

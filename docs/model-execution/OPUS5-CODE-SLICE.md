@@ -2,6 +2,19 @@
 
 Code only. No cloud writes, inference, deployment, grant changes, PR or merge.
 
+## Current contract alignment (supersedes initial contract details below)
+
+Peer `cbd0babb1f72d4841569b2d2ce5a471e34cdeca9` was inspected directly. Backend now emits its explicit NEW Opus protocol: `messages-passthrough`, route=requestModel=`us.anthropic.claude-opus-5`, and `responseModelAllowlist`. No transport/requestContract/responseIdentityEvidence keys are added to this peer Opus manifest. Those earlier proposed fields below describe the first artifact only.
+
+The existing catalog configuration keeps `request_model`, `response_models`, `request_contract=opus5-text-v1`, and `response_identity_evidence`. Exact observed identity plus reviewed evidence hash is mandatory before producing a registered Opus Model. Empty catalog identities remain a valid UNVERIFIED catalog source, but registration fails closed; the peer Model itself does not accept empty identities. The evidence pin participates in `route_revision`, which binds model.version/targetDigest and protected source records. Backend registration/admission enforces exactly 256 output tokens, even though the codec permits 1..256.
+
+This is an explicit new protocol, **not** a rename/migration of deployed Haiku's `transport=runtime-passthrough`, `protocol=messages`, `requestModel`, `responseModels` shape. That existing backend branch stays separate. Peer `cbd0babb` does not yet implement deployed Haiku compatibility, and its static package `SOURCES` omits `opus_messages.py`. Both remain concrete peer/integration blockers. The backend patch does not touch any harness files and must not be used as justification to overwrite deployed bytes.
+
+Tests for this alignment load exact peer config source from Git into an in-memory Python module before importing backend tests. No peer or local harness file is written. This tests backend/schema compatibility only, not full ModelClient/transport packaging or execution.
+
+## Initial delivery history (869db36)
+
+
 ## Base and scope
 
 Base `82e65a81d8f04dbe0bc2141f3c80493637271ec5` is the parent's deployed integration revision. Fresh remote inspection found no `main`; remote HEAD is older `feat/local-first`. Latest integration at inspection, `8377bb99d849272eadf5198425cfc3a222a23705`, differs from this base only by peer-owned cloud-review documents. Branching from the deployed revision avoids carrying those documents as task-owned changes. The original checkout's four untracked parallel files were untouched.
@@ -53,3 +66,28 @@ Interpreter used: `/Users/peiyaoli/Documents/projects/governed-agent-builder/.ve
 | Whitespace | `git diff --check` | exit 0 |
 
 No whole-suite run, frontend rebuild, paid inference, cloud test, deployment or Linux execution. Existing Starlette/httpx deprecation warnings only in passing suites. The combined 160-pass run does **not** describe this backend-only commit in isolation; its 11 Opus tests deliberately remain red until peer harness integration.
+
+## Peer-contract follow-up verification
+
+Exact peer schema `cbd0babb1f72d4841569b2d2ce5a471e34cdeca9` loaded in memory; backend tests: **146 passed, exit 0, 21.30s**, two existing warnings. Reproduction from this branch (no harness writes):
+
+```python
+# Run using the existing Python interpreter recorded above, with stdin heredoc.
+import subprocess, sys, types
+import foundation_harness
+source = subprocess.check_output(['git', 'show',
+    'cbd0babb1f72d4841569b2d2ce5a471e34cdeca9:foundation_harness/config.py'], text=True)
+module = types.ModuleType('foundation_harness.config')
+module.__file__ = 'peer-cbd0babb:foundation_harness/config.py'
+sys.modules[module.__name__] = module
+exec(compile(source, module.__file__, 'exec'), module.__dict__)
+foundation_harness.config = module
+import pytest
+sys.exit(pytest.main(['-q', 'tests/test_opus5_studio_registration.py',
+    'tests/test_runtime_pinned_catalog.py', 'tests/test_foundation_approval.py',
+    'tests/test_self_service_admission.py', 'tests/test_builder_explicit_deploy.py',
+    'tests/test_foundation_producer.py', 'tests/test_foundation_finalization.py',
+    'tests/test_runtime_discovery_coexistence.py']))
+```
+
+Separate bounded comparison loaded the captured deployed Business `config.py` in memory: backend `foundation_model` reproduced the synthetic Haiku `runtime-passthrough` manifest unchanged. Loading that same manifest against peer `cbd0babb` confirmed validation rejection for deployed fields. Comparison exited 0 because it explicitly asserted this known compatibility blocker; **it is not a passing peer compatibility test**. No cloud calls. `python3 -m json.tool docs/model-execution/opus5-product-contract.json` and `git diff --check` both exited 0.

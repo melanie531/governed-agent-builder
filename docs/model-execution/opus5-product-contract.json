@@ -12,19 +12,18 @@
     "response_identity_evidence": null
   },
   "harness_model_contract": {
-    "transport": "runtime-passthrough",
     "provider": "bedrock",
-    "protocol": "messages",
-    "requestContract": "opus5-text-v1",
-    "route": "bedrockrt/us.anthropic.claude-opus-5",
+    "protocol": "messages-passthrough",
+    "route": "us.anthropic.claude-opus-5",
     "requestModel": "us.anthropic.claude-opus-5",
-    "responseModels": [],
-    "responseIdentityEvidence": null
+    "responseModelAllowlist": []
   },
   "harness_serialization": {
-    "legacy": "Omit new fields when unset; preserve existing manifest digests byte-for-byte",
-    "unverified_opus": "Omit responseIdentityEvidence when null; retain requestContract and empty responseModels",
-    "verified_opus": "Exact responseModels array plus responseIdentityEvidence SHA256 of reviewed actual response evidence; no candidate native ID or profile alias substitution"
+    "legacy_messages": "Preserve prior field layout/hash unchanged",
+    "deployed_haiku_runtime": "Preserve transport=runtime-passthrough, protocol=messages, target/profile route, requestModel and responseModels; peer cbd0babb does not yet support this shape",
+    "new_opus": "protocol=messages-passthrough, route=requestModel=exact US profile, responseModelAllowlist serialized; no transport/requestContract/responseIdentityEvidence fields in this manifest",
+    "unverified_opus": "Empty catalog response_models and null response_identity_evidence remain unverified; cannot construct/register a peer Model until reviewed actual identity is available",
+    "response_evidence": "Catalog binding response_identity_evidence SHA256 is included in route_revision, hence model.version/targetDigest; no fabricated actual identity"
   },
   "derived_fields": {
     "model.id": "model:<exact gateway_id>:<exact target_id>:us.anthropic.claude-opus-5",
@@ -34,7 +33,8 @@
     "source.exposure[model.id].version": "Same route_revision",
     "source.exposure[model.id].approval_sha256": "Same route_revision",
     "source.exposure[model.id].digest_format": "native-catalog-v2",
-    "source.config.foundation.digest": "scripts.package_foundation.source_digest() AFTER peer harness integration"
+    "source.config.foundation.digest": "scripts.package_foundation.source_digest() AFTER peer harness integration",
+    "model.responseModelAllowlist": "Exact catalog_binding.response_models for NEW messages-passthrough Opus only; never rename deployed Haiku responseModels"
   },
   "limits": {
     "maxIterations": 1,
@@ -47,12 +47,23 @@
   "wire_request": {
     "model": "us.anthropic.claude-opus-5",
     "system": "Summarize only the supplied synthetic text.",
-    "messages": [{"role": "user", "content": "Synthetic input from the saved dataset."}],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Synthetic input from the saved dataset."
+      }
+    ],
     "max_tokens": 256,
     "stream": false,
-    "thinking": {"type": "disabled"}
+    "thinking": {
+      "type": "disabled"
+    }
   },
-  "wire_forbidden_fields": ["tools", "tool_choice", "anthropic_version"],
+  "wire_forbidden_fields": [
+    "tools",
+    "tool_choice",
+    "anthropic_version"
+  ],
   "gateway": {
     "region": "us-west-2",
     "authorizerType": "AWS_IAM",
@@ -63,7 +74,10 @@
     "inbound_signing_service": "bedrock-agentcore",
     "outbound_signing_service": "bedrock",
     "action": "bedrockrt___POST:/v1/messages",
-    "required_forwarded_headers": ["anthropic-version", "content-type"],
+    "required_forwarded_headers": [
+      "anthropic-version",
+      "content-type"
+    ],
     "anthropic-version": "2023-06-01",
     "lookup": "GetGateway + exact GetGatewayTarget, never ListGatewayTargets for this no-tools binding"
   },
@@ -78,8 +92,21 @@
     "Protected Foundation source, approved base bundle, actual Linux proof and finalized artifact",
     "Reviewed deployment account/region/roles/bucket/VPC network/producer_role/evaluation_collector settings",
     "Reviewed all-service cost envelope, rate_card_digest and persistent lifetime reservation",
-    "Exact role-specific IAM/Cedar permits with 256 output limit, no tools, stream=false and thinking disabled"
+    "Exact role-specific IAM/Cedar permits with 256 output limit, no tools, stream=false and thinking disabled",
+    "Preserve deployed Runtime Haiku Model/transport/serializer compatibility absent in cbd0babb; do not replace deployed harness wholesale",
+    "Add opus_messages.py to scripts/package_foundation.py explicit SOURCES before building any artifact"
   ],
-  "unchanged_flags": ["FOUNDATION_LIVE_ENABLED", "FOUNDATION_PRODUCER_ENABLED", "FOUNDATION_M0_PROBE_ENABLED"],
-  "not_proven": ["actual response identity", "owned Foundation invocation", "product deployment", "Linux execution", "release readiness"]
+  "unchanged_flags": [
+    "FOUNDATION_LIVE_ENABLED",
+    "FOUNDATION_PRODUCER_ENABLED",
+    "FOUNDATION_M0_PROBE_ENABLED"
+  ],
+  "not_proven": [
+    "actual response identity",
+    "owned Foundation invocation",
+    "product deployment",
+    "Linux execution",
+    "release readiness"
+  ],
+  "peer_harness_revision": "cbd0babb1f72d4841569b2d2ce5a471e34cdeca9"
 }
