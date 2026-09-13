@@ -1,5 +1,11 @@
 # Opus 5 foundation package — ARM64 execution record
 
+> **弟弟 reports: offline-emulated (binfmt) run passed.** The evidence below is the
+> fixed evidence set (pkg sha256, image digest, in-container uname -m + Python,
+> exit code) for 哥哥 to verify before sign-off. This is NOT native/live AgentCore
+> acceptance and makes no readiness claim.
+
+
 ## ⚠️ EMULATED Linux ARM64 (binfmt/qemu) — NOT equivalent to AgentCore on-host acceptance
 This run is qemu-aarch64 emulation via Docker binfmt on an x86_64 host. It proves
 the packaged native aarch64 wheels load and the codec runs on aarch64 instruction
