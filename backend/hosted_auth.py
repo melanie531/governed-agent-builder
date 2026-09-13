@@ -106,6 +106,14 @@ class HostedAuth:
                 db.delete('grants', where=[('persona', '=', subject)])
                 for component in policy["grants"]:
                     db.insert("grants", {"persona": subject, "component": component}, ignore=True)
+                if os.getenv("JOURNEY_ENABLED") == "1":
+                    from .journey_catalog import records
+                    from .live_catalog import grant_scope, visibility
+                    for component in records(db):
+                        if (principal["workspace"] in component.get("default_grant_workspaces", [])
+                                and visibility(component, principal)):
+                            db.insert("grants", {"persona": subject, "component": component["id"]}, ignore=True)
+                            db.insert("settings", {"key": grant_scope(principal, component["id"]), "body": "true"}, upsert=True)
             db.insert('principals', {'id': subject, 'body': json.dumps(principal), 'expires': claims['exp']}, upsert=True)
         return principal
 

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "mcp-tavily", "target": "tavily", "name": "Tavily",
+    "description": "Search the public web and read source pages for research.",
+    "provider": "Tavily", "workspaces": ["research"], "external": true,
+    "default_tool_ids": ["web-search"],
+    "data_handling": "Public search queries and page URLs are sent to Tavily through AgentCore Gateway."
+  },
+  {
+    "id": "mcp-knowledge", "target": "knowledge", "name": "Aurora knowledge",
+    "description": "Find answers in the platform's synthetic Aurora organization documents.",
+    "provider": "Platform knowledge", "workspaces": ["research", "operations"], "external": false,
+    "default_tool_ids": ["knowledge-search"],
+    "data_handling": "Searches the platform's synthetic knowledge collection through AgentCore Gateway."
+  }
+]

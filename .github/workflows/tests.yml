@@ -19,3 +19,18 @@ jobs:
       - run: npm --prefix frontend ci
       - run: uv run --locked --extra foundation-runtime pytest -q
       - run: npm --prefix frontend run build
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - run: npx --prefix frontend playwright test --config frontend/playwright.config.ts
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+      - run: npx --prefix frontend playwright test --config frontend/playwright.journey.config.ts
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-evidence
+          path: |
+            artifacts/test-results
+            artifacts/journey-browser
+          retention-days: 7

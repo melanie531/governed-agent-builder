@@ -1,0 +1,20 @@
+[
+  {
+    "id": "bedrock-claude",
+    "name": "Claude Haiku 4.5",
+    "provider": "Anthropic · Amazon Bedrock",
+    "description": "Fast model for grounded answers and research briefs.",
+    "model_id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "supports_temperature": true,
+    "workspaces": ["research", "operations"]
+  },
+  {
+    "id": "bedrock-openai",
+    "name": "GPT-6 Astra",
+    "provider": "OpenAI · Amazon Bedrock",
+    "description": "Reasoning model for research and domain tasks.",
+    "model_id": "global.openai.gpt-6-astra",
+    "supports_temperature": false,
+    "workspaces": ["research"]
+  }
+]

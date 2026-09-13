@@ -1,0 +1,12 @@
+{
+  "id": "governed-foundation",
+  "version": "2.0.0",
+  "name": "Governed Foundation Harness",
+  "capabilities": [
+    "Model and MCP tool loop",
+    "Workspace authorization",
+    "Execution traces",
+    "AgentCore deployment",
+    "Optional on-demand evaluation"
+  ]
+}

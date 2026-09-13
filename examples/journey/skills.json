@@ -1,0 +1,14 @@
+[
+  {
+    "id": "concise",
+    "name": "Concise writing",
+    "description": "Lead with the answer and keep the report focused.",
+    "instruction": "Lead with the answer. Prefer concise paragraphs and actionable conclusions."
+  },
+  {
+    "id": "citations",
+    "name": "Evidence citations",
+    "description": "Cite source URLs or document IDs for factual claims.",
+    "instruction": "Cite the source URL or document ID next to factual claims. Never invent a citation."
+  }
+]

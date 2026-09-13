@@ -1,0 +1,32 @@
+[
+  {
+    "id": "web-search",
+    "target": "tavily",
+    "operation": "tavily_search",
+    "probe_arguments": {"query": "Amazon Bedrock AgentCore Runtime Gateway AWS documentation", "max_results": 1},
+    "name": "Web search · Tavily",
+    "workspaces": ["research"],
+    "external": true,
+    "data_handling": "Public search queries are sent to Tavily through AgentCore Gateway."
+  },
+  {
+    "id": "web-extract",
+    "target": "tavily",
+    "operation": "tavily_extract",
+    "probe_arguments": {"urls": ["https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html"]},
+    "name": "Read web pages · Tavily",
+    "workspaces": ["research"],
+    "external": true,
+    "data_handling": "Public page URLs are sent to Tavily through AgentCore Gateway."
+  },
+  {
+    "id": "knowledge-search",
+    "target": "knowledge",
+    "operation": "search",
+    "probe_arguments": {"query": "Aurora launch"},
+    "name": "Aurora knowledge search",
+    "workspaces": ["research", "operations"],
+    "external": false,
+    "data_handling": "Searches the platform's synthetic Aurora knowledge collection through AgentCore Gateway."
+  }
+]

@@ -25,11 +25,12 @@ from .harness import evaluate, run_case
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
 from .hosted_auth import HostedAuth
-from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog
+from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog, data_policy_allows
 from . import builder_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
-TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED"}
+TERMINAL = {"PASS", "NEEDS_CHANGES", "LIVE_PASS", "BLOCKED",
+            "DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE"}
 ACTIVE = ("VALIDATING", "PREPARING", "LOCAL_RUNTIME_READY", "TESTING", "EVALUATING")
 
 
@@ -101,7 +102,7 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None):
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
@@ -113,6 +114,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         except Exception:
             catalog_configuration_invalid = True
     def catalog_records(db):
+        if journey is not None:
+            from .journey_catalog import records
+            return records(db)
         if catalog_mode == "live":
             if catalog_provider is None:
                 raise HTTPException(503, "NotConnected: Live catalog configuration invalid; no fixture fallback" if catalog_configuration_invalid else "NotConnected: Live catalog integration is not configured; no fixture fallback")
@@ -191,6 +195,16 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     store = repository if repository is not None else Store(db_path or (os.environ["STATE_PATH"] if hosted else str(ROOT / "artifacts/state.sqlite")), seed_personas=not hosted)
     auth = HostedAuth(store, public) if hosted else None
     mode_label = "CLOUD-HOSTED DEMO" if hosted else "LOCAL SIMULATION"
+    if journey is None and os.getenv("JOURNEY_ENABLED") == "1":
+        from .journey import Journey
+        from .journey_cloud import JourneyCloud
+        with store.tx() as db:
+            settings = get_foundation_record(db, "journey-platform")
+        if not settings:
+            raise RuntimeError("Publish the Journey platform configuration before enabling it")
+        journey = Journey(store, settings, JourneyCloud(settings), hosted=hosted, auth=auth)
+    if journey is not None:
+        journey.hosted, journey.auth = hosted, auth
 
     def principal(db, subject):
         if not hosted:
@@ -214,9 +228,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             with store.tx() as db:
                 # A single supported worker owns this local database. Active jobs restart
                 # safely because fixture execution has no external side effects.
-                for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])]).fetchall():
+                for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", sorted(TERMINAL))]).fetchall():
                     from .foundation_runs import get as get_run
-                    if get_run(db, 'foundation-run:' + job['id']) or get_run(db, 'foundation-pending:' + job['id']):
+                    if get_run(db, 'foundation-run:' + job['id']) or get_run(db, 'foundation-pending:' + job['id']) or get_run(db, 'journey-job:' + job['id']):
                         continue
                     db.update('jobs', {'stage': 'VALIDATING', 'updated': time.time()}, where=[('id', '=', job['id'])])
                     event(db, job["id"], "RECOVERED", {"message": "Resumed durable local job after process restart"})
@@ -233,6 +247,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     app.state.store = store
     app.state.wake = asyncio.Event()
     app.state.hosted_auth = auth
+    app.state.journey = journey
 
     @app.middleware("http")
     async def security(request: Request, call_next):
@@ -346,13 +361,17 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/studio-config.json")
     def studio_config():
-        return {"hosted": hosted, "mode": mode_label}
+        return {"hosted": hosted, "mode": mode_label, **({"journey_enabled": True} if journey is not None else {})}
 
     def who(request, admin=False):
         persona = request.state.persona
         if admin and persona["role"] != "admin":
             raise HTTPException(403, "Platform admin required")
         return persona
+
+    if journey is not None:
+        from .journey import router as journey_router
+        app.include_router(journey_router(journey, who))
 
     @app.get("/api/demo/personas")
     def personas():
@@ -489,7 +508,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             for row in rows:
                 definition = get_version(db, row["id"], row["current_version"])
                 latest = db.select('jobs', columns=['id', 'stage', 'version'], where=[('agent', '=', row['id'])], order='created', descending=True, limit=1).fetchone()
-                result.append({**dict(row), "name": definition["name"], "foundation_id": definition["foundation_id"], "job": dict(latest) if latest else None})
+                result.append({**dict(row), "name": definition["name"], "foundation_id": definition["foundation_id"],
+                               "foundation_name": definition.get("foundation_name"), "catalog_mode": definition.get("catalog_mode"),
+                               "deployment": get_foundation_record(db, f"journey-deployment:{row['id']}:{row['current_version']}") if definition.get("catalog_mode") == "journey" else None,
+                               "job": dict(latest) if latest else None})
             return result
 
     @app.get("/api/agents/{agent_id}")
@@ -634,10 +656,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             items = [p for c in records if (not c.get('parent_id') or c['parent_id'] in visible)
                      and (p := projection(db, persona, c)) is not None]
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
-            return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": catalog_mode,
+            return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": "live" if journey else catalog_mode,
                     "agent_listing_implemented": catalog_mode == "live",
-                    "connection_state": "connected" if catalog_mode == "live" else "fixture",
-                    "native_connection_state": "connected" if catalog_mode == "live" else "NotConnected",
+                    "connection_state": "connected" if journey or catalog_mode == "live" else "fixture",
+                    "native_connection_state": "connected" if journey or catalog_mode == "live" else "NotConnected",
                     "sources": catalog_provider.source_status() if catalog_mode == 'live' and hasattr(catalog_provider, 'source_status') else {},
                     "revision": digest(items),
                     "execution_ready": False if catalog_mode == "live" else None}
@@ -766,7 +788,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             component = catalog_resource(db, subject, data.component_id) if data.enabled else {'id': data.component_id, 'approved': True, 'external': False}
             if principal(db, data.persona_id)["role"] != "business":
                 raise HTTPException(403, "Business identity required")
-            if data.enabled and (not component["approved"] or component["external"] and not principal(db, data.persona_id)["external_allowed"]):
+            if data.enabled and (not component["approved"] or not data_policy_allows(component, principal(db, data.persona_id))):
                 raise HTTPException(403, "Approval or workspace data policy blocks this grant")
             if data.enabled:
                 db.insert('grants', {'persona': data.persona_id, 'component': data.component_id}, ignore=True)
@@ -800,7 +822,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 pinned = db.select('settings', where=[('key', '=', 'request-version:' + request_id)]).fetchone()
                 if pinned and json.loads(pinned['body'])['version'] != component['version']:
                     raise HTTPException(409, 'Capability version changed; reject and request the current version')
-                if not component["approved"] or component["external"] and not principal(db, row["requester"])["external_allowed"]:
+                if not component["approved"] or not data_policy_allows(component, principal(db, row["requester"])):
                     raise HTTPException(403, "Approval or data policy blocks this capability")
                 db.insert('grants', {'persona': row['requester'], 'component': row['component']}, ignore=True)
                 db.insert('settings', {'key': grant_scope(subject, row['component']), 'body': 'true'}, upsert=True)
@@ -850,7 +872,13 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def step_job(job_id):
         from .foundation_runs import get as get_run
         with store.tx() as db:
+            journey_run = get_run(db, 'journey-job:' + job_id)
             live_run = get_run(db, 'foundation-run:' + job_id) or get_run(db, 'foundation-pending:' + job_id)
+        if journey_run:
+            if journey is None:
+                raise RuntimeError("Journey worker is not configured")
+            journey.step(job_id)
+            return
         if live_run:
             try:
                 if foundation_jobs is None:
@@ -927,7 +955,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         running = set()
         while True:
             with store.tx() as db:
-                jobs = [r["id"] for r in db.select('jobs', columns=['id'], where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])], order='created') if r["id"] not in running][:2 - len(running)]
+                jobs = [r["id"] for r in db.select('jobs', columns=['id'], where=[('stage', "not_in", sorted(TERMINAL))], order='created') if r["id"] not in running][:2 - len(running)]
                 for job_id in jobs:
                     db.update('jobs', {}, where=[('id', '=', job_id)], increments={'attempts': 1})
             if jobs:
@@ -940,7 +968,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             app.state.wake.clear()
             # Close enqueue/clear race before sleeping.
             with store.tx() as db:
-                pending = db.select('jobs', where=[('stage', "not_in", ['PASS','NEEDS_CHANGES','LIVE_PASS','BLOCKED'])], limit=1).fetchone()
+                pending = db.select('jobs', where=[('stage', "not_in", sorted(TERMINAL))], limit=1).fetchone()
             if pending:
                 continue
             await app.state.wake.wait()

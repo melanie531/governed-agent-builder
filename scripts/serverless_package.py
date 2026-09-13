@@ -9,7 +9,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(qa_enrollments=None):
     output = ROOT / "artifacts/serverless-release.zip"
     output.parent.mkdir(parents=True, exist_ok=True)
     requirements = ROOT / "artifacts/serverless-requirements.txt"
@@ -18,7 +18,9 @@ def main():
         target = Path(temporary)
         subprocess.run(["uv", "pip", "install", "--target", str(target), "--python-version", "3.13", "--python-platform", "aarch64-manylinux2014", "--only-binary", ":all:", "--require-hashes", "-r", str(requirements)], cwd=ROOT, check=True)
         shutil.copytree(ROOT / "backend", target / "backend", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        for name in ('foundation_harness', 'foundations'):
+        if qa_enrollments is not None:
+            shutil.copy2(qa_enrollments, target / "backend/qa_enrollments.json")
+        for name in ('foundation_harness', 'foundations', 'tools'):
             shutil.copytree(ROOT / name, target / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (target / 'scripts').mkdir()
         for name in ('foundation_target.py', 'package_foundation.py', 'verify_package_admission.py'):
@@ -29,9 +31,16 @@ def main():
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(target.rglob("*")):
                 if path.is_file() and "__pycache__" not in path.parts:
-                    archive.write(path, str(path.relative_to(target)))
+                    info = zipfile.ZipInfo(str(path.relative_to(target)), date_time=(2026, 1, 1, 0, 0, 0))
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.external_attr = (0o100755 if path.stat().st_mode & 0o111 else 0o100644) << 16
+                    archive.writestr(info, path.read_bytes())
     print("Lambda ZIP bytes:", output.stat().st_size)
     print("Lambda ZIP sha256:", hashlib.sha256(output.read_bytes()).hexdigest())
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--qa-enrollments", type=Path, help="Protected, operator-approved temporary QA enrollments")
+    main(parser.parse_args().qa_enrollments)

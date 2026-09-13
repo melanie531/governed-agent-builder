@@ -25,7 +25,7 @@ def artifacts_template():
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Private retained serverless release artifacts only", "Resources": {"Releases": bucket(), "ReleaseTLS": tls_policy("Releases")}, "Outputs": {"Bucket": {"Value": ref("Releases")}}}
 
 
-def template(*, foundation_deployment=None, foundation_producer=None):
+def template(*, foundation_deployment=None, foundation_producer=None, journey=None):
     resources = {"Web": bucket(), "Exports": bucket(), "ExportTLS": tls_policy("Exports"),
         "State": {"Type": "AWS::DynamoDB::Table", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain", "Properties": {
             "BillingMode": "PAY_PER_REQUEST", "AttributeDefinitions": [{"AttributeName": k, "AttributeType": "S"} for k in ("pk", "sk")],
@@ -157,6 +157,9 @@ def template(*, foundation_deployment=None, foundation_producer=None):
     resources["Stage"] = {"Type": "AWS::ApiGatewayV2::Stage", "Properties": {"ApiId": ref("Api"), "StageName": "$default", "AutoDeploy": True, "DefaultRouteSettings": {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5}, "AccessLogSettings": {"DestinationArn": attr("ApiLogs"), "Format": '{"requestId":"$context.requestId","route":"$context.routeKey","status":"$context.status"}'}}}
     for name in ("DeadLetters", "DispatchFailures"):
         resources[name+"Alarm"] = {"Type": "AWS::CloudWatch::Alarm", "Properties": {"AlarmDescription": "Operator recovery required; do not discard queued evidence", "Namespace": "AWS/SQS", "MetricName": "ApproximateNumberOfMessagesVisible", "Dimensions": [{"Name": "QueueName", "Value": attr(name, "QueueName")}], "Statistic": "Maximum", "Period": 60, "EvaluationPeriods": 1, "Threshold": 1, "ComparisonOperator": "GreaterThanOrEqualToThreshold", "TreatMissingData": "notBreaching"}}
+    if journey is not None:
+        from infra.journey import configure_app
+        configure_app(resources, journey)
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Isolated private S3 OAC + managed HTTPS API Cognito Lambda DynamoDB SQS; no VPC dependencies", "Parameters": {"ArtifactBucket": {"Type": "String"}, "ArtifactKey": {"Type": "String"}}, "Resources": resources, "Outputs": {"ApplicationOrigin": {"Value": sub("https://${Distribution.DomainName}")}, "ApiEndpoint": {"Value": attr("Api", "ApiEndpoint")}, "DistributionId": {"Value": ref("Distribution")}, "FrontendBucket": {"Value": ref("Web")}, "StateTable": {"Value": ref("State")}, "UserPoolId": {"Value": ref("Pool")}, "ClientId": {"Value": ref("Client")}, "CognitoDomain": {"Value": sub("https://${Domain}.auth.${AWS::Region}.amazoncognito.com")}, "WorkerFunction": {"Value": ref("Worker")}}}
 
 

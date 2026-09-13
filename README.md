@@ -1,5 +1,16 @@
 # Governed Agent Builder
 
+## Create Agent journey
+
+This branch adds a backend Catalog-driven builder with Research and Knowledge Q&A
+templates, MCP server selection with nested tool permissions, optional datasets,
+and AgentCore deployment and on-demand evaluation. See
+[Create Agent journey](docs/create-agent-journey.md) for architecture, target-bound
+deployment commands, and the separate local and hosted end-to-end tests.
+
+The earlier milestones and local prototype described below use the legacy flow
+when the journey feature is disabled.
+
 ## New source-only AI Catalog milestone
 
 See [Live capabilities](docs/LIVE-CAPABILITIES.md) for the permission-aware catalog, durable access requests, SDK-validated metadata/deployment adapter boundaries, and explicit remaining live integration work. **Not deployed / live untested.** Existing Studio authentication and deployed fixture versions are unchanged.

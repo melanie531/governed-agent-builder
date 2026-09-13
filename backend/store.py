@@ -26,6 +26,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, requester TEXT, workspace TEXT, component TEXT, reason TEXT, status TEXT, decision TEXT, created REAL);
             CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, resource TEXT, detail TEXT, created REAL);
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, body TEXT);
+            CREATE TABLE IF NOT EXISTS job_authority(id TEXT PRIMARY KEY, session_hash TEXT NOT NULL);
             ''')
             for component in COMPONENTS:
                 db.execute("INSERT OR IGNORE INTO components VALUES (?,?)", (component["id"], json.dumps(component)))

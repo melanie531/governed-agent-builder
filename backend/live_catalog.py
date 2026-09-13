@@ -635,13 +635,18 @@ def native_model_reader(source, session=None):
     return read_models
 
 
+def data_policy_allows(component, persona):
+    return (not component.get('external') or persona['external_allowed']
+            or component.get('catalog') == 'journey' and persona['workspace'] in component.get('approved_external_workspaces', []))
+
+
 def visibility(component, persona):
     if not component.get('approved') or component.get('discoverable') is False:
         return False
     workspaces = component.get('discoverable_workspaces')
     if component.get('fixture') is False and not valid_workspaces(workspaces):
         return False
-    return (workspaces is None or persona['workspace'] in workspaces) and (not component.get('external') or persona['external_allowed'])
+    return (workspaces is None or persona['workspace'] in workspaces) and data_policy_allows(component, persona)
 
 
 def grant_scope(persona, component_id):
@@ -664,7 +669,7 @@ def projection(db, persona, component):
     usable = granted and ready
     requestable = not granted and component.get('requestable', True) and component.get('supported', True)
     public_fields = ('id', 'name', 'version', 'kind', 'provider', 'description', 'capabilities', 'data_handling', 'origin', 'refreshed_at', 'fixture', 'owner', 'protocol', 'supported', 'source_version', 'source_revision', 'descriptor_version', 'registry_record', 'descriptor_reviewed', 'execution_ready', 'execution_binding', 'artifact_status', 'parent_id', 'parent_name', 'operation', 'server_version', 'inputSchema', 'outputSchema', 'schema_purpose', 'model_id', 'target_id', 'connector', 'provenance', 'source_type', 'metadata_expires_at', 'region', 'api', 'gateway_enumeration', 'entitlement', 'native_model_id', 'approved_provider_api', 'supported_apis', 'documentation_only')
-    public = {k: component[k] for k in public_fields if k in component}
+    public = {k: component[k] for k in (*public_fields, 'default_tool_ids') if k in component}
     public.update({'record_id': component['id'], 'approved': True, 'external': component.get('external', False),
                    'discoverable': True, 'usable': usable, 'granted': granted, 'requestable': requestable,
                    'status': 'available' if usable else 'requestable' if requestable else 'blocked',
