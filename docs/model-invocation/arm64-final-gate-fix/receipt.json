@@ -1,0 +1,79 @@
+{
+  "rebuild_reason": "transport.py changed by the final-deadline-gate fix (c188020); ARM64 evidence re-bound to the NEW post-fix source. f33c7ac was genuine but predates this fix and does NOT cover this boundary.",
+  "source_commit": "c188020b66acf0fdae037e95a576eadaf76224aa",
+  "source_tree": "03efcd6422474e81be64d1fe7fc869c153816f47",
+  "artifact": {
+    "source_digest": "463c79cc48e652ac12b29283523b271c361f35438a3c0749d96228dc577179ee",
+    "manifest_digest": "ad6d36717110749a84d6eb012764b76d65aff5f810d101f5286633ecc9e14de3",
+    "package_digest": "47cf41e40a49c5eb2d5fa57166be69813d09db89e2e75cdc951334a0c5f7caa8",
+    "package_mode": "base",
+    "admission_config_present": false,
+    "deploy_ready": false,
+    "artifact_kind": "linux-arm64-python3.13-locked",
+    "runtime_created": false,
+    "production_ready": false
+  },
+  "sha256": "47cf41e40a49c5eb2d5fa57166be69813d09db89e2e75cdc951334a0c5f7caa8",
+  "bytes": 27513837,
+  "native_aarch64_count": 6,
+  "transport_bytes_match_source": true,
+  "final_deadline_gate_present": true,
+  "prior_source_digest_superseded": "491b68c9df89b516c59fd7955d3e9197611f43fc1f3004d240749cea000da1c4",
+  "prior_package_sha256_superseded": "46926e7e2a13d2195e3fb596fd5fe13faa5d407777738a4dbedb4729a3c9bb16",
+  "admission": false,
+  "response_allowlist": "synthetic build-only",
+  "cloud_writes": false,
+  "inference_calls": 0,
+  "execution": {
+    "arch": "aarch64",
+    "python": "3.13.15",
+    "httpx": "0.28.1",
+    "packaged_dependencies": true,
+    "final_deadline_gate_present": true,
+    "real_httpx_request_preparation": true,
+    "network": "disabled/mocktransport",
+    "cases": [
+      {
+        "case": "build_delay",
+        "delay": 61,
+        "httpx_transport_calls": 0,
+        "deadline_rejected": true,
+        "timeouts": []
+      },
+      {
+        "case": "build_delay",
+        "delay": 3,
+        "httpx_transport_calls": 1,
+        "deadline_rejected": false,
+        "timeouts": [
+          {
+            "connect": 7,
+            "read": 7,
+            "write": 7,
+            "pool": 7
+          }
+        ]
+      },
+      {
+        "case": "crossed_after_prep_before_dispatch",
+        "httpx_transport_calls": 0,
+        "deadline_rejected": true
+      }
+    ],
+    "cloud_runtime_tested": false,
+    "inference_calls": 0
+  },
+  "exit_code": 0,
+  "emulated_linux_arm64": true,
+  "emulation_backend": "qemu-aarch64 binfmt on x86_64 host (NOT native arm64, NOT AgentCore acceptance)",
+  "run_flags": "--platform linux/arm64 --network none --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --tmpfs /tmp:size=32m; python -I /probe.py",
+  "in_container_uname_m": "aarch64",
+  "in_container_python": "3.13.15",
+  "extracted_bytes_match_zip": true,
+  "image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a",
+  "probe_sha256": "c63118737f59e328d961fc64d1b370182b860ec72284b8642c9d6cc7367cf3a5",
+  "repo_digests": [
+    "arm64v8/python@sha256:c33ba31a4f8fc187a1ec9f33ef63945c29e9eaa74c47542894f26db67a4156d6",
+    "python@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285"
+  ]
+}
