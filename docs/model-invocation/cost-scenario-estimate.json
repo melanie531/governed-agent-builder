@@ -1,0 +1,118 @@
+{
+  "kind": "CONDITIONAL_PARTIAL_ESTIMATE_NOT_UPPER_BOUND",
+  "currency": "USD",
+  "rows": [
+    {
+      "component": "model_input",
+      "quantity": "2000",
+      "quantity_unit": "tokens",
+      "rate_usd": "5.50",
+      "rate_per_units": "1000000",
+      "cost_usd": "0.011",
+      "assumption": "proposed; provider token bound NOT VERIFIED"
+    },
+    {
+      "component": "model_output",
+      "quantity": "256",
+      "quantity_unit": "tokens",
+      "rate_usd": "27.50",
+      "rate_per_units": "1000000",
+      "cost_usd": "0.00704",
+      "assumption": "per-request cap; permission unapplied"
+    },
+    {
+      "component": "runtime_cpu",
+      "quantity": "75",
+      "quantity_unit": "vCPU-seconds",
+      "rate_usd": "0.0895",
+      "rate_per_units": "3600",
+      "cost_usd": "0.001864583333333333333333333333333333333333",
+      "assumption": "assumes1vCPU for60s+15s termination; allocation/session count NOT VERIFIED"
+    },
+    {
+      "component": "runtime_memory",
+      "quantity": "150",
+      "quantity_unit": "GB-seconds",
+      "rate_usd": "0.00945",
+      "rate_per_units": "3600",
+      "cost_usd": "0.00039375",
+      "assumption": "assumes2GB for75s; memory peak NOT VERIFIED"
+    },
+    {
+      "component": "gateway",
+      "quantity": "10",
+      "quantity_unit": "requests",
+      "rate_usd": "0.005",
+      "rate_per_units": "1000",
+      "cost_usd": "0.00005",
+      "assumption": "diagnostic+negative controls assumption"
+    },
+    {
+      "component": "policy",
+      "quantity": "10",
+      "quantity_unit": "authorization requests",
+      "rate_usd": "0.000025",
+      "rate_per_units": "1",
+      "cost_usd": "0.000250",
+      "assumption": "same assumption; page-only price basis"
+    },
+    {
+      "component": "logs_ingest",
+      "quantity": "0.001",
+      "quantity_unit": "GB",
+      "rate_usd": "0.50",
+      "rate_per_units": "1",
+      "cost_usd": "0.00050",
+      "assumption": "1MB example; platform logs not bounded"
+    },
+    {
+      "component": "logs_store",
+      "quantity": "0.001",
+      "quantity_unit": "GB-month",
+      "rate_usd": "0.03",
+      "rate_per_units": "1",
+      "cost_usd": "0.00003",
+      "assumption": "one-month pricing scenario; NOT actual retention"
+    },
+    {
+      "component": "dynamo_writes",
+      "quantity": "100",
+      "quantity_unit": "WRU",
+      "rate_usd": "0.625",
+      "rate_per_units": "1000000",
+      "cost_usd": "0.0000625",
+      "assumption": "transaction-amplified units assumption"
+    },
+    {
+      "component": "dynamo_reads",
+      "quantity": "100",
+      "quantity_unit": "RRU",
+      "rate_usd": "0.125",
+      "rate_per_units": "1000000",
+      "cost_usd": "0.0000125",
+      "assumption": "unit assumption not number of HTTP requests"
+    },
+    {
+      "component": "http_api",
+      "quantity": "20",
+      "quantity_unit": "requests",
+      "rate_usd": "1",
+      "rate_per_units": "1000000",
+      "cost_usd": "0.00002",
+      "assumption": "admission/control count assumption"
+    }
+  ],
+  "priced_scenario_subtotal_usd": "0.02122333333333333333333333333333333333333",
+  "excluded_unknown_not_zero": [
+    "network NAT/endpoints/egress",
+    "applicable Lambda ARM compute and fanout",
+    "S3 versioned artifact/evidence retention+requests",
+    "KMS if used",
+    "trace/span ingest/index and custom metrics",
+    "cold start/session respawn/longer memory lifetime"
+  ],
+  "full_service_total_usd": null,
+  "approved_reservation_usd": null,
+  "rates_basis": "PRICE-REVIEW-CORRECTIONS.md and captured regional supporting-service price evidence",
+  "quantities_enforced": false
+}
