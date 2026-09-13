@@ -10,6 +10,20 @@ const root = resolve(import.meta.dirname, '../..');
 const expect = baseExpect.configure({timeout: 45000});
 const statePath = process.env.GAB_RELEASE_STATE;
 if (!statePath) throw new Error('Explicit GAB_RELEASE_STATE is required');
+// Give each complete journey a fresh real Cognito session. A four-scenario
+// suite can outlive one access token, including the final cleanup phases.
+if (!process.env.GAB_LIVE_SCENARIO && !process.env.GAB_CLEANUP_IDS && !process.env.GAB_REQUEST_ONLY) {
+  for (const scenario of [
+    {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
+    {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
+  ]) {
+    const result = spawnSync(process.execPath, [resolve(import.meta.dirname, 'live.mjs')], {
+      cwd: root, env: {...process.env, GAB_LIVE_SCENARIO: JSON.stringify(scenario)}, stdio: 'inherit',
+    });
+    if (result.status !== 0) process.exit(result.status || 1);
+  }
+  process.exit(0);
+}
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 if (state.target.account !== '820242898417' || state.target.profile !== 'account-820') throw new Error('Unexpected test target');
 const secret = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
