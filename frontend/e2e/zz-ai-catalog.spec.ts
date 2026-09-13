@@ -6,22 +6,21 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
  const navigate=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await navigate('AI Catalog');
- await expect(page.getByText('Development fixture catalog only.',{exact:false})).toBeVisible();
- await expect(page.getByText('Native Registry / Model Gateway: NotConnected.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh catalog',exact:true})).toBeVisible();
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
  await page.getByRole('button',{name:'View details',exact:true}).click();
  const row=page.getByTestId('catalog-operation').filter({hasText:'Synthetic strategy insights'});
  await row.getByRole('button',{name:'Request access'}).click();
  await page.getByRole('textbox',{name:'Workspace business purpose'}).fill('Synthetic catalog browser acceptance purpose');
  await page.getByRole('button',{name:'Submit access request'}).click();
- await expect(page.getByText('Access request recorded.',{exact:false})).toBeVisible();
- await page.getByRole('button',{name:/DEV ONLY/}).click();
+ await expect(page.getByText('Access request sent. Pending approval.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:/Sam Taylor · Operations desk/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();
  await navigate('Policies & approvals');
  await page.getByRole('textbox',{name:'Decision reason for restricted-insights'}).fill('Synthetic browser approval for research');
  await page.getByRole('button',{name:'Approve access',exact:true}).click();
- await expect(page.getByText('APPROVED',{exact:true}).last()).toBeVisible();
- await page.getByRole('button',{name:/DEV ONLY/}).click();
+ await expect(page.getByText('Approved',{exact:true}).last()).toBeVisible();
+ await page.getByRole('button',{name:/Platform Admin · Platform governance/}).click();
  await page.getByRole('menuitem',{name:/Sam Taylor/}).click();
  await navigate('AI Catalog');
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
@@ -30,7 +29,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await page.screenshot({path:'../artifacts/ai-catalog-fixture-evidence.png',fullPage:true});
  await page.getByRole('button',{name:'Back to catalog'}).click();
  // Restore the grant changed by this test; later preserved journeys share this fixture server.
- await page.getByRole('button',{name:/DEV ONLY/}).click();
+ await page.getByRole('button',{name:/Sam Taylor · Operations desk/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();
  await navigate('Tools & skills');
  const grant=page.getByRole('checkbox',{name:'Sam Taylor access to Synthetic strategy insights',exact:true});
@@ -42,6 +41,6 @@ test('AI Catalog provider unavailable cannot display fixture fallback (synthetic
  await page.goto('/');await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
- await expect(page.getByText('Live catalog unavailable; no fixture fallback.',{exact:true})).toBeVisible();
+ await expect(page.getByText('Catalog unavailable.',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Claude · Bedrock',{exact:true})).toHaveCount(0);
 });

@@ -16,7 +16,7 @@ test('five resource categories, actual declared operations, stable draft selecti
  await page.getByRole('textbox',{name:/^Success criteria/}).fill('Preserve QA evaluation.');
  const nav=async()=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name:'AI Catalog',exact:true}).click();};
  await nav();await expect(page.getByRole('tab')).toHaveText(['Models','MCP servers','Skills','Agents','Other']);await expect(page.getByRole('tab',{name:'Tools',exact:true})).toHaveCount(0);
- await expect(page.getByText('Models: NotConnected. See Connection details.',{exact:true})).toBeVisible();
+ await expect(page.getByText('No models available',{exact:true})).toBeVisible();
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();await expect(page.getByText('5 tools',{exact:true})).toBeVisible();
  for(const width of [1365,390]){
   await page.setViewportSize({width,height:1080});
@@ -39,7 +39,7 @@ test('five resource categories, actual declared operations, stable draft selecti
    await expect(group.getByRole('button',{name:'Description and schemas',exact:true})).toHaveAttribute('aria-expanded','false');
    await expect(group.getByLabel('Access',{exact:true})).toHaveText('requestable');
    await expect(group.getByLabel('Readiness',{exact:true})).toHaveText('Not ready');
-   for(const name of ['Request access','Add to draft (not deployment)']){
+   for(const name of ['Request access','Add to draft']){
     const button=group.getByRole('button',{name,exact:true});await button.scrollIntoViewIfNeeded();
     const rect=await button.boundingBox();const modal=await page.getByRole('dialog').boundingBox();
     expect(rect).not.toBeNull();expect(modal).not.toBeNull();
@@ -53,7 +53,7 @@ test('five resource categories, actual declared operations, stable draft selecti
  await first.getByRole('button',{name:'Description and schemas',exact:true}).click();
  await page.setViewportSize({width:1365,height:1080});
  await page.getByRole('button',{name:'Back to catalog'}).click();await page.getByRole('button',{name:'View details',exact:true}).click();
- await page.getByRole('button',{name:'Add to draft (not deployment)',exact:true}).first().click();await expect(page.getByText(children[0].id+' · 7',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Add to draft',exact:true}).first().click();await expect(page.getByText(children[0].id+' · 7',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('textbox',{name:/^Your instructions/})).toHaveValue('Preserve the exact QA prompt.');await expect(page.getByRole('textbox',{name:/^Success criteria/})).toHaveValue('Preserve QA evaluation.');await expect(page.getByRole('textbox',{name:/^Evaluation dataset/})).toHaveValue(/qa-case/);
  await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('button',{name:'Save draft',exact:true})).toBeVisible();
 });

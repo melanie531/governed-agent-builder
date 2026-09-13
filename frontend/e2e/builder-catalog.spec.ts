@@ -20,7 +20,7 @@ test('native Catalog returns to same Builder draft preserving prompt and evaluat
  const nav=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await nav('AI Catalog');
  await page.getByRole('button',{name:'View details',exact:true}).click();
- await page.getByRole('button',{name:'Add to draft (not deployment)',exact:true}).click();
+ await page.getByRole('button',{name:'Add to draft',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Create agent',exact:true})).toBeVisible();
  await expect(page.getByText(item.id+' · 7',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next',exact:true}).click();
@@ -43,9 +43,9 @@ test('saved ready live version has separate explicit Deploy with no authority in
  await page.route('**/api/jobs/synthetic-job',r=>r.fulfill({json:{id:'synthetic-job',version:1,stage:'WAIT_RUNTIME',stale:false,events:[],result:null}}));
  await page.goto('/');await page.getByRole('button',{name:'Enter as Alex Morgan'}).click();
  await page.getByRole('link',{name:definition.name,exact:true}).click();
- await expect(page.getByText('Ready for explicit Deploy · not yet deployed',{exact:true})).toBeVisible();
+ await expect(page.getByText('Not deployed · ready to deploy',{exact:true})).toBeVisible();
  expect(deploys).toBe(0);
  await page.getByRole('button',{name:'Deploy',exact:true}).click();
  await expect.poll(()=>deploys).toBe(1);
- await expect(page.getByText('Wait runtime',{exact:true})).toBeVisible();
+ await expect(page.getByText('Waiting for AgentCore Runtime',{exact:true})).toBeVisible();
 });

@@ -6,9 +6,9 @@ async function selectOption(page:Page,label:string,option:string){
  await page.getByRole('option').filter({hasText:option}).first().click();
 }
 async function switchPersona(page:Page,name:string){
- await page.getByRole('button',{name:/DEV ONLY/}).click();
+ await page.getByRole('button',{name:/· (Research studio|Operations desk|Platform governance)/}).click();
  await page.getByRole('menuitem',{name:new RegExp(name)}).click();
- await expect(page.getByRole('button',{name:new RegExp(name+' .*DEV ONLY')})).toBeVisible();
+ await expect(page.getByRole('button',{name:new RegExp(name+' · ')})).toBeVisible();
 }
 async function nav(page:Page,name:string){const link=page.getByRole('link',{name,exact:true});const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await link.click();}
 async function next(page:Page){await page.getByRole('button',{name:'Next',exact:true}).click();}
@@ -16,7 +16,7 @@ async function next(page:Page){await page.getByRole('button',{name:'Next',exact:
 test('Cloudscape business journey: create, measured evidence, revise, retest, export and approval',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');
- await expect(page.getByText('DEV ONLY identity selector',{exact:false})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Governed Agent Builder',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Enter as Alex Morgan'}).click();
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-my-agents.png',fullPage:true});
@@ -42,20 +42,20 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await page.screenshot({path:'../artifacts/cloudscape-wizard-evaluation.png',fullPage:true});
  await next(page);
  await expect(page.getByText('Aurora research companion',{exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Deploy & test locally',exact:true}).click();
+ await page.getByRole('button',{name:'Create & test agent',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Aurora research companion',exact:true})).toBeVisible();
- await expect(page.getByText('Local checks passed',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Sample test passed',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('100 / 100 measured.',{exact:false})).toBeVisible();
  await expect(page.locator('pre').filter({hasText:'AURORA LAUNCHES IN OCTOBER'})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-results-pass.png',fullPage:true});
- await page.getByRole('tab',{name:'Run locally',exact:true}).click();
+ await page.getByRole('tab',{name:'Run sample',exact:true}).click();
  await page.getByRole('button',{name:'Run current version'}).click();
- await expect(page.getByLabel('Local invocation output')).toContainText('OCTOBER');
+ await expect(page.getByLabel('Sample output')).toContainText('OCTOBER');
  await page.getByRole('tab',{name:'Execution trace'}).click();
- await expect(page.getByText('fixture_lookup',{exact:false}).first()).toBeVisible();
+ await expect(page.getByText('Evaluation case recorded',{exact:false}).first()).toBeVisible();
  // Export from authorized backend, then inspect signature and filename.
  const downloadPromise=page.waitForEvent('download');
- await page.getByRole('button',{name:'Export source',exact:true}).click();
+ await page.getByRole('button',{name:'Download sample source',exact:true}).first().click();
  const download=await downloadPromise;
  await download.saveAs('../artifacts/browser-export-v1.zip');
  expect(download.suggestedFilename()).toMatch(/-v1\.zip$/);
@@ -64,11 +64,11 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await page.getByRole('button',{name:'Revise agent',exact:true}).click();
  await next(page);await next(page);
  await page.getByRole('button',{name:'Try a failing case'}).click();
- await next(page);await page.getByRole('button',{name:'Deploy & test locally'}).click();
- await expect(page.getByText('Needs changes',{exact:true}).first()).toBeVisible();
+ await next(page);await page.getByRole('button',{name:'Create & test agent'}).click();
+ await expect(page.getByText('Changes needed',{exact:true}).first()).toBeVisible();
  await page.getByRole('tab',{name:'Evaluation results'}).click();
  await expect(page.getByText('Required term: impossible-fixture-term',{exact:true})).toBeVisible();
- await page.getByRole('tab',{name:'Run locally',exact:true}).click();
+ await page.getByRole('tab',{name:'Run sample',exact:true}).click();
  await expect(page.getByRole('button',{name:'Run current version'})).toBeDisabled();
  // Repair via editable JSON and demonstrate missing required judge gate.
  await page.getByRole('button',{name:'Revise agent',exact:true}).click();await next(page);await next(page);
@@ -76,15 +76,15 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  dataset[0].required_terms=['Aurora','October'];
  await page.getByRole('textbox',{name:/^Evaluation dataset/}).fill(JSON.stringify(dataset,null,2));
  await page.getByRole('button',{name:'Try a missing judge'}).click();
- await next(page);await page.getByRole('button',{name:'Deploy & test locally'}).click();
+ await next(page);await page.getByRole('button',{name:'Create & test agent'}).click();
  await expect(page.getByText('Required judge evidence is missing.',{exact:false})).toBeVisible();
- await expect(page.getByText('Needs changes',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Changes needed',{exact:true}).first()).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-missing-judge.png',fullPage:true});
  // Return to deterministic checks and complete v4.
  await page.getByRole('button',{name:'Revise agent',exact:true}).click();await next(page);await next(page);
- await selectOption(page,'Evaluation profile','Local deterministic checks');
- await next(page);await page.getByRole('button',{name:'Deploy & test locally'}).click();
- await expect(page.getByText('Local checks passed',{exact:true}).first()).toBeVisible();
+ await selectOption(page,'Evaluation profile','Rule-based checks');
+ await next(page);await page.getByRole('button',{name:'Create & test agent'}).click();
+ await expect(page.getByText('Sample test passed',{exact:true}).first()).toBeVisible();
  await page.getByRole('tab',{name:'Versions and source'}).click();
  await expect(page.getByRole('cell',{name:'v4',exact:true}).first()).toBeVisible();
  // Request existing capability; Admin must decide; business sees effective result.
@@ -92,16 +92,16 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await selectOption(page,'Requested capability','Synthetic strategy insights');
  await page.getByRole('textbox',{name:/^Business reason/}).fill('Need synthetic strategy evidence for research briefs.');
  await page.getByRole('button',{name:'Send request'}).click();
- await expect(page.getByText('PENDING',{exact:true})).toBeVisible();
+ await expect(page.getByText('Pending approval',{exact:true})).toBeVisible();
  await switchPersona(page,'Platform Admin');
  await nav(page,'Policies & approvals');
  await page.getByRole('textbox',{name:/Decision reason for restricted-insights/}).fill('Approved for synthetic research use.');
  await page.getByRole('button',{name:'Approve access',exact:true}).click();
- await expect(page.getByText('APPROVED',{exact:true})).toBeVisible();
+ await expect(page.getByText('Approved',{exact:true})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-admin-approval.png',fullPage:true});
  await switchPersona(page,'Alex Morgan');
  await nav(page,'Capability requests');
- await expect(page.getByText('APPROVED',{exact:true})).toBeVisible();
+ await expect(page.getByText('Approved',{exact:true})).toBeVisible();
  await nav(page,'Create agent');
  await page.getByRole('radio',{name:'Select Research brief'}).click();await next(page);
  await selectOption(page,'Model route','Claude · Bedrock');
@@ -115,7 +115,7 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await expect(grant).toBeChecked();await grant.click();await expect(grant).not.toBeChecked();
  await switchPersona(page,'Alex Morgan');
  await page.getByRole('link',{name:'Aurora research companion',exact:true}).click();
- await page.getByRole('tab',{name:'Run locally',exact:true}).click();
+ await page.getByRole('tab',{name:'Run sample',exact:true}).click();
  await expect(page.getByRole('button',{name:'Run current version'})).toBeEnabled();
  await page.getByRole('button',{name:'Run current version'}).click();
  await expect(page.getByText('Component not authorized or compatible: synthetic-search',{exact:true})).toBeVisible();
