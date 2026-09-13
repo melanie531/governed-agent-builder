@@ -45,6 +45,19 @@ def validate_source(source, account, region):
         if rid in seen:
             raise ValueError('Duplicate Runtime model binding')
         seen.add(rid)
+    # Optional owner-signed execution driver bindings: keys must be a subset of the
+    # pinned route ids; each entry must be an exact {status:'verified', approval_sha256}
+    # marker. Never a wildcard, never auto-derived. Absent => all routes stay unverified.
+    drivers = source.get('execution_bindings')
+    if drivers is not None:
+        if not isinstance(drivers, dict) or set(drivers) - seen:
+            raise ValueError('Execution bindings must be a subset of pinned routes')
+        for entry in drivers.values():
+            if (not isinstance(entry, dict) or set(entry) != {'status', 'approval_sha256'}
+                    or entry['status'] != 'verified'
+                    or not isinstance(entry['approval_sha256'], str)
+                    or not re.fullmatch(r'[0-9a-f]{64}', entry['approval_sha256'])):
+                raise ValueError('Exact owner-signed execution binding required')
     validate_exposure(source.get('exposure'), f'model:{gid}:{tid}:')
     if set(source['exposure']) != seen:
         raise ValueError('Exposure must exactly match pinned Runtime bindings')
@@ -86,7 +99,22 @@ class RuntimeModelCatalog:
                         protocol='messages', model_id=binding['request_model'], target_id=s['target_id'],
                         source_version=version, source_revision=version, connector='bedrock-runtime passthrough',
                         discovery_method='operator-pinned-route-with-live-target-readback')
-            # Deliberately retain execution_ready=False, integration_ready=False, unverified.
-            # A test-role 200 cannot confer workload authorization or a project grant.
+            # Execution driver binding. Stays unverified unless the pinned source
+            # carries an owner-signed execution_binding whose approval_sha256 matches
+            # this exact route revision (gateway+target+binding). This is the seam
+            # that lets a route (e.g. us.anthropic.claude-opus-5) become execution
+            # capable ONCE its ModelGateway IAM grant + Cedar permit are provisioned;
+            # a signed marker alone confers nothing without those live grants, which
+            # are enforced downstream by the Gateway (IAM) and PolicyEngine (Cedar).
+            driver = s.get('execution_bindings', {}).get(rid)
+            if isinstance(driver, dict) and driver.get('approval_sha256') == version \
+                    and driver.get('status') == 'verified':
+                item.update(execution_ready=True, integration_ready=True,
+                            execution_binding={'status': 'verified', 'approval_sha256': version})
+            else:
+                # Deliberately retain execution_ready=False, integration_ready=False, unverified.
+                # A test-role 200 cannot confer workload authorization or a project grant.
+                item.update(execution_ready=False, integration_ready=False,
+                            execution_binding={'status': 'unverified'})
             rows.append(item)
         return rows
