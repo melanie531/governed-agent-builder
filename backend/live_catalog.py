@@ -551,10 +551,13 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     metadata = config.get('provider_metadata', [])
     if not isinstance(metadata, list):
         raise ValueError('Invalid provider metadata sources')
+    runtime_sources = config.get('runtime_model_routes', [])
+    if not isinstance(runtime_sources, list):
+        raise ValueError('Invalid Runtime route sources')
     discovery = config.get('discovery_sources', [])
     if not isinstance(discovery, list):
         raise ValueError('Invalid discovery sources')
-    if not registries and not models and not metadata and not discovery:
+    if not registries and not models and not metadata and not discovery and not runtime_sources:
         return None
     binding = config.get('binding', {})
     account, region = binding.get('expected_account'), binding.get('region')
@@ -566,7 +569,7 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
     ttl = config.get('cache_seconds', 30)
     if type(ttl) not in (int, float) or not 0 <= ttl <= 60:
         raise ValueError('Invalid cache interval')
-    if len(registries) + len(models) + len(metadata) + len(discovery) > 10:
+    if len(registries) + len(models) + len(metadata) + len(discovery) + len(runtime_sources) > 10:
         raise ValueError('Too many catalog sources')
     for sources, service, key in ((registries, 'agent-registry', 'registry'), (models, 'bedrock-agentcore', 'gateway')):
         for source in sources:
@@ -591,6 +594,9 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
                     if (len(parts) != 4 or parts[2] not in targets or not isinstance(qualified, str)
                             or qualified.count('/') != 1 or qualified.split('/')[1] != parts[3]):
                         raise ValueError('Exact qualified model approval required')
+    from .runtime_model_catalog import validate_source as validate_runtime_source, RuntimeModelCatalog
+    for source in runtime_sources:
+        validate_runtime_source(source, account, region)
     from .provider_model_metadata import validate_source, ProviderModelMetadata
     for source in metadata:
         validate_source(source, account, region)
@@ -626,6 +632,8 @@ def configured_catalog(config=None, client_factory=None, model_reader_factory=No
         reader = model_reader_factory(source) if model_reader_factory else native_model_reader(source, session)
         mp.append(ModelGatewayCatalogProvider(client_factory('bedrock-agentcore-control', region),
                   source['gateway_id'], region, source['exposure'], reader, tuple(source['target_ids']), source['gateway_arn']))
+    for source in runtime_sources:
+        mp.append(RuntimeModelCatalog(client_factory('bedrock-agentcore-control', region), source))
     pp = [ProviderModelMetadata(None, copy.deepcopy(source), account, region)
           for source in metadata]
     dp = [DiscoveryCatalogSource(source['source_id'], source['cache_path'],
