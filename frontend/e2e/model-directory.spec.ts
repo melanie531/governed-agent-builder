@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 // Backend-filtered discovery records, synthetic local data; not live evidence.
 test('backend models grouped by provider and filtered by modality without rewriting IDs',async({page})=>{
- const rows=[['a','Anthropic',['input:Text','output:Text']],['b','OpenAI',['input:Image','output:Text']]].map(([id,provider,capabilities])=>({id,record_id:id,kind:'model',name:`Reviewed model ${id}`,provider,capabilities,release_date:'2026-08-12',source_url:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html',description:'Reviewed capability description',status:'discovery_only',discovery_only:true,requestable:false,usable:false,execution_ready:false,fixture:false,version:'synthetic-revision',data_handling:'Not assessed'}));
+ const rows=[['a','Anthropic',['input:Text','output:Text']],['b','OpenAI',['input:Image','output:Text']]].map(([id,provider,capabilities])=>({id,record_id:id,kind:'model',recency:'recent',name:`Reviewed model ${id}`,provider,capabilities,release_date:'2026-08-12',source_url:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html',description:'Reviewed capability description',status:'discovery_only',discovery_only:true,requestable:false,usable:false,execution_ready:false,fixture:false,version:'synthetic-revision',data_handling:'Not assessed'}));
  await page.route('**/studio-config.json',r=>r.fulfill({json:{hosted:true,mode:'hosted'}}));
  await page.route('**/api/me',r=>r.fulfill({json:{persona:{id:'qa',name:'QA',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic'}}));
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
@@ -24,8 +24,8 @@ test('backend models grouped by provider and filtered by modality without rewrit
 // requestable as distinct counts — NOT the catalog total.
 test('access summary reflects per-user granted/callable/requestable, not the catalog total',async({page})=>{
  const models=[
-  {id:'m-granted',record_id:'m-granted',kind:'model',name:'Granted model',provider:'Anthropic',capabilities:['input:text'],description:'d',status:'available',usable:true,granted:true,requestable:false,execution_ready:false,fixture:false,version:'1',data_handling:'x'},
-  {id:'m-req',record_id:'m-req',kind:'model',name:'Requestable model',provider:'OpenAI',capabilities:['input:text'],description:'d',status:'requestable',usable:false,granted:false,requestable:true,execution_ready:false,fixture:false,version:'1',data_handling:'x'},
+  {id:'m-granted',record_id:'m-granted',kind:'model',recency:'recent',name:'Granted model',provider:'Anthropic',capabilities:['input:text'],description:'d',status:'available',usable:true,granted:true,requestable:false,execution_ready:false,fixture:false,version:'1',data_handling:'x'},
+  {id:'m-req',record_id:'m-req',kind:'model',recency:'recent',name:'Requestable model',provider:'OpenAI',capabilities:['input:text'],description:'d',status:'requestable',usable:false,granted:false,requestable:true,execution_ready:false,fixture:false,version:'1',data_handling:'x'},
  ];
  await page.route('**/studio-config.json',r=>r.fulfill({json:{hosted:true,mode:'hosted'}}));
  await page.route('**/api/me',r=>r.fulfill({json:{persona:{id:'qa',name:'QA',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic'}}));
@@ -36,8 +36,8 @@ test('access summary reflects per-user granted/callable/requestable, not the cat
  const summary=page.getByTestId('access-summary');
  await expect(summary).toBeVisible();
  // Shows the per-user granted (1), callable (0) and requestable (1) — never the total (42).
- await expect(summary).toContainText('1 granted');
- await expect(summary).toContainText('0 callable');
- await expect(summary).toContainText('1 available to request');
- await expect(summary).not.toContainText('42 granted');
+ await expect(summary).toContainText('Access granted: 1 of 42 models');
+ await expect(summary).toContainText('Ready to run: 0');
+ await expect(summary).toContainText('Available to request: 1');
+ await expect(summary).not.toContainText('Access granted: 42');
 });

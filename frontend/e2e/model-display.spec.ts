@@ -4,7 +4,7 @@ import {test,expect} from '@playwright/test';
 // the verified Haiku route displays "Anthropic" / "Claude Haiku 4.5"; the full
 // model/profile ID appears only inside View details. Unknown IDs are never
 // relabelled as Haiku. Access/readiness/approval semantics are untouched.
-const base={record_id:'',version:'v1',kind:'model',description:'Enumerated Bedrock inference route; execution not verified',provider:'Amazon Bedrock',data_handling:'Synthetic',capabilities:[],status:'AVAILABLE',policy_reason:'',requestable:false,usable:true,origin:'AgentCore Model Gateway',refreshed_at:null,fixture:false,approved:true,external:false,execution_ready:false};
+const base={record_id:'',version:'v1',kind:'model',catalog:'journey',description:'Enumerated Bedrock inference route; execution not verified',provider:'Amazon Bedrock',data_handling:'Synthetic',capabilities:[],status:'AVAILABLE',policy_reason:'',requestable:false,usable:true,origin:'AgentCore Model Gateway',refreshed_at:null,fixture:false,approved:true,external:false,execution_ready:false};
 const haiku={...base,id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',record_id:'model:gw:target:us.anthropic.claude-haiku-4-5-20251001-v1:0',name:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',model_id:'demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0'};
 const unknown={...base,id:'model:gw:target:us.anthropic.claude-mystery-9-9-v1:0',record_id:'model:gw:target:us.anthropic.claude-mystery-9-9-v1:0',name:'demo-target/us.anthropic.claude-mystery-9-9-v1:0',model_id:'demo-target/us.anthropic.claude-mystery-9-9-v1:0',status:'PENDING',usable:false,requestable:true};
 
@@ -26,7 +26,7 @@ test('Models list shows Anthropic / Claude Haiku 4.5; full ID only in View detai
  await expect(page.getByRole('button',{name:'demo-target/us.anthropic.claude-mystery-9-9-v1:0'})).toBeVisible();
  // Readiness/access markers unchanged.
  await expect(table.getByText('Not ready',{exact:true})).toHaveCount(2);
- await expect(table.getByText('Pending approval',{exact:true})).toBeVisible();
+ await expect(table.getByText('Available to request',{exact:true})).toBeVisible();
  // View details: full model/profile ID present.
  await page.getByRole('button',{name:'Claude Haiku 4.5',exact:true}).click();
  const dialog=page.getByRole('dialog');

@@ -13,7 +13,8 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await row.getByRole('button',{name:'Request access'}).click();
  await page.getByRole('textbox',{name:'Workspace business purpose'}).fill('Synthetic catalog browser acceptance purpose');
  await page.getByRole('button',{name:'Submit access request'}).click();
- await expect(page.getByText('Access request sent. Pending approval.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('dialog').getByText('Access request sent. Pending approval.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Back to catalog',exact:true}).click();
  await page.getByRole('button',{name:/Sam Taylor · Operations desk/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();
  await navigate('Policies & approvals');

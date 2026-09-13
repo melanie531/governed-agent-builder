@@ -21,7 +21,7 @@ const haiku={
  record_id:'model:demo-gateway-record:tgt0000001:us.anthropic.claude-haiku-4-5-20251001-v1:0',
  name:'us.anthropic.claude-haiku-4-5-20251001-v1:0',
  version:'0efbe171d23945bcbf817b1620fdcbd45ec1a5cd0456890036eae214cea03cb8',
- kind:'model',provider:'Amazon Bedrock',
+ kind:'model',catalog:'journey',provider:'Amazon Bedrock',
  description:'Approved Runtime route; execution authorization checked separately',
  capabilities:[],
  data_handling:'Existing approved Runtime Haiku route; non-streaming, 16-token validation limit. Execution readiness separately enforced.',

@@ -33,7 +33,7 @@ test('new request success surfaces the pending confirmation',async({page})=>{
  await dialog.getByRole('textbox',{name:'Workspace business purpose'}).fill('Synthetic new-request business purpose');
  await dialog.getByRole('button',{name:'Submit access request',exact:true}).click();
  // Success path: pending confirmation shown; no error surfaced.
- await expect(page.getByText('Access request sent. Pending approval.',{exact:false})).toBeVisible();
+ await expect(dialog.getByText('Access request sent. Pending approval.',{exact:false})).toBeVisible();
 });
 
 test('duplicate request 409 shows an in-modal pending message and preserves input',async({page})=>{

@@ -69,7 +69,8 @@ def _source(execution_bindings=None):
             {'target_name': TID, 'request_model': HAIKU,
              'response_models': ['anthropic.claude-haiku-4-5-20251001-v1:0'], 'path': '/v1/messages'},
             {'target_name': TID, 'request_model': OPUS,
-             'response_models': ['anthropic.claude-opus-5'], 'path': '/v1/messages'},
+             'response_models': ['anthropic.claude-opus-5'], 'path': '/v1/messages',
+             'request_contract': 'opus5-text-v1', 'response_identity_evidence': 'b' * 64},
         ],
         'exposure': {},
     }
@@ -86,6 +87,17 @@ def test_validate_source_accepts_opus5_request_model(monkeypatch):
     src = _source()
     src['exposure'] = {f'model:{GID}:{TID}:{HAIKU}': {}, f'model:{GID}:{TID}:{OPUS}': {}}
     validate_source(src, ACCOUNT, 'us-west-2')  # must not raise on the Opus5 binding
+
+
+def test_opus_route_without_explicit_protocol_contract_is_rejected(monkeypatch):
+    import backend.runtime_model_catalog as rc
+    monkeypatch.setattr(rc, 'validate_exposure', lambda *a, **k: None)
+    src = _source()
+    binding = src['bindings'][1]
+    del binding['request_contract']
+    del binding['response_identity_evidence']
+    with pytest.raises(ValueError, match='Explicit Opus text contract required'):
+        validate_source(src, ACCOUNT, 'us-west-2')
 
 
 def _records(monkeypatch, execution_bindings=None):
