@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 e2e/model-directory.spec.ts:3:1 › backend models grouped by provider and filtered by modality without rewriting IDs (936ms)
+
+  1 passed (4.1s)
