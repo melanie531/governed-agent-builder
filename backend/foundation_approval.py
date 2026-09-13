@@ -220,6 +220,12 @@ def registered_model(source, selected):
         if source['platform'].get('model') != cfg.model.model_dump(mode='json'):
             raise HTTPException(409, 'REGISTERED_RUNTIME_MODEL_BINDING_REQUIRED')
     if cfg.model.protocol == 'messages-passthrough':
+        # Empty response allowlist == no forensic evidence of the real response model
+        # identity. It may be registered for review, but must NOT be admitted as an
+        # executable model. Fail closed here; the allowlist is populated only from a
+        # real forensic capture, never a synthetic/guessed id.
+        if not cfg.model.responseModelAllowlist:
+            raise HTTPException(409, 'UNVERIFIED_RESPONSE_IDENTITY')
         # The pure codec permits 1..256. This product's reviewed reservation and
         # policy envelope is deliberately exactly one 256-output-token call.
         if (cfg.limits.maxOutputTokens != 256 or cfg.limits.maxIterations != 1

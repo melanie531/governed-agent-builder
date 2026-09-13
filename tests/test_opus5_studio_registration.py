@@ -161,6 +161,18 @@ def test_unverified_catalog_binding_cannot_become_a_registered_model():
         foundation_model(Client(g,t), s, model)
 
 
+def test_empty_allowlist_registers_for_review_but_fails_admission_unverified():
+    from backend.foundation_approval import registered_model
+    # Unverified: empty response allowlist, no evidence. Manifest loads (registerable
+    # for review) but admission must fail closed with UNVERIFIED_RESPONSE_IDENTITY.
+    raw = opus_config(verified=False)
+    model = load_config(raw, digest(raw)).model
+    assert model.responseModelAllowlist == ()
+    source = {'config': raw, 'platform': {'model': model.model_dump(mode='json')}}
+    with pytest.raises(HTTPException, match='UNVERIFIED_RESPONSE_IDENTITY'):
+        registered_model(source, model.id)
+
+
 def test_product_rejects_smaller_codec_budget():
     raw = opus_config()
     raw['limits']['maxOutputTokens'] = 16

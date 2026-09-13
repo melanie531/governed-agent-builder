@@ -85,7 +85,12 @@ class Model(Frozen):
             exact_endpoint(self.endpoint, '/bedrockrt/v1/messages')
             if self.requestModel != 'us.anthropic.claude-opus-5' or self.route != self.requestModel:
                 raise ValueError('EXACT_OPUS_PASSTHROUGH_BINDING_REQUIRED')
-            if (not self.responseModelAllowlist or len(self.responseModelAllowlist) > 4
+            # Empty allowlist == no verified response-identity evidence yet. Such a
+            # manifest is loadable/registerable-for-review, but the codec fail-closes
+            # (opus_messages.read_response rejects every response) and admission blocks
+            # it via UNVERIFIED_RESPONSE_IDENTITY. Never inject a synthetic id to satisfy
+            # loading: the allowlist is populated ONLY from real forensic evidence.
+            if (len(self.responseModelAllowlist) > 4
                     or len(set(self.responseModelAllowlist)) != len(self.responseModelAllowlist)
                     or any(not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', x) for x in self.responseModelAllowlist)):
                 raise ValueError('EXPLICIT_RESPONSE_ID_ALLOWLIST_REQUIRED')

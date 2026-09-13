@@ -28,10 +28,23 @@ def test_engine_sends_explicit_opus_binding_and_disables_thinking():
     assert headers['anthropic-version']=='2023-06-01'
 
 
-@pytest.mark.parametrize('field',['requestModel','responseModelAllowlist'])
+@pytest.mark.parametrize('field',['requestModel'])
 def test_missing_explicit_identity_fails(field):
     raw=opus_config();del raw['model'][field]
     with pytest.raises(ValueError):load_config(raw,digest(raw))
+
+
+def test_empty_response_allowlist_loads_but_is_unverified_and_fail_closed():
+    # An empty/absent response allowlist is a legitimate UNVERIFIED state (no forensic
+    # evidence yet). It must LOAD (no synthetic id required), but the codec fail-closes
+    # on every response and admission rejects it. Never inject a synthetic id to load.
+    from foundation_harness.opus_messages import read_response
+    raw=opus_config();del raw['model']['responseModelAllowlist']
+    cfg=load_config(raw,digest(raw))
+    assert cfg.model.responseModelAllowlist==()
+    # Codec fail-closed: empty allowlist rejects any response identity.
+    with pytest.raises(ValueError,match='EXPLICIT_RESPONSE_ID_ALLOWLIST_REQUIRED'):
+        read_response({**message(),'model':'anything'},cfg.model.responseModelAllowlist,256)
 
 
 def test_changed_identity_invalidates_manifest():
