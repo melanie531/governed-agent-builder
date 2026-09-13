@@ -10,7 +10,7 @@ type Catalog = {items: Capability[]; workspaces: string[]};
 type NativeRecord = {status: string; recordArn: string; statusReason?: string};
 type Model = {id: string; name: string; provider: string; type: string};
 type Metrics = {scope: string; start: string; end: string; models: ({model_id: string} & Record<string, string | number | null>)[]};
-type Costs = {status: string; reason?: string; scope?: string; start?: string; end?: string; generated_at?: number; currency?: string; estimated?: boolean; total?: string | null; services?: {service: string; amount: string}[]; daily?: {date: string; amount: string}[]};
+type Costs = {status: string; reason?: string; scope?: string; start?: string; end?: string; generated_at?: number; currency?: string; estimated?: boolean; total?: string | null; services?: {service: string; amount: string}[]; daily?: {date: string; amount: string | null}[]};
 const latency = (value: number | null | undefined) => value == null ? 'No data' : `${(value / 1000).toFixed(2)} s`;
 const number = (value: unknown) => typeof value === 'number' ? value.toLocaleString() : 'No data';
 const money = (value: string | null | undefined) => value == null ? 'No data' : new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', maximumFractionDigits: 4}).format(Number(value));
@@ -73,9 +73,9 @@ export default function PlatformAdmin({api, page}: {api: Api; page: string}) {
       <Table header={<Header variant="h2">Cost by service</Header>} items={costs.services || []} columnDefinitions={[
         {id: 'service', header: 'AWS service', cell: row => row.service}, {id: 'amount', header: 'Cost (USD)', cell: row => money(row.amount)},
       ]} empty={<Box>No project-attributed billing data in this period.</Box>}/>
-      <Table header={<Header variant="h2">Daily cost</Header>} items={costs.daily || []} columnDefinitions={[
+      {!!costs.daily?.length && <Table header={<Header variant="h2">Daily cost</Header>} items={costs.daily} columnDefinitions={[
         {id: 'date', header: 'Date (UTC)', cell: row => row.date}, {id: 'amount', header: 'Cost (USD)', cell: row => money(row.amount)},
-      ]}/>
+      ]}/>}
     </>)}
   </SpaceBetween>;
 }

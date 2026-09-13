@@ -42,9 +42,11 @@ def test_project_cost_filter_units_and_estimated_billing():
 def test_absent_billing_groups_have_no_fabricated_total():
     adapter, client = cloud()
     client.list_cost_allocation_tags.return_value = {"CostAllocationTags": [{"TagKey": "project", "Status": "Active"}]}
-    client.get_cost_and_usage.return_value = {"ResultsByTime": []}
+    client.get_cost_and_usage.return_value = {"ResultsByTime": [
+        {"TimePeriod": {"Start": "2026-09-12", "End": "2026-09-13"}, "Estimated": True, "Groups": []}]}
     assert adapter.costs()["total"] is None
     assert adapter.costs()["status"] == "NO_DATA"
+    assert adapter.costs()["daily"] == []
 
 
 def test_cloudwatch_queries_one_complete_day_and_retains_missing_data():

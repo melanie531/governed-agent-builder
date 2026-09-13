@@ -16,6 +16,11 @@ mkdirSync(directory, {recursive: true});
 const expect = baseExpect.configure({timeout: 45000});
 const browser = await chromium.launch({channel: 'chrome', headless: true, args: ['--disable-quic']});
 const pages = [];
+async function navigate(page, name) {
+  const toggle = page.getByRole('button', {name: 'Open side navigation', exact: true});
+  if (await toggle.isVisible()) await toggle.click();
+  await page.getByRole('link', {name, exact: true}).click();
+}
 async function login(role) {
   const identity = role === 'admin' ? 'journeyAdminQA' : 'journeyQA';
   const loaded = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
@@ -51,7 +56,7 @@ try {
   console.log('Actual Cognito business and administrator sign-in: PASS');
   const denied = await user.request.get(origin + '/api/admin/platform/overview');
   if (denied.status() !== 403) throw new Error('Business role reached administrator metrics');
-  await user.getByRole('link', {name: 'Tool requests', exact: true}).click();
+  await navigate(user, 'Tool requests');
   const details = `Synthetic administrator handoff ${Date.now()}`;
   await user.getByRole('textbox', {name: 'What tool do you need?', exact: true}).fill('CRM');
   await user.getByRole('textbox', {name: 'Details', exact: true}).fill(details);
@@ -60,7 +65,7 @@ try {
   const response = await submitted;
   if (response.status() !== 201) throw new Error(`Request creation HTTP ${response.status()}`);
   const request = await response.json();
-  await admin.getByRole('link', {name: 'Policies & approvals', exact: true}).click();
+  await navigate(admin, 'Policies & approvals');
   const row = admin.getByRole('row').filter({hasText: details});
   await row.getByRole('textbox', {name: 'Response for CRM', exact: true}).fill('Reviewing the synthetic CRM tool request.');
   await row.getByRole('button', {name: 'Save response', exact: true}).click();
@@ -69,18 +74,25 @@ try {
   await admin.screenshot({path: resolve(directory, 'approvals.png'), fullPage: true});
   await user.screenshot({path: resolve(directory, 'business-status.png'), fullPage: true});
   const readback = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
-import boto3,json,sys
+import boto3,json,sys,time
 from backend.dynamo_store import DynamoStore
 from backend.foundation_runs import get
+from fastapi import HTTPException
 state=json.load(open(sys.argv[1]));s=boto3.Session(profile_name='account-820',region_name='us-west-2')
 assert s.client('sts').get_caller_identity()['Account']=='820242898417'
 store=DynamoStore(state['app']['outputs']['StateTable'],s.resource('dynamodb'))
-with store.tx() as db:
- row=get(db,'tool-request:'+sys.argv[2])
- assert row['requester']==state['journeyQA']['subject'] and row['responded_by']==state['journeyAdminQA']['subject']
- assert row['status']=='IN_REVIEW' and row['version']==2
- assert any(r['resource']==row['id'] and r['action']=='tool_request_responded' for r in db.select('audit'))
- print(json.dumps({k:row[k] for k in ('id','title','status','version','response')}))
+for attempt in range(6):
+ try:
+  with store.tx() as db:
+   row=get(db,'tool-request:'+sys.argv[2])
+   assert row['requester']==state['journeyQA']['subject'] and row['responded_by']==state['journeyAdminQA']['subject']
+   assert row['status']=='IN_REVIEW' and row['version']==2
+   assert any(r['resource']==row['id'] and r['action']=='tool_request_responded' for r in db.select('audit'))
+  print(json.dumps({k:row[k] for k in ('id','title','status','version','response')}))
+  break
+ except HTTPException as exc:
+  if exc.status_code!=409 or exc.detail!='Concurrent governance update; reload and retry' or attempt==5:raise
+  time.sleep(.25*(attempt+1))
 `, statePath, request.id], {encoding: 'utf8', cwd: root, timeout: 60000});
   if (readback.status !== 0) throw new Error('Independent DynamoDB/audit readback failed');
   writeFileSync(resolve(directory, 'request-ddb-receipt.json'), readback.stdout, {mode: 0o600});
@@ -91,15 +103,16 @@ with store.tx() as db:
     ['Performance', '/performance/models', 'performance'],
     ['Platform cost', '/costs', 'costs'],
   ]) {
-    await admin.getByRole('link', {name: navigation, exact: true}).click();
+    await navigate(admin, navigation);
     const response = await admin.request.get(origin + '/api/admin/platform' + endpoint, {timeout: 45000});
     if (!response.ok()) throw new Error(`Native ${name} returned HTTP ${response.status()}`);
     sources[name] = await response.json();
+    writeFileSync(resolve(directory, 'native-sources.json'), JSON.stringify(sources, null, 2), {mode: 0o600});
     await expect(admin.getByRole('button', {name: 'Refresh metrics', exact: true})).toBeEnabled();
     await admin.screenshot({path: resolve(directory, name + '.png'), fullPage: true});
     console.log('Hosted native administrator source: PASS', name);
   }
-  await admin.getByRole('link', {name: 'Registry & AI Catalog', exact: true}).click();
+  await navigate(admin, 'Registry & AI Catalog');
   await admin.getByRole('button', {name: 'Discover Bedrock models'}).click();
   await expect(admin.getByText('Bedrock model discovery refreshed.', {exact: true})).toBeVisible();
   const discovered = await admin.request.get(origin + '/api/admin/platform/models/discovery');

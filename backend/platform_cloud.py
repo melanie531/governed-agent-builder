@@ -181,11 +181,11 @@ class PlatformCloud:
                     amount = Decimal(metric["Amount"])
                     services[group["Keys"][0]] = services.get(group["Keys"][0], Decimal(0)) + amount
                     total += amount
-                daily.append({"date": day["TimePeriod"]["Start"], "amount": str(total)})
+                daily.append({"date": day["TimePeriod"]["Start"], "amount": str(total) if day["Groups"] else None})
             return {"status": "AVAILABLE" if services else "NO_DATA", "source": "AWS Cost Explorer",
                     "account": self.settings["account"], "scope": "Resources billed with project=governed-agent-builder; untagged inference and shared resources are not allocated.",
                     "start": start.isoformat(), "end": end.isoformat(), "currency": "USD", "estimated": estimated,
                     "generated_at": time.time(), "total": str(sum(services.values(), Decimal(0))) if services else None,
                     "services": [{"service": key, "amount": str(value)} for key, value in sorted(services.items())],
-                    "daily": daily}
+                    "daily": daily if services else []}
         return self.cached("costs", 3600, read)
