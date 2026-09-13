@@ -1,0 +1,22 @@
+{
+  "foundation": {
+    "role_exists": true,
+    "inline_count": 3,
+    "attached_count": 0,
+    "boundary_present": false
+  },
+  "gateway_outbound": {
+    "role_exists": true,
+    "inline_count": 1,
+    "attached_count": 0,
+    "boundary_present": false
+  },
+  "cedar_stable_principal_matches_foundation_role": true,
+  "cedar_has_no_session_suffix": true,
+  "gateway_outbound_role_matches": true,
+  "policy_enforce": true,
+  "gateway_ready": true,
+  "target_ready": true,
+  "interceptor_present": false,
+  "foundation_has_exact_gateway_invoke_allow": true
+}
