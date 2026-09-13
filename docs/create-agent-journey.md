@@ -158,3 +158,6 @@ Credentials are read from the exact target-account SSM paths into process memory
 The runner writes no authentication trace or browser storage state. Evidence goes
 to ignored `artifacts/journey-live/`; successful receipts include Runtime identity,
 model ID, actual Gateway calls, and native evaluation request IDs.
+Receipts are retained across focused reruns. Set `GAB_LIVE_SCENARIO` to one scenario
+JSON object to rerun a case, or `GAB_CLEANUP_IDS` to a JSON array of this QA user's
+agent IDs to exercise confirmed cleanup without creating more agents.

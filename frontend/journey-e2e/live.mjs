@@ -1,12 +1,13 @@
 // Actual hosted UI + Cognito + Gateway + AgentCore. No intercepted responses.
 // Credentials stay in process memory; no auth trace or storage-state is written.
-import {chromium, expect} from '@playwright/test';
-import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {chromium, expect as baseExpect} from '@playwright/test';
+import {readFileSync, mkdirSync, writeFileSync, existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 
 const root = resolve(import.meta.dirname, '../..');
+const expect = baseExpect.configure({timeout: 45000});
 const statePath = process.env.GAB_RELEASE_STATE;
 if (!statePath) throw new Error('Explicit GAB_RELEASE_STATE is required');
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -27,7 +28,8 @@ const browser = await chromium.launch({channel: 'chrome', headless: true, args: 
 const context = await browser.newContext({viewport: {width: 1440, height: 1080}});
 const page = await context.newPage();
 page.setDefaultTimeout(30000);
-const receipts = [];
+const receiptsPath = resolve(directory, 'receipts.json');
+const receipts = existsSync(receiptsPath) ? JSON.parse(readFileSync(receiptsPath, 'utf8')) : [];
 async function read(path) {
   try {
     return await page.request.get(state.app.outputs.ApplicationOrigin + path, {maxRetries: 3, timeout: 45000});
@@ -47,7 +49,7 @@ async function waitStatus(agentId, field, expected) {
     }
     if (!response.ok()) throw new Error(`Hosted status returned HTTP ${response.status()}`);
     const detail = await response.json();
-    const status = detail[field].status;
+    const status = detail[field]?.status || 'NOT_REQUESTED';
     writeFileSync(resolve(directory, 'current-agent.json'), JSON.stringify(detail, null, 2), {mode: 0o600});
     if (status !== previous) console.log(`${field}: ${status}`);
     previous = status;
@@ -75,6 +77,7 @@ async function runChat(question) {
     return result.phase;
   }, {timeout: 300000, intervals: [5000, 10000], message: 'Actual Runtime chat invocation succeeds'}).toBe('SUCCEEDED');
   await expect(page.getByLabel('Agent output')).toBeVisible();
+  console.log('Actual Runtime chat turn: PASS');
 }
 
 function nativeApi(detail) {
@@ -99,21 +102,28 @@ print(json.dumps({k:v[k] for k in ('status','output','model_id','tool_calls','tr
 }
 
 async function removeAgent(detail, index) {
-  await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
-  await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill('incorrect confirmation');
-  await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
-  await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
-  await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(detail.definition.name);
-  await page.screenshot({path: resolve(directory, `delete-confirm-${index}.png`), fullPage: true});
-  await dialog.getByRole('button', {name: 'Permanently delete', exact: true}).click();
+  if (!detail.deletion || detail.deletion.status === 'DELETE_FAILED') {
+    await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+    await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill('incorrect confirmation');
+    await expect(dialog.getByRole('button', {name: 'Permanently delete', exact: true})).toBeDisabled();
+    await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', {name: 'Delete agent', exact: true}).click();
+    await dialog.getByRole('textbox', {name: 'Agent name to confirm deletion'}).fill(detail.definition.name);
+    await page.screenshot({path: resolve(directory, `delete-confirm-${index}.png`), fullPage: true});
+    const submitted = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/delete'));
+    await dialog.getByRole('button', {name: 'Permanently delete', exact: true}).click();
+    const response = await submitted;
+    if (!response.ok()) throw new Error(`Deletion submission failed: HTTP ${response.status()}`);
+  }
   const removed = await waitStatus(detail.id, 'deletion', 'DELETED');
-  await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+  await expect(page.getByText('Agent deleted', {exact: true}), 'Deletion completion appears in the current view').toBeVisible();
+  console.log('Deletion page before reload:', new URL(page.url()).hash);
   await page.reload({waitUntil: 'domcontentloaded'});
-  await expect(page.getByText('Agent deleted', {exact: true})).toBeVisible();
+  console.log('Deletion page after reload:', new URL(page.url()).hash);
+  await expect(page.getByText('Agent deleted', {exact: true}), 'Deletion receipt survives refresh').toBeVisible();
   const verified = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
 import boto3,json,sys
 from botocore.exceptions import ClientError
@@ -190,8 +200,13 @@ try {
   console.log('Hosted new tool request submission + own status: PASS');
   for (const id of JSON.parse(process.env.GAB_CLEANUP_IDS || '[]')) {
     const detail = await (await read('/api/journey/agents/' + id)).json();
-    if (detail.deletion?.status === 'DELETED') continue;
     await page.goto(state.app.outputs.ApplicationOrigin + '/#agent/' + id, {waitUntil: 'domcontentloaded'});
+    await page.reload({waitUntil: 'domcontentloaded'});
+    console.log('Opened agent page:', new URL(page.url()).hash);
+    if (detail.deletion?.status === 'DELETED') {
+      await expect(page.getByText('Agent deleted', {exact: true}), 'Existing deletion receipt can be reopened').toBeVisible();
+      continue;
+    }
     await expect(page.getByRole('heading', {name: detail.definition.name, exact: true})).toBeVisible();
     await removeAgent(detail, 'failed-' + id);
   }
@@ -201,6 +216,7 @@ try {
   ];
   for (const [index, scenario] of scenarios.entries()) {
     await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});
+    await page.reload({waitUntil: 'domcontentloaded'});
     await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible();
     await page.getByRole('button', {name: 'Create agent', exact: true}).click();
     await expect(page.getByRole('radio')).toHaveCount(2);
@@ -243,7 +259,7 @@ try {
     if (scenario.eval && (detail.evaluation.cases.length !== 2 || detail.evaluation.cases.some(c => !c.request_id || c.evaluator_id !== 'Builtin.Correctness'))) throw new Error('Missing native evaluation receipts');
     if (!scenario.eval && (detail.evaluation.status !== 'SKIPPED' || detail.evaluation.cases.length)) throw new Error('Evaluation was not skipped');
     receipts.push({scenario, ...detail});
-    writeFileSync(resolve(directory, 'receipts.json'), JSON.stringify(receipts, null, 2), {mode: 0o600});
+    writeFileSync(receiptsPath, JSON.stringify(receipts, null, 2), {mode: 0o600});
     await page.screenshot({path: resolve(directory, `result-${index}.png`), fullPage: true});
     await page.getByRole('tab', {name: 'API access', exact: true}).click();
     await expect(page.getByRole('textbox', {name: 'Python API example'})).toHaveValue(/invoke_agent_runtime/);
