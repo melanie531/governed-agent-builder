@@ -1,0 +1,136 @@
+{
+  "_provenance": "Real bedrock:ListFoundationModels response, account 302277511711 / us-west-2. Deterministic 7-model subset for fixture + e2e. NOT a guessed list; these are actual catalog entries. No launch dates exist in this API.",
+  "modelSummaries": [
+    {
+      "modelId": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "modelName": "Claude Haiku 4.5",
+      "providerName": "Anthropic",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "INFERENCE_PROFILE"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "modelId": "anthropic.claude-sonnet-4-20250514-v1:0",
+      "modelName": "Claude Sonnet 4",
+      "providerName": "Anthropic",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "INFERENCE_PROFILE"
+      ],
+      "modelLifecycle": {
+        "status": "LEGACY"
+      }
+    },
+    {
+      "modelId": "openai.gpt-6-astra",
+      "modelName": "GPT-6 Astra",
+      "providerName": "OpenAI",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "INFERENCE_PROFILE"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "modelId": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "modelName": "Qwen3 235B A22B 2507",
+      "providerName": "Qwen",
+      "inputModalities": [
+        "TEXT"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "ON_DEMAND"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "modelId": "stability.stable-creative-upscale-v1:0",
+      "modelName": "Stable Image Creative Upscale",
+      "providerName": "Stability AI",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "IMAGE"
+      ],
+      "responseStreamingSupported": false,
+      "inferenceTypesSupported": [
+        "INFERENCE_PROFILE"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "modelId": "amazon.titan-embed-text-v2:0",
+      "modelName": "Titan Text Embeddings V2",
+      "providerName": "Amazon",
+      "inputModalities": [
+        "TEXT"
+      ],
+      "outputModalities": [
+        "EMBEDDING"
+      ],
+      "responseStreamingSupported": false,
+      "inferenceTypesSupported": [
+        "ON_DEMAND"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "modelId": "nvidia.nemotron-nano-12b-v2",
+      "modelName": "NVIDIA Nemotron Nano 12B v2 VL BF16",
+      "providerName": "NVIDIA",
+      "inputModalities": [
+        "TEXT",
+        "IMAGE"
+      ],
+      "outputModalities": [
+        "TEXT"
+      ],
+      "responseStreamingSupported": true,
+      "inferenceTypesSupported": [
+        "ON_DEMAND"
+      ],
+      "modelLifecycle": {
+        "status": "ACTIVE"
+      }
+    }
+  ]
+}

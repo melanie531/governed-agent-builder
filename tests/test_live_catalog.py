@@ -44,7 +44,18 @@ def test_fixture_catalog_reports_native_not_connected_preserving_builder(client)
     catalog = client.get('/api/catalog').json()
     assert catalog['mode'] == 'fixture'
     assert catalog['native_connection_state'] == 'NotConnected'
-    assert catalog['items'] and all(item['fixture'] for item in catalog['items'])
+    # Synthetic aliases are fixtures; seeded Bedrock discovery rows carry real
+    # ListFoundationModels data (fixture=False) but must be discovery-only
+    # (never callable) in this mode.
+    assert catalog['items']
+    for item in catalog['items']:
+        if item.get('source_type') == 'discovery_catalog':
+            assert item['fixture'] is False
+            assert item['execution_ready'] is False and not item['usable']
+            assert item['provider'] and item.get('model_id')
+        else:
+            assert item['fixture']
+    assert any(item.get('source_type') == 'discovery_catalog' for item in catalog['items'])
     assert client.get('/api/build-options').json()['foundations']
 
 
