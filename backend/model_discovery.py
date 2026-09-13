@@ -22,14 +22,8 @@ from datetime import date, datetime, timezone
 DISCOVERY_ORIGIN = 'Official model review records'
 WINDOW_MONTHS = 6
 
-# Vendor routing policy (Melanie's directive): Claude/OpenAI models are only
-# served through Bedrock Runtime; Gemini is an external provider; Amazon
-# Nova and Bedrock Mantle are explicitly NOT allowed in this discovery feed.
-VENDOR_ROUTES = {
-    'Anthropic': {'provider_api': 'bedrock-runtime', 'external': False},
-    'OpenAI': {'provider_api': 'bedrock-runtime', 'external': False},
-    'Google': {'provider_api': 'external', 'external': True},
-}
+# Vendor identity is metadata, NOT evidence of endpoint support or admission.
+# Endpoint facts come only from the per-model reviewed source record.
 
 
 def utc_today():
@@ -91,11 +85,8 @@ def discover(records, today=None):
                     'owner-verified official record; refusing silent discovery')
             continue
         vendor = record.get('vendor')
-        if vendor not in VENDOR_ROUTES:
-            exclude(record, 'unknown_vendor',
-                    f'vendor {vendor!r} is not an approved discovery vendor '
-                    '(Anthropic/OpenAI via bedrock-runtime, Google external only; '
-                    'Amazon Nova and Bedrock Mantle are not allowed)')
+        if not isinstance(vendor, str) or not vendor.strip():
+            exclude(record, 'unknown_vendor', 'Verified vendor identity is missing')
             continue
         source_url = record.get('source_url')
         if not isinstance(source_url, str) or not source_url.startswith('https://'):
@@ -141,11 +132,14 @@ def _projection(record):
     Discovery is distinct from Gateway connection, authorization and
     execution readiness — these flags are fixed, never derived from input.
     """
-    route = VENDOR_ROUTES[record['vendor']]
+    endpoints = record.get('supported_endpoints', [])
+    if not isinstance(endpoints, list) or any(not isinstance(e, str) for e in endpoints):
+        raise ValueError('supported_endpoints must be a list of source-evidenced endpoint names')
     item = dict(record)
     item['capabilities'] = list(record.get('capabilities', []))
+    item['supported_endpoints'] = list(endpoints)
     item.update(origin=DISCOVERY_ORIGIN, discovery_only=True,
-                provider_api=route['provider_api'], external=route['external'],
+                provider_api='unconfigured', external=False,
                 execution_ready=False, integration_ready=False,
                 execution_binding={'status': 'unverified', 'last_checked': None},
                 entitlement='unverified', gateway_enumeration='NotConnected')

@@ -88,15 +88,15 @@ class TestFailLoudValidation:
         assert result['excluded'][0]['reason'] == 'missing_source_url'
 
     def test_unknown_vendor_is_excluded_with_explicit_reason(self):
-        result = md.discover([rec(vendor='MysteryLabs')], today=TODAY)
+        result = md.discover([rec(vendor='')], today=TODAY)
         assert result['discovered'] == []
         assert result['excluded'][0]['reason'] == 'unknown_vendor'
 
-    def test_nova_and_mantle_vendors_are_rejected(self):
-        for vendor in ('Amazon', 'Amazon Nova', 'Bedrock Mantle'):
+    def test_vendor_metadata_cannot_grant_execution(self):
+        for vendor in ('Writer', 'xAI', 'Google'):
             result = md.discover([rec(vendor=vendor)], today=TODAY)
-            assert result['discovered'] == []
-            assert result['excluded'][0]['reason'] == 'unknown_vendor'
+            assert result['discovered'][0]['provider_api'] == 'unconfigured'
+            assert result['discovered'][0]['execution_ready'] is False
 
     def test_duplicate_record_ids_fail_loud(self):
         with pytest.raises(ValueError, match='[Dd]uplicate'):
@@ -130,13 +130,12 @@ class TestDiscoveryOutputContract:
         assert item['execution_binding'] == {'status': 'unverified', 'last_checked': None}
         assert item['discovery_only'] is True
 
-    def test_discovered_record_carries_vendor_route_policy(self):
-        anthropic = md.discover([rec(vendor='Anthropic')], today=TODAY)['discovered'][0]
-        assert anthropic['provider_api'] == 'bedrock-runtime'
-        assert anthropic['external'] is False
-        gemini = md.discover([rec(vendor='Google', name='synthetic-gem')], today=TODAY)['discovered'][0]
-        assert gemini['provider_api'] == 'external'
-        assert gemini['external'] is True
+    def test_discovered_record_does_not_infer_route_from_vendor(self):
+        for vendor in ('Anthropic', 'Google'):
+            row = md.discover([rec(vendor=vendor)], today=TODAY)['discovered'][0]
+            assert row['provider_api'] == 'unconfigured'
+            assert row['supported_endpoints'] == []
+            assert row['external'] is False
 
     def test_discovered_record_preserves_official_metadata_verbatim(self):
         item = md.discover([rec()], today=TODAY)['discovered'][0]
