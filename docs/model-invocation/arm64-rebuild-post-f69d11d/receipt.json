@@ -1,0 +1,70 @@
+{
+  "rebuild_reason": "f69d11d modified foundation_harness/transport.py; prior ARM64 evidence rebuilt fresh from CURRENT source. Not reused.",
+  "source_commit": "37e155985d1527e0bfffb6b375a4a3a658b58041",
+  "source_tree": "9c4b63e15a5337c45428a6969ea873561e4ce939",
+  "artifact": {
+    "source_digest": "491b68c9df89b516c59fd7955d3e9197611f43fc1f3004d240749cea000da1c4",
+    "manifest_digest": "055f416e4b3940c57b95c28203eafc312ea31a71115e920a18ac0e2a5a6e5cc8",
+    "package_digest": "46926e7e2a13d2195e3fb596fd5fe13faa5d407777738a4dbedb4729a3c9bb16",
+    "package_mode": "base",
+    "admission_config_present": false,
+    "deploy_ready": false,
+    "artifact_kind": "linux-arm64-python3.13-locked",
+    "runtime_created": false,
+    "production_ready": false
+  },
+  "sha256": "46926e7e2a13d2195e3fb596fd5fe13faa5d407777738a4dbedb4729a3c9bb16",
+  "bytes": 27513179,
+  "native_aarch64_count": 6,
+  "transport_bytes_match_source": true,
+  "transport_includes_f69d11d_capture_deadline": true,
+  "deterministic_rebuild_note": "Package sha256 reproduced identically because SOURCES + locked wheels are byte-identical to the current tip; this is an independent fresh rebuild+run, not a reuse of the prior log.",
+  "admission": false,
+  "response_allowlist": "synthetic build-only",
+  "cloud_writes": false,
+  "inference_calls": 0,
+  "execution": {
+    "arch": "aarch64",
+    "python": "3.13.15",
+    "httpx": "0.28.1",
+    "packaged_dependencies": true,
+    "real_httpx_request_preparation": true,
+    "network": "disabled/mocktransport",
+    "cases": [
+      {
+        "build_delay": 61,
+        "httpx_transport_calls": 0,
+        "deadline_rejected": true,
+        "timeouts": []
+      },
+      {
+        "build_delay": 3,
+        "httpx_transport_calls": 1,
+        "deadline_rejected": false,
+        "timeouts": [
+          {
+            "connect": 7,
+            "read": 7,
+            "write": 7,
+            "pool": 7
+          }
+        ]
+      }
+    ],
+    "cloud_runtime_tested": false,
+    "inference_calls": 0
+  },
+  "exit_code": 0,
+  "emulated_linux_arm64": true,
+  "emulation_backend": "qemu-aarch64 binfmt on x86_64 host (NOT native arm64, NOT AgentCore acceptance)",
+  "run_flags": "--platform linux/arm64 --network none --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --tmpfs /tmp:size=32m; python -I /probe.py",
+  "in_container_uname_m": "aarch64",
+  "in_container_python": "3.13.15",
+  "extracted_bytes_match_zip": true,
+  "image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a",
+  "probe_sha256": "8ec5bdcc17df7c829573bd255058642bff826a2bce5b2cd8642b3c073d24dd26",
+  "repo_digests": [
+    "arm64v8/python@sha256:c33ba31a4f8fc187a1ec9f33ef63945c29e9eaa74c47542894f26db67a4156d6",
+    "python@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285"
+  ]
+}
