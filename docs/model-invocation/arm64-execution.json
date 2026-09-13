@@ -13,5 +13,7 @@
   "extracted_bytes_match_archive": true,
   "archive_sha256": "4e79c12b47bc3cf1f62d298e75f37a9120139d01303f7dbd2d611013e4b99240",
   "cloud_runtime_tested": false,
-  "container_image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a"
+  "container_image_id": "sha256:b00eb95f27b4a7c666c7b99764515e147ab19ff26451123346f40c23a031498a",
+  "container_repo_digest": "python@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285",
+  "exit_code": 0
 }

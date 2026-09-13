@@ -1,0 +1,13 @@
+# Capture control increment — review, not enabled
+
+Product source remains the fixed60aa14e+9540be4 combination; no codec changes. Independent scripts/opus_capture_ticket.py supplies server-side serializable reserve/consume/finish operations. It is NOT an HTTP endpoint or a credential-bearing diagnostic runner. Only trusted server code may reserve; role/workspace/request digest must come from verified authority, not request body. No Ready or model approval writes exist.
+
+Reserve requires a nonempty cost basis and known decimal amount for model input,model output,Gateway/Policy,Runtime lifetime,storage,telemetry; any missing/None component rejects. Additional services are included in sum. The amount and basis are supplied by a trusted reviewer; this module validates coverage/format/sum, NOT the truth or provenance of pricing. Production prices and actual approved reservation are still unset, so no live ticket was created. Synthetic tests'0.06 total is NOT a live budget proposal.
+
+Consume persists CLAIMED in its own committed transaction before the caller may perform network I/O. Duplicate/resumed claims fail; unknown outcome state retains full held_usd with no refund/retry. Concurrent two-thread test on reopened SQLite store has exactly one winner. Existing foundation_runs test independently confirms same model-call behavior with moto DynamoDB and store reopen. No live datastore was modified. Per-ticket held amount is not an aggregate account spend ledger; production integration must combine reservation with existing account/project budget and verified admission atomically before enabling a runner.
+
+Executed tests/test_capture_ticket.py + test_activation_persistent_claim.py:11passed,2existing warnings,1.16s; full log included. Empty/unknown/overcap/missing-basis costs,identity/workspace/digest/expiry mismatch,reopen/replay/unknown outcome/concurrent claim tested.
+
+ARM64 execution already completed against exact4e79c12b...99240 artifact. arm64-execution.json now includes container repo digest and exit0. Emulator:QEMU binfmt on x86_64; inside container aarch64/Python3.13.15. Network disabled,read-only mounts,synthetic credentials/mock network,package native import+codec+signing checks passed. Not AgentCore or native-ARM field verification. The base artifact remains unadmitted/synthetic-identity,never activate.
+
+Remaining blockers: independent capture runner and actual authenticated executor binding,priced/approved all-service reservation and aggregate cap,explicit cloud permission approval,Cedar service validation,real response identity and final immutable admitted package,Studio positive/unauthorized negative acceptance. No permissions applied,no inference/no new cloud resources.
