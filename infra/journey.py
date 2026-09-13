@@ -36,7 +36,8 @@ def template(provider_arn, secret_arn):
         # let operators publish additional Converse routes without replacing code.
         statement(["bedrock:InvokeModel"], [
             sub("arn:${AWS::Partition}:bedrock:*::foundation-model/*"),
-            sub("arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*")]),
+            sub("arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"),
+            sub("arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:application-inference-profile/*")]),
         statement(["bedrock-agentcore:InvokeGateway"],
                   sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/gab-journey-tools-*")),
     ], sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/gab_journey_*"))
@@ -129,6 +130,24 @@ def configure_app(resources, settings):
     worker_statements[2]["Condition"] = {"StringEquals": {"iam:PassedToService": "bedrock-agentcore.amazonaws.com"}}
     resources["WorkerRole"]["Properties"]["Policies"].append({
         "PolicyName": "JourneyDeployment", "PolicyDocument": {"Version": "2012-10-17", "Statement": worker_statements}})
+    registry = settings.get("registry_arn")
+    if settings.get("admin_enabled") or registry:
+        expected = f"arn:aws:bedrock-agentcore:{region}:{account}:registry/"
+        if registry and (not registry.startswith(expected) or "/" in registry[len(expected):]):
+            raise ValueError("Registry must belong to this platform account and region")
+        registry_permissions = [statement(["bedrock-agentcore:GetRegistry", "bedrock-agentcore:CreateRegistryRecord",
+            "bedrock-agentcore:GetRegistryRecord", "bedrock-agentcore:SubmitRegistryRecordForApproval",
+            "bedrock-agentcore:UpdateRegistryRecordStatus"], [registry, registry + "/record/*"])] if registry else []
+        resources["BusinessRole"]["Properties"]["Policies"].append({
+            "PolicyName": "PlatformAdministration", "PolicyDocument": {"Version": "2012-10-17", "Statement": [
+                *registry_permissions,
+                statement(["bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles",
+                           "cloudwatch:GetMetricData", "ce:GetCostAndUsage", "ce:ListCostAllocationTags"], "*"),
+                statement(["bedrock:InvokeModel"], [
+                    "arn:aws:bedrock:*::foundation-model/*",
+                    f"arn:aws:bedrock:*:{account}:inference-profile/*",
+                    f"arn:aws:bedrock:*:{account}:application-inference-profile/*"]),
+            ]}})
     # Initial workspace grants are sourced from the published Catalog, not code.
     for name in ("Auth", "Authorizer", "Business", "Worker"):
         resources[name + "Role"]["Properties"]["Policies"].append({

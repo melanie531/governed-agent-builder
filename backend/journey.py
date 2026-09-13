@@ -67,6 +67,9 @@ class Journey:
 
     def validate(self, db, actor, definition):
         self.actor(actor)
+        policy = get(db, "journey-governance-policy") or {"minimum_evaluation_score": .7}
+        if definition.get("dataset") and definition["minimum_score"] < policy["minimum_evaluation_score"]:
+            raise HTTPException(409, "Evaluation threshold is below current platform policy; revise the agent")
         template = catalog.template(db, definition["template_id"])
         if actor["workspace"] not in template.get("workspaces", []):
             raise HTTPException(403, "Template is unavailable in this workspace")
@@ -106,6 +109,7 @@ class Journey:
             self.actor(actor)
             choices = catalog.choices(db, actor)
             return {"foundation": self.settings["foundation"],
+                    "minimum_evaluation_score": (get(db, "journey-governance-policy") or {"minimum_evaluation_score": .7})["minimum_evaluation_score"],
                     "templates": [item for item in catalog.templates(db) if actor["workspace"] in item.get("workspaces", [])],
                     "choices": {kind + "s": [item for item in choices if item["kind"] == kind] for kind in ("model", "mcp_server", "tool", "skill")},
                     "catalog_revision": digest(choices), "mode": self.cloud.mode,

@@ -12,6 +12,7 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [versions, setVersions] = useState<Record<string, number>>({});
   const token = useRef(crypto.randomUUID());
   const flight = useRef(false);
   const generation = useRef(0);
@@ -58,7 +59,9 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
         setTitle(''); setDetails(''); token.current = crypto.randomUUID(); setNotice('Tool request sent.');
       })}>Send request</Button>
     </SpaceBetween></Container>}
-    <Table wrapLines header={<Header variant="h2" actions={<Button disabled={busy} iconName="refresh" onClick={() => void act()}>Refresh requests</Button>}>
+    <Table wrapLines header={<Header variant="h2" actions={<Button disabled={busy} iconName="refresh" onClick={() => void act(async () => {
+      if (admin) {setResponses({}); setStatuses({}); setVersions({});}
+    })}>Refresh requests</Button>}>
       {admin ? 'New tool requests' : 'Your tool requests'}</Header>} items={items} columnDefinitions={[
       ...(admin ? [{id: 'requester', header: 'Requester', cell: (item: ToolRequest) => item.requester_name}] : []),
       {id: 'title', header: 'Tool requested', cell: item => item.title},
@@ -66,12 +69,15 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
       {id: 'status', header: 'Status', minWidth: 140, width: 140, cell: item => <StatusIndicator type={item.status === 'FULFILLED' ? 'success' : item.status === 'DECLINED' ? 'stopped' : 'pending'}>{labels[item.status]}</StatusIndicator>},
       {id: 'response', header: 'Administrator response', minWidth: 200, cell: item => admin ? <SpaceBetween size="s">
         <Textarea ariaLabel={`Response for ${item.title}`} value={responses[item.id] ?? item.response}
-          onChange={({detail}) => setResponses({...responses, [item.id]: detail.value})}/>
+          onChange={({detail}) => {setResponses({...responses, [item.id]: detail.value}); setVersions(previous => ({...previous, [item.id]: previous[item.id] ?? item.version}));}}/>
         <Select ariaLabel={`Status for ${item.title}`} selectedOption={{value: statusFor(item), label: labels[statusFor(item)]}}
           options={['IN_REVIEW', 'FULFILLED', 'DECLINED'].map(value => ({value, label: labels[value]}))}
-          onChange={({detail}) => setStatuses({...statuses, [item.id]: detail.selectedOption.value!})}/>
+          onChange={({detail}) => {setStatuses({...statuses, [item.id]: detail.selectedOption.value!}); setVersions(previous => ({...previous, [item.id]: previous[item.id] ?? item.version}));}}/>
         <Button disabled={busy || (responses[item.id] ?? item.response).trim().length < 5} onClick={() => void act(async () => {
-          await api(`/admin/tool-requests/${item.id}/response`, {version: item.version, status: statusFor(item), response: responses[item.id] ?? item.response});
+          await api(`/admin/tool-requests/${item.id}/response`, {version: versions[item.id] ?? item.version, status: statusFor(item), response: responses[item.id] ?? item.response});
+          setVersions(previous => {const next = {...previous}; delete next[item.id]; return next;});
+          setResponses(previous => {const next = {...previous}; delete next[item.id]; return next;});
+          setStatuses(previous => {const next = {...previous}; delete next[item.id]; return next;});
           setNotice('Response saved.');
         })}>Save response</Button>
       </SpaceBetween> : item.response || 'Awaiting review'},

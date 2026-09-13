@@ -103,7 +103,7 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None, admin_cloud=None):
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
@@ -375,6 +375,11 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         app.include_router(journey_router(journey, who))
     from .tool_requests import router as tool_requests_router
     app.include_router(tool_requests_router(store, who))
+    from .platform_admin import router as platform_admin_router
+    if admin_cloud is None and hosted and journey is not None:
+        from .platform_cloud import PlatformCloud
+        admin_cloud = PlatformCloud(journey.settings)
+    app.include_router(platform_admin_router(store, who, admin_cloud))
 
     @app.get("/api/demo/personas")
     def personas():
@@ -847,8 +852,12 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             raise HTTPException(404, "Unknown catalog authority")
         with store.tx() as db:
             item = resource(db, authority, resource_id)
+            if authority == "components" and item.get("catalog") == "journey":
+                raise HTTPException(409, "Use Registry & AI Catalog to govern this capability")
             db.insert('catalog_history', {'resource': resource_id, 'body': json.dumps(item), 'created': time.time()})
             item["approved"] = data.approved
+            if item.get("catalog") == "journey":
+                item["managed_by"] = "platform-admin"
             item["version"] = str(int(item["version"]) + 1) if authority == "components" else f"1.0.{int(item['version'].split('.')[-1]) + 1}"
             db.update(authority, {'body': json.dumps(item)}, where=[('id', '=', resource_id)])
             from .foundation_runs import get as epoch_get, put as epoch_put

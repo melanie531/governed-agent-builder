@@ -8,10 +8,11 @@ import uvicorn
 from backend.app import create_app
 from backend.store import Store
 from tests.journey_support import make_journey
+from tests.test_platform_admin import Native
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="gab-journey-e2e-") as temporary:
         store = Store(str(Path(temporary) / "state.sqlite"))
         journey, _ = make_journey(store)
-        app = create_app(repository=store, demo_mode=True, journey=journey)
+        app = create_app(repository=store, demo_mode=True, journey=journey, admin_cloud=Native())
         uvicorn.run(app, host="127.0.0.1", port=5189, access_log=False)

@@ -200,6 +200,10 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
                 "bucket": outputs["EvidenceBucket"], "log_group": outputs["TraceLogGroup"],
                 "network": {"networkMode": "PUBLIC"}, "evaluator_id": evaluator["evaluatorId"],
                 "evaluator_arn": evaluator["evaluatorArn"]}
+    if target.state.get("platformAdmin"):
+        settings["admin_enabled"] = True
+        if target.state["platformAdmin"].get("registry_arn"):
+            settings["registry_arn"] = target.state["platformAdmin"]["registry_arn"]
     items = []
     def item(cid, name, kind, description, binding, workspaces, **extra):
         return {"id": cid, "name": name, "kind": kind, "description": description, "binding": binding,
@@ -252,11 +256,18 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
         existing = {entry["id"]: entry for entry in records(db)}
         for entry in items:
             prior = existing.get(entry["id"])
+            if prior and prior.get("managed_by") == "platform-admin":
+                if prior["binding_digest"] != entry["binding_digest"]:
+                    raise RuntimeError("An administrator-managed Catalog binding needs review: " + entry["id"])
+                continue
             if prior:
                 comparable = {key: value for key, value in prior.items() if key != "version"}
                 entry["version"] = str(int(prior["version"]) + (comparable != {key: value for key, value in entry.items() if key != "version"}))
             db.insert("components", {"id": entry["id"], "body": json.dumps(entry)}, upsert=True)
         for entry in json.loads((data / "templates.json").read_text()):
+            stored = db.select("foundations", where=[("id", "=", entry["id"])]).fetchone()
+            if stored and json.loads(stored["body"]).get("managed_by") == "platform-admin":
+                continue
             entry.update(catalog="journey", version="1", approved=True, workspaces=["research", "operations"],
                          requires_tool=entry["id"] == "knowledge")
             db.insert("foundations", {"id": entry["id"], "body": json.dumps(entry)}, upsert=True)

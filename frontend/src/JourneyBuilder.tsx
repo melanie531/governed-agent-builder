@@ -15,7 +15,7 @@ type Template = {
   id: string; version: string; name: string; description: string; prompt: string;
   tools: string[]; skills: string[]; sample_input: string; sample_dataset: Record<string, unknown>[];
 };
-type Options = {foundation: {name: string; version: string; capabilities: string[]}; templates: Template[]; region: string; mode: string};
+type Options = {foundation: {name: string; version: string; capabilities: string[]}; templates: Template[]; region: string; mode: string; minimum_evaluation_score?: number};
 export type Revision = {agentId: string; version: number; definition: Definition};
 export type EditorState = {definition: Definition; dataset: string; step: number};
 const empty: Definition = {template_id: '', name: '', model_id: '', prompt: '', mcp_servers: [], tools: [], skills: [],
@@ -48,6 +48,7 @@ export default function JourneyBuilder({api, onSaved, onCancel, revision, initia
         api<Options>('/journey/options'), api<{items: Entry[]}>('/catalog'),
       ]);
       setOptions(config); setCatalog(snapshot.items);
+      setDraft(previous => ({...previous, minimum_score: Math.max(previous.minimum_score, config.minimum_evaluation_score ?? .7)}));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }

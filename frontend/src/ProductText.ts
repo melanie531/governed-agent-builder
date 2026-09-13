@@ -32,6 +32,11 @@ export function auditSummary(action:string,detail:unknown):string {
  case 'deploy_test':return 'Evaluation requested';
  case 'local_invoke':return 'Simulation invoked';
  case 'capability_requested':return 'Capability access requested';
+ case 'tool_requested':return typeof d.title==='string'?`Tool requested: ${d.title}`:'New tool requested';
+ case 'tool_request_responded':return [d.status,d.response].filter(value=>typeof value==='string').join(' · ');
+ case 'model_registered':case 'model_validated':case 'registry_registered':
+ case 'registry_submitted':case 'registry_decided':case 'catalog_published':case 'catalog_withdrawn':case 'journey_policy_changed':
+   return [d.status,d.reason].filter(value=>typeof value==='string').join(' · ')||'Governance decision recorded';
  case 'demo_session':return 'Session selected';
  default:return 'Activity recorded';
  }

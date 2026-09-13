@@ -83,6 +83,8 @@ def router(store, who):
                    "status": "SUBMITTED", "response": "", "version": 1, "created": time.time()}
             put(db, "tool-request:" + row["id"], row)
             put(db, key, {"id": row["id"], "signature": signature})
+            db.insert("audit", {"actor": actor["id"], "action": "tool_requested", "resource": row["id"],
+                               "detail": json.dumps({"title": row["title"], "workspace": row["workspace"]}), "created": time.time()})
             return row
         return transaction(save)
 
@@ -100,6 +102,9 @@ def router(store, who):
             row.update(status=body.status, response=body.response.strip(), version=row["version"] + 1,
                        responded_by=actor["id"], updated=time.time())
             put(db, key, row)
+            db.insert("audit", {"actor": actor["id"], "action": "tool_request_responded", "resource": request_id,
+                               "detail": json.dumps({"status": row["status"], "response": row["response"],
+                                                    "version": row["version"]}), "created": time.time()})
             return row
         return transaction(save)
     return routes
