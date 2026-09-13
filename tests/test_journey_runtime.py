@@ -129,3 +129,33 @@ def test_opaque_reasoning_is_preserved_for_converse_but_excluded_from_evaluation
                 if key in ("gen_ai.input.messages", "gen_ai.output.messages")]
     assert any("toolUse" in block for batch in messages for message in batch for block in message["content"])
     assert any("toolResult" in block for batch in messages for message in batch for block in message["content"])
+
+
+@pytest.mark.parametrize("parallel", [True, False])
+def test_tool_budget_finishes_from_collected_evidence_without_exceeding_gateway_limit(manifest, parallel):
+    class SearchingModel(Model):
+        def converse(self, **request):
+            self.requests.append(copy.deepcopy(request))
+            if "toolConfig" in request:
+                count = 8 if parallel else 1
+                content = [{"toolUse": {"toolUseId": f"call-{len(self.requests)}-{i}", "name": self.tool,
+                    "input": {"query": f"search-{len(self.requests)}-{i}"}}} for i in range(count)]
+                stop = "tool_use"
+            else:
+                content, stop = [{"text": "Aurora launches in October. [aurora-launch]"}], "end_turn"
+            return {"output": {"message": {"role": "assistant", "content": content}},
+                    "stopReason": stop, "usage": {"inputTokens": 10, "outputTokens": 20}}
+
+    model, gateway = SearchingModel(manifest["tools"][0]["name"]), Gateway(manifest)
+    receipt = execute(manifest, "Research the launch plan.", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    assert receipt["status"] == "SUCCEEDED" and len(gateway.calls) == len(receipt["tool_calls"]) == 6
+    assert len(model.requests) == (2 if parallel else 7)
+    final = model.requests[-1]
+    assert "toolConfig" not in final
+    final_text = json.dumps(final["messages"])
+    assert "aurora-launch" in final_text and "search-1-6" not in final_text and "search-1-7" not in final_text
+    assert all(set(block) == {"text"} for message in final["messages"] for block in message["content"])
+    root = next(span for span in receipt["spans"] if span["attributes"]["gen_ai.operation.name"] == "invoke_agent")
+    assert root["attributes"]["gab.tool_budget_exhausted"] is True
+    assert root["attributes"]["gab.tool_calls_skipped"] == (2 if parallel else 0)
+    assert len([s for s in receipt["spans"] if s["attributes"]["gen_ai.operation.name"] == "execute_tool"]) == 6
