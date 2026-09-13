@@ -30,7 +30,7 @@ const sonnet={...base,id:'discovery:bedrock:anthropic.claude-sonnet-4-20250514-v
  name:'Claude Sonnet 4',provider:'Anthropic',model_id:'anthropic.claude-sonnet-4-20250514-v1:0',native_model_id:'anthropic.claude-sonnet-4-20250514-v1:0',
  description:'Anthropic foundation model discovered via bedrock:ListFoundationModels.',
  category:'multimodal',lifecycle:'LEGACY',streaming:true,inference_types:['INFERENCE_PROFILE'],input_modalities:['TEXT','IMAGE'],output_modalities:['TEXT'],
- recency:'pending_verification',launch_date:'2025-05-23',launch_date_source:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html',pending_reason:'launch_date_older_than_window',
+ recency:'out_of_window',launch_date:'2025-05-23',launch_date_source:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4.html',recency_reason:'launch_date_older_than_window',pending_reason:null,
  status:'blocked',usable:false,granted:false,requestable:false,execution_ready:false,execution_binding:{status:'unverified',last_checked:null}};
 // A different provider + a text-only category. ACTIVE lifecycle but OUT-OF-WINDOW
 // verified date -> pending (again proving lifecycle != recency).
@@ -38,7 +38,7 @@ const qwen={...base,id:'discovery:bedrock:qwen.qwen3-235b-a22b-2507-v1:0',record
  name:'Qwen3 235B A22B 2507',provider:'Qwen',model_id:'qwen.qwen3-235b-a22b-2507-v1:0',native_model_id:'qwen.qwen3-235b-a22b-2507-v1:0',
  description:'Qwen foundation model discovered via bedrock:ListFoundationModels.',
  category:'text',lifecycle:'ACTIVE',streaming:true,inference_types:['ON_DEMAND'],input_modalities:['TEXT'],output_modalities:['TEXT'],
- recency:'pending_verification',launch_date:'2025-04-28',launch_date_source:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen3.html',pending_reason:'launch_date_older_than_window',
+ recency:'out_of_window',launch_date:'2025-04-28',launch_date_source:'https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-qwen3.html',recency_reason:'launch_date_older_than_window',pending_reason:null,
  status:'blocked',usable:false,granted:false,requestable:false,execution_ready:false,execution_binding:{status:'unverified',last_checked:null}};
 // A wired/callable model to prove discoverable-vs-callable is API-driven.
 const wired={...base,id:'discovery:bedrock:openai.gpt-6-astra',record_id:'discovery:bedrock:openai.gpt-6-astra',
@@ -83,13 +83,16 @@ test('Models grouped by provider, filtered by category, verified-date recency, d
 
  // (3) Recency badges from VERIFIED launch date, NOT lifecycle. Haiku (ACTIVE,
  // in-window) and Qwen (ACTIVE, out-of-window) share lifecycle yet differ in
- // recency; Sonnet (LEGACY, out-of-window) is also pending. So Recent appears
- // for the two in-window models and Pending verification for the two old ones.
+ // recency; Sonnet (LEGACY, out-of-window) is also not recent. A verified-but-old
+ // date shows "Not recent" (out of window), which is DISTINCT from "Pending
+ // verification" (reserved for genuinely missing/unmatched/conflicting dates).
  // (Scope to the model tables so the recency-filter control labels are excluded.)
  await expect(anthropic.getByText('Recent',{exact:true})).toHaveCount(1);
  await expect(openai.getByText('Recent',{exact:true})).toHaveCount(1);
- await expect(anthropic.getByText('Pending verification',{exact:true})).toHaveCount(1);
- await expect(qwenTable.getByText('Pending verification',{exact:true})).toHaveCount(1);
+ await expect(anthropic.getByText('Not recent',{exact:true})).toHaveCount(1);
+ await expect(qwenTable.getByText('Not recent',{exact:true})).toHaveCount(1);
+ // None of these verified-date models are "Pending verification".
+ await expect(page.getByText('Pending verification',{exact:true})).toHaveCount(1);
 
  // (4) Discoverable-vs-callable straight from API state (not fabricated):
  // discovery-only models report their real execution_binding status; the wired one is ready.

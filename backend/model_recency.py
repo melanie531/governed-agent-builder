@@ -1,18 +1,28 @@
 """Verified launch-date recency classifier for the Bedrock discovery catalog.
 
-Source of truth: ``backend/model_launch_dates.json`` — a launch-date map keyed by
-EXACT bedrock modelId, built from the reviewer's verified official model-card
-inventory (each entry carries launch_date + source_url + content_sha256). See the
-map's ``_provenance`` field and ``scripts``/generator for how it was produced.
+Evidence source: ``backend/model_launch_dates.json`` -- a launch-date EVIDENCE
+map keyed by EXACT bedrock modelId, built from the reviewer's verified official
+model-card inventory (each entry carries launch_date + source_url +
+content_sha256). See the map's ``_provenance`` field and the generator
+``scripts/gen_model_launch_dates.py`` for how it was produced.
 
-Recency is a REAL rolling window, not a lifecycle proxy: a model is "recent"
-ONLY IF it has a verified launch_date within ``[today - 6 months, today]`` where
-``today`` is computed at call time (server-side), never hardcoded. Everything
-else — missing date, future date, unmatched modelId, or a date/ID conflict —
-goes to the "pending verification" queue and is NEVER surfaced as recent.
+The account<->evidence exact-id join AND the rolling recency window are
+RE-COMPUTED AT CALL TIME here, from the live model list, this evidence map, and
+the current date. Nothing is baked in: no snapshot join result is consumed and
+no in-window count is hardcoded. If the account list or the evidence dates
+change, this recomputes.
 
-modelLifecycle.status (ACTIVE|LEGACY) is intentionally NOT used for recency. It
-remains available on rows purely as separate lifecycle-info display.
+Three classifications:
+  RECENT        -- verified launch_date within [today - 6 months, today].
+  OUT_OF_WINDOW -- verified launch_date, but OLDER than the window (or a future
+                   date). NOT recent, but NOT "pending verification" either: the
+                   date is known and verified, it is simply outside the window.
+  PENDING       -- genuinely unverifiable for recency: no verified date, the
+                   modelId is not matched in the evidence, or a date/ID conflict.
+
+Only RECENT models enter the "recent" discovery list. modelLifecycle.status
+(ACTIVE|LEGACY) is intentionally NOT used for recency; it remains available on
+rows purely as separate lifecycle-info display.
 """
 from __future__ import annotations
 
@@ -25,13 +35,16 @@ RECENCY_WINDOW_MONTHS = 6
 
 # Recency classifications.
 RECENT = 'recent'
+OUT_OF_WINDOW = 'out_of_window'
 PENDING = 'pending_verification'
 
-# Reasons a model lands in the pending-verification queue.
+# Reasons a model lands in the pending-verification queue (genuinely unverifiable).
 PENDING_NO_DATE = 'no_verified_launch_date'
-PENDING_FUTURE = 'launch_date_in_future'
-PENDING_OUT_OF_WINDOW = 'launch_date_older_than_window'
 PENDING_CONFLICT = 'launch_date_or_id_conflict'
+
+# Reasons a verified-date model is out of window (known date, just not recent).
+OUT_OF_WINDOW_OLDER = 'launch_date_older_than_window'
+OUT_OF_WINDOW_FUTURE = 'launch_date_in_future'
 
 
 def _default_map_path() -> Path:
@@ -39,9 +52,9 @@ def _default_map_path() -> Path:
 
 
 def load_launch_date_map(path: str | Path | None = None) -> dict:
-    """Load the verified launch-date map. Returns the id->record dict under
-    ``models``. Conflicted ids (recorded under ``_conflicts``) are excluded so a
-    conflicting model can never be classified recent."""
+    """Load the verified launch-date evidence map. Returns the id->record dict
+    under ``models``. Conflicted ids (recorded under ``_conflicts``) are excluded
+    so a conflicting model can never be classified recent."""
     p = Path(path) if path else _default_map_path()
     if not p.exists():
         return {}
@@ -77,24 +90,36 @@ def window_bounds(today: date | None = None) -> tuple[date, date]:
 
 @dataclass
 class RecencyResult:
-    recency: str  # RECENT | PENDING
+    recency: str  # RECENT | OUT_OF_WINDOW | PENDING
     launch_date: str | None
     source_url: str | None
     content_sha256: str | None
-    pending_reason: str | None
+    reason: str | None  # pending_reason or out-of-window reason; None when recent
+
+    @property
+    def is_recent(self) -> bool:
+        return self.recency == RECENT
 
     def as_row_fields(self) -> dict:
+        # ``pending_reason`` is kept for backward compatibility but is only set
+        # for genuinely-pending rows; out-of-window rows carry ``recency_reason``.
         return {
             'recency': self.recency,
             'launch_date': self.launch_date,
             'launch_date_source': self.source_url,
             'launch_date_sha256': self.content_sha256,
-            'pending_reason': self.pending_reason,
+            'recency_reason': self.reason,
+            'pending_reason': self.reason if self.recency == PENDING else None,
         }
 
 
 def classify(model_id: str, launch_map: dict, today: date | None = None) -> RecencyResult:
-    """Classify one modelId as recent vs pending using ONLY verified dates."""
+    """Classify one modelId using ONLY verified dates. Recompute, never baked in.
+
+    - RECENT        : verified date within the rolling window.
+    - OUT_OF_WINDOW : verified date, older than the window or in the future.
+    - PENDING       : no verified date / unmatched id / conflict.
+    """
     start, end = window_bounds(today)
     rec = launch_map.get(model_id)
     if not rec:
@@ -111,9 +136,10 @@ def classify(model_id: str, launch_map: dict, today: date | None = None) -> Rece
     src = rec.get('source_url')
     sha = rec.get('content_sha256')
     if ld > end:
-        return RecencyResult(PENDING, raw, src, sha, PENDING_FUTURE)
+        # A verified but future-dated card is out of window, not pending.
+        return RecencyResult(OUT_OF_WINDOW, raw, src, sha, OUT_OF_WINDOW_FUTURE)
     if ld < start:
-        return RecencyResult(PENDING, raw, src, sha, PENDING_OUT_OF_WINDOW)
+        return RecencyResult(OUT_OF_WINDOW, raw, src, sha, OUT_OF_WINDOW_OLDER)
     return RecencyResult(RECENT, raw, src, sha, None)
 
 

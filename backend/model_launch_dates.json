@@ -1,9 +1,8 @@
 {
-  "_provenance": "Verified launch-date map keyed by EXACT bedrock modelId. Built from docs/review-data/bedrock-model-date-inventory.json (official AWS Bedrock model cards, each with source_url + content_sha256) joined via exact modelId match against the account bedrock:ListFoundationModels snapshot (list-foundation-models-sanitized.json, 113 models). Only exact-match entries with a verified launch_date are included. No dates are fabricated; entries with no date, no API match, or a date conflict are omitted here and routed to the pending-verification queue at runtime.",
+  "_provenance": "Verified launch-date EVIDENCE map keyed by EXACT bedrock modelId. Built from docs/review-data/bedrock-model-date-inventory.json (official AWS Bedrock model cards, each with source_url + content_sha256) filtered to ids that exact-match the account bedrock:ListFoundationModels snapshot (list-foundation-models-sanitized.json, 113 models). This is EVIDENCE only: the account<->evidence exact-id join and the rolling 6-month recency window are RE-COMPUTED AT RUNTIME (backend.model_recency) from the live API list, this map, and the current date. No dates are fabricated; entries with no date, no API match, or a date conflict are omitted here.",
   "_source_branch": "docs/model-launch-date-evidence",
   "_source_files": [
     "docs/review-data/bedrock-model-date-inventory.json",
-    "docs/review-data/exact-id-join.json",
     "docs/review-data/list-foundation-models-sanitized.json"
   ],
   "_api_retrieved_at": "2026-09-13T09:24:08.750362+00:00",

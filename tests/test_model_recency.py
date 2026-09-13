@@ -15,8 +15,9 @@ import pytest
 
 from backend.discovery_catalog import DiscoveryFoundationCatalog, normalize_model
 from backend.model_recency import (
-    RECENT, PENDING, PENDING_NO_DATE, PENDING_FUTURE, PENDING_OUT_OF_WINDOW,
-    PENDING_CONFLICT, apply_recency, classify, load_launch_date_map, window_bounds,
+    RECENT, OUT_OF_WINDOW, PENDING, PENDING_NO_DATE, PENDING_CONFLICT,
+    OUT_OF_WINDOW_OLDER, OUT_OF_WINDOW_FUTURE,
+    apply_recency, classify, load_launch_date_map, window_bounds,
 )
 
 MAP_PATH = Path('backend/model_launch_dates.json')
@@ -42,12 +43,14 @@ def test_a_window_filter_reduces_list_inwindow_vs_out_of_window():
     rows = [normalize_model(_summary('in.window')), normalize_model(_summary('out.old'))]
     apply_recency(rows, launch_map, today=today)
     recent = [r for r in rows if r['recency'] == RECENT]
-    pending = [r for r in rows if r['recency'] == PENDING]
     # The recent list is strictly smaller than the full discovered list.
     assert len(recent) == 1 and len(recent) < len(rows)
     assert recent[0]['model_id'] == 'in.window'
-    assert pending[0]['model_id'] == 'out.old'
-    assert pending[0]['pending_reason'] == PENDING_OUT_OF_WINDOW
+    # A verified-but-old date is OUT_OF_WINDOW (not recent) -- NOT pending.
+    out = [r for r in rows if r['recency'] == OUT_OF_WINDOW]
+    assert out and out[0]['model_id'] == 'out.old'
+    assert out[0]['recency_reason'] == OUT_OF_WINDOW_OLDER
+    assert out[0]['pending_reason'] is None
 
 
 # ---------------------------------------------------------------------------
@@ -55,13 +58,15 @@ def test_a_window_filter_reduces_list_inwindow_vs_out_of_window():
 # ---------------------------------------------------------------------------
 def test_b_missing_date_is_pending_not_recent():
     r = classify('unmatched.model', {}, today=date(2026, 9, 13))
-    assert r.recency == PENDING and r.pending_reason == PENDING_NO_DATE
+    assert r.recency == PENDING and r.reason == PENDING_NO_DATE
 
 
-def test_b_future_date_is_pending_not_recent():
+def test_b_future_date_is_out_of_window_not_recent():
+    # A verified future date is out of window (known date), not recent, and not
+    # pending (pending is only for genuinely-unverifiable dates).
     launch_map = {'future.model': {'launch_date': '2099-01-01', 'source_url': 'u', 'content_sha256': 'h'}}
     r = classify('future.model', launch_map, today=date(2026, 9, 13))
-    assert r.recency == PENDING and r.pending_reason == PENDING_FUTURE
+    assert r.recency == OUT_OF_WINDOW and r.reason == OUT_OF_WINDOW_FUTURE
 
 
 def test_b_conflict_is_pending_not_recent():
@@ -74,12 +79,12 @@ def test_b_conflict_is_pending_not_recent():
         loaded = load_launch_date_map(tmp)
         assert 'c.model' not in loaded
         r = classify('c.model', loaded, today=date(2026, 9, 13))
-        assert r.recency == PENDING and r.pending_reason == PENDING_NO_DATE
+        assert r.recency == PENDING and r.reason == PENDING_NO_DATE
     finally:
         tmp.unlink()
     # A malformed date value is treated as a conflict, not recent.
     bad = classify('x', {'x': {'launch_date': 'not-a-date'}}, today=date(2026, 9, 13))
-    assert bad.recency == PENDING and bad.pending_reason == PENDING_CONFLICT
+    assert bad.recency == PENDING and bad.reason == PENDING_CONFLICT
 
 
 # ---------------------------------------------------------------------------
@@ -91,11 +96,11 @@ def test_c_lifecycle_does_not_affect_recency():
                   'm.old': {'launch_date': '2020-01-01', 'source_url': 'u', 'content_sha256': 'h'}}
     # A LEGACY model with an in-window verified date is RECENT.
     legacy_recent = normalize_model(_summary('m.recent', lifecycle='LEGACY'))
-    # An ACTIVE model with an out-of-window date is PENDING.
+    # An ACTIVE model with an out-of-window date is OUT_OF_WINDOW (not recent).
     active_old = normalize_model(_summary('m.old', lifecycle='ACTIVE'))
     apply_recency([legacy_recent, active_old], launch_map, today=today)
     assert legacy_recent['lifecycle'] == 'LEGACY' and legacy_recent['recency'] == RECENT
-    assert active_old['lifecycle'] == 'ACTIVE' and active_old['recency'] == PENDING
+    assert active_old['lifecycle'] == 'ACTIVE' and active_old['recency'] == OUT_OF_WINDOW
 
 
 def test_c_source_has_no_lifecycle_recency_proxy():
@@ -114,13 +119,16 @@ def test_c_source_has_no_lifecycle_recency_proxy():
 #     bindings are not deleted. Recency is display metadata, not a visibility
 #     gate.
 # ---------------------------------------------------------------------------
-def test_d_pending_models_remain_in_catalog_records():
+def test_d_non_recent_models_remain_in_catalog_records():
     catalog = DiscoveryFoundationCatalog(snapshot_path='backend/foundation_models_snapshot.json')
     rows = catalog.records()
-    pending = [r for r in rows if r['recency'] == PENDING]
-    assert pending, 'expected pending-verification models in the catalog'
-    # Pending rows keep full discovery identity used by draft bindings.
-    for r in pending:
+    non_recent = [r for r in rows if r['recency'] in (PENDING, OUT_OF_WINDOW)]
+    assert non_recent, 'expected non-recent (pending or out-of-window) models in the catalog'
+    # Both pending AND out-of-window models must stay discoverable so saved-draft
+    # bindings pointing at them are never deleted.
+    assert any(r['recency'] == PENDING for r in rows)
+    assert any(r['recency'] == OUT_OF_WINDOW for r in rows)
+    for r in non_recent:
         assert r['model_id'] and r['id'].startswith('discovery:bedrock:')
         assert r['discoverable'] is True
     # apply_recency never removes rows nor mutates access/readiness fields.
@@ -138,21 +146,59 @@ def test_d_apply_recency_does_not_touch_access_fields():
 
 
 # ---------------------------------------------------------------------------
-# (e) In-window count equals exact-id-join.json inwindow_matched_cards.
+# (e) The in-window count is DERIVED by re-computing the account<->evidence
+#     exact-id join + rolling window at runtime, NOT read from a snapshot field.
+#     exact-id-join.json's inwindow_matched_cards is used ONLY as an independent
+#     cross-check, with both the snapshot inputs AND now=2026-09-13 fixed. The
+#     "12" is a test expectation pinned to those fixed inputs, never baked into
+#     product code.
 # ---------------------------------------------------------------------------
-def test_e_inwindow_count_matches_verified_join():
-    join = json.loads((EVIDENCE_DIR / 'exact-id-join.json').read_text())
-    expected = join['inwindow_matched_cards']
+def _build_map_from_evidence(inv, api_ids):
+    """Re-derive the launch-date map at test time from raw evidence + API ids
+    (exact modelId match), independent of any pre-built artifact or join file."""
+    m = {}
+    for e in inv:
+        ld = e.get('launch_date')
+        if not ld:
+            continue
+        mids = e['model_id'] if isinstance(e['model_id'], list) else [e['model_id']]
+        for mid in mids:
+            if mid in api_ids:
+                m[mid] = {'launch_date': ld, 'source_url': e.get('source_url'),
+                          'content_sha256': e.get('content_sha256')}
+    return m
+
+
+def test_e_inwindow_count_is_recomputed_and_matches_verified_join():
+    inv = json.loads((EVIDENCE_DIR / 'bedrock-model-date-inventory.json').read_text())
     api = json.loads((EVIDENCE_DIR / 'list-foundation-models-sanitized.json').read_text())
-    api_date = date.fromisoformat(join['api_retrieved_at'][:10])
+    join = json.loads((EVIDENCE_DIR / 'exact-id-join.json').read_text())
+    api_ids = {m['modelId'] for m in api['modelSummaries']}
+    # Fixed "now" pinned to the verification snapshot date so the count is stable.
+    fixed_now = date(2026, 9, 13)
+    # RE-COMPUTE the join + window from raw inputs (not from the join snapshot).
+    derived_map = _build_map_from_evidence(inv, api_ids)
+    recomputed = sum(1 for m in api['modelSummaries']
+                     if classify(m['modelId'], derived_map, today=fixed_now).recency == RECENT)
+    # Independent cross-check against the verification snapshot's own field.
+    assert recomputed == join['inwindow_matched_cards']
+    assert recomputed == 12
+    # The shipped evidence map must produce the SAME derived count (no drift).
+    shipped = sum(1 for m in api['modelSummaries']
+                  if classify(m['modelId'], load_launch_date_map(MAP_PATH), today=fixed_now).recency == RECENT)
+    assert shipped == recomputed
+
+
+def test_e_count_is_not_hardcoded_in_product_code():
+    # Product code must recompute if the window/date changes: a far-future "now"
+    # pushes every verified date out of window -> zero recent, proving the count
+    # is derived, not a baked-in constant.
     launch_map = load_launch_date_map(MAP_PATH)
-    # Classify every account API model as of the verified capture date.
-    recent = 0
-    for m in api['modelSummaries']:
-        if classify(m['modelId'], launch_map, today=api_date).recency == RECENT:
-            recent += 1
-    assert recent == expected, f'in-window {recent} != verified {expected}'
-    assert expected == 12
+    api = json.loads((EVIDENCE_DIR / 'list-foundation-models-sanitized.json').read_text())
+    far_future = date(2099, 1, 1)
+    recent = sum(1 for m in api['modelSummaries']
+                 if classify(m['modelId'], launch_map, today=far_future).recency == RECENT)
+    assert recent == 0
 
 
 def test_e_every_map_date_comes_from_verified_inventory():

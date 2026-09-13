@@ -2,14 +2,19 @@
 """Generate backend/model_launch_dates.json from VERIFIED reviewer inventory.
 
 Source of truth (branch docs/model-launch-date-evidence, docs/review-data/):
-  - bedrock-model-date-inventory.json (127 official model cards)
-  - exact-id-join.json (authoritative exact-ID join to the account API)
-  - list-foundation-models-sanitized.json (113 sanitized API models)
+  - bedrock-model-date-inventory.json (127 official model cards) = launch-date EVIDENCE
+  - list-foundation-models-sanitized.json (113 sanitized API models) = account API list
+
+This builds the verified launch-date EVIDENCE map keyed by exact modelId. It is
+NOT a runtime recency answer: recency (the rolling 6-month window) and the
+account<->evidence exact-id join are RE-COMPUTED at runtime by backend.model_recency
+from the live API model list + this evidence map + the current date. exact-id-join.json
+is a VERIFICATION SNAPSHOT only and is deliberately NOT consumed here.
 
 Rule: include ONLY inventory entries whose model_id EXACT-matches an account
 API modelId. Carry launch_date + source_url + content hash + precision +
 evidence quote. No fabrication: entries without a launch_date, unmatched, or
-conflicting are NOT written to the map (they become pending at runtime).
+conflicting are NOT written to the map.
 """
 import json
 import sys
@@ -19,7 +24,6 @@ EV = Path(__file__).resolve().parents[1] / "docs" / "review-data"
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'backend/model_launch_dates.json'
 
 inv = json.loads((EV / 'bedrock-model-date-inventory.json').read_text())
-join = json.loads((EV / 'exact-id-join.json').read_text())
 api = json.loads((EV / 'list-foundation-models-sanitized.json').read_text())
 
 api_ids = set(m['modelId'] for m in api['modelSummaries'])
@@ -50,26 +54,26 @@ for e in inv:
         }
         if mid in entries and entries[mid]['launch_date'] != ld:
             conflicts.setdefault(mid, [entries[mid]['launch_date']]).append(ld)
-            continue  # conflict -> keep first, flag; both routed pending by loader guard
+            continue  # conflict -> keep first, flag; both dropped by loader guard
         entries[mid] = rec
 
 payload = {
     '_provenance': (
-        'Verified launch-date map keyed by EXACT bedrock modelId. Built from '
+        'Verified launch-date EVIDENCE map keyed by EXACT bedrock modelId. Built from '
         'docs/review-data/bedrock-model-date-inventory.json (official AWS Bedrock '
-        'model cards, each with source_url + content_sha256) joined via exact '
-        'modelId match against the account bedrock:ListFoundationModels snapshot '
-        '(list-foundation-models-sanitized.json, 113 models). Only exact-match '
-        'entries with a verified launch_date are included. No dates are fabricated; '
-        'entries with no date, no API match, or a date conflict are omitted here '
-        'and routed to the pending-verification queue at runtime.'),
+        'model cards, each with source_url + content_sha256) filtered to ids that '
+        'exact-match the account bedrock:ListFoundationModels snapshot '
+        '(list-foundation-models-sanitized.json, 113 models). This is EVIDENCE only: '
+        'the account<->evidence exact-id join and the rolling 6-month recency window '
+        'are RE-COMPUTED AT RUNTIME (backend.model_recency) from the live API list, '
+        'this map, and the current date. No dates are fabricated; entries with no '
+        'date, no API match, or a date conflict are omitted here.'),
     '_source_branch': 'docs/model-launch-date-evidence',
     '_source_files': [
         'docs/review-data/bedrock-model-date-inventory.json',
-        'docs/review-data/exact-id-join.json',
         'docs/review-data/list-foundation-models-sanitized.json',
     ],
-    '_api_retrieved_at': join.get('api_retrieved_at'),
+    '_api_retrieved_at': api.get('retrieved_at'),
     '_api_model_count': len(api_ids),
     '_inventory_card_count': len(inv),
     '_matched_entry_count': len(entries),

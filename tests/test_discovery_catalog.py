@@ -61,7 +61,7 @@ def test_snapshot_source_is_real_and_datefree():
     # Recency now comes from a VERIFIED launch-date join (not lifecycle). Every
     # emitted launch_date must trace to the verified map; rows without a verified
     # match are pending, never fabricated.
-    assert all(r.get('recency') in ('recent', 'pending_verification') for r in rows)
+    assert all(r.get('recency') in ('recent', 'out_of_window', 'pending_verification') for r in rows)
 
 
 def test_client_backed_source():
