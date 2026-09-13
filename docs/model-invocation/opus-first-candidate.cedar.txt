@@ -1,0 +1,2 @@
+// NON-EXECUTABLE redacted review; add a new policy, do not replace Haiku.
+permit (principal == AgentCore::IamEntity::"<EXISTING_MODEL_GATEWAY_ARN>", action == AgentCore::Action::"bedrockrt___POST:/v1/messages", resource == AgentCore::Gateway::"<EXISTING_MODEL_GATEWAY_ARN>") when { context.input.model == "us.anthropic.claude-opus-5" && context.input.max_tokens > 0 && context.input.max_tokens <= 16 && context.input has stream && context.input.stream == false };

@@ -1,0 +1,14 @@
+{
+  "exact_profile_and_member_resources": 4,
+  "changed_statements": [
+    "DenyBedrockExceptScopedRuntimeException",
+    "DenyNonInvokeExplicitOnExemptedResources",
+    "OwnerExceptionScopedRuntimeInvoke"
+  ],
+  "existing_resources_and_other_statements_unchanged": true,
+  "cedar_principal_action_resource_unchanged": true,
+  "max_output_tokens": 16,
+  "stream": false,
+  "cloud_writes": false,
+  "inference_executed": false
+}
