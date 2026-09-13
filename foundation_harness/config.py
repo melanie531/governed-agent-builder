@@ -27,12 +27,29 @@ class Ref(Frozen):
     digest: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
-def endpoint(value, path):
-    pattern = (r'https://gab-foundation-[a-z0-9-]+\.gateway\.bedrock-agentcore'
-               r'\.us-west-2\.amazonaws\.com' + re.escape(path))
-    if not re.fullmatch(pattern, value):
+# Reviewed dedicated-Gateway Messages target paths. '/bedrockrt/v1/messages' is
+# the inbound path of the existing HTTP passthrough target named 'bedrockrt'
+# (real read-only GetGatewayTarget evidence; Gateway forwards to Runtime
+# /anthropic/v1/messages). Transport dispatch admits both reviewed paths;
+# manifest validation still binds each protocol to exactly one path via
+# exact_endpoint, so a legacy manifest can never carry the passthrough path.
+MESSAGES_DISPATCH_PATHS = ('/inference/v1/messages', '/bedrockrt/v1/messages')
+
+
+def exact_endpoint(value, *paths):
+    host = (r'https://gab-foundation-[a-z0-9-]+\.gateway\.bedrock-agentcore'
+            r'\.us-west-2\.amazonaws\.com')
+    if not any(re.fullmatch(host + re.escape(path), value) for path in paths):
         raise ValueError('DEDICATED_GATEWAY_ENDPOINT_REQUIRED')
     return value
+
+
+def endpoint(value, path):
+    # Shared transport dispatch guard. The legacy Messages dispatch literal
+    # admits every reviewed Messages target path; any other path stays exact.
+    if path == '/inference/v1/messages':
+        return exact_endpoint(value, *MESSAGES_DISPATCH_PATHS)
+    return exact_endpoint(value, path)
 
 
 class Model(Frozen):
@@ -65,7 +82,7 @@ class Model(Frozen):
         if self.protocol == 'messages-passthrough':
             if self.transport != 'inference-provider' or self.responseModels:
                 raise ValueError('AMBIGUOUS_MESSAGES_BINDING')
-            endpoint(self.endpoint, '/bedrockrt/v1/messages')
+            exact_endpoint(self.endpoint, '/bedrockrt/v1/messages')
             if self.requestModel != 'us.anthropic.claude-opus-5' or self.route != self.requestModel:
                 raise ValueError('EXACT_OPUS_PASSTHROUGH_BINDING_REQUIRED')
             if (not self.responseModelAllowlist or len(self.responseModelAllowlist) > 4
@@ -76,14 +93,14 @@ class Model(Frozen):
             if not re.fullmatch(r'[A-Za-z0-9-]+/[a-zA-Z0-9:._-]+', self.route):
                 raise ValueError('EXPLICIT_RUNTIME_MODEL_IDENTITIES_REQUIRED')
             target, model = self.route.split('/', 1)
-            endpoint(self.endpoint, '/' + target + '/v1/messages')
+            exact_endpoint(self.endpoint, '/' + target + '/v1/messages')
             if (self.requestModel != model or self.responseModelAllowlist
                     or model != 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
                     or not self.responseModels or len(set(self.responseModels)) != len(self.responseModels)
                     or any(not re.fullmatch(r'anthropic\.claude-[a-zA-Z0-9:._-]+', x) for x in self.responseModels)):
                 raise ValueError('EXPLICIT_EXISTING_HAIKU_BINDING_REQUIRED')
         else:
-            endpoint(self.endpoint, '/inference/v1/messages')
+            exact_endpoint(self.endpoint, '/inference/v1/messages')
             if (not re.fullmatch(r'claude/anthropic\.claude-[a-zA-Z0-9:._-]+', self.route)
                     or self.requestModel is not None or self.responseModelAllowlist):
                 raise ValueError('LEGACY_MESSAGES_BINDING_INVALID')
