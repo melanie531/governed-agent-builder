@@ -5,10 +5,12 @@ def test_new_tool_request_is_private_idempotent_and_never_grants_catalog_access(
     login(client)
     with app.state.store.tx() as db:
         grants = list(db.select("grants"))
-    body = {"title": "CRM lookup tool", "details": "Read synthetic account summaries.", "idempotency_key": "tool-request-test"}
+    body = {"title": " CRM ", "details": "Read synthetic account summaries.", "idempotency_key": "tool-request-test"}
     created = client.post("/api/tool-requests", json=body)
     assert created.status_code == 201
     item = created.json()
+    assert item["title"] == "CRM"
+    assert item["status"] == "SUBMITTED"
     assert client.post("/api/tool-requests", json=body).json()["id"] == item["id"]
     assert client.post("/api/tool-requests", json={**body, "title": "Different tool"}).status_code == 409
     assert client.get("/api/requests").json() == []

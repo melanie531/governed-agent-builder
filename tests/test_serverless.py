@@ -244,3 +244,27 @@ def test_catalog_request_durable_dynamo_approval_and_revocation(cloud):
     with fresh.tx() as db:
         assert db.select('requests', where=[('id', '=', request_id)]).fetchone()['status'] == 'APPROVED'
         assert any('Approved scoped research purpose' in r['detail'] for r in db.select('audit'))
+
+
+def test_new_tool_request_and_status_survive_dynamo_restart(cloud):
+    """A short tool name reaches DDB and a second repository sees its decision."""
+    _, client, _ = cloud
+    sign_in(cloud)
+    response = client.post('/api/tool-requests', json={
+        'title': 'CRM', 'details': 'Synthetic customer lookup', 'idempotency_key': 'ddb-short-tool'})
+    assert response.status_code == 201
+    request_id = response.json()['id']
+    fresh = DynamoStore('synthetic-state')
+    with fresh.tx() as db:
+        stored = json.loads(db.select('settings', where=[('key', '=', 'tool-request:' + request_id)]).fetchone()['body'])
+        assert stored['title'] == 'CRM' and stored['status'] == 'SUBMITTED'
+        assert stored['requester'] == 'subject-a' and stored['workspace'] == 'research'
+    sign_in(cloud, 'subject-admin', 'studio-admin')
+    assert client.post('/api/admin/tool-requests/' + request_id + '/response', json={
+        'version': 1, 'status': 'IN_REVIEW', 'response': 'Reviewing the CRM connector.'}).status_code == 200
+    with fresh.tx() as db:
+        stored = json.loads(db.select('settings', where=[('key', '=', 'tool-request:' + request_id)]).fetchone()['body'])
+        assert stored['status'] == 'IN_REVIEW' and stored['version'] == 2
+        assert stored['responded_by'] == 'subject-admin'
+    sign_in(cloud)
+    assert client.get('/api/tool-requests').json()[0]['response'] == 'Reviewing the CRM connector.'

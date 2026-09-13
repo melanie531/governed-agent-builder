@@ -190,14 +190,48 @@ try {
   await expect(page.getByRole('heading', {name: 'Request a new tool', exact: true})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Your capability request history', exact: true})).toHaveCount(0);
   await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeDisabled();
-  const toolTitle = `Synthetic QA tool request ${Date.now()}`;
+  const toolTitle = process.env.GAB_REQUEST_ONLY ? 'CRM' : `Synthetic QA tool request ${Date.now()}`;
   await page.getByRole('textbox', {name: 'What tool do you need?', exact: true}).fill(toolTitle);
   await page.getByRole('textbox', {name: 'Details', exact: true}).fill('Synthetic end-to-end test: request a new tool that is not in the Catalog.');
+  await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeEnabled();
+  const toolSubmitted = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/tool-requests'));
   await page.getByRole('button', {name: 'Send request', exact: true}).click();
+  const toolResponse = await toolSubmitted;
+  if (toolResponse.status() !== 201) throw new Error(`Tool request returned HTTP ${toolResponse.status()}`);
+  const toolRequest = await toolResponse.json();
   await expect(page.getByText('Tool request sent.', {exact: true})).toBeVisible();
   await expect(page.getByRole('cell', {name: toolTitle, exact: true})).toBeVisible();
   await page.screenshot({path: resolve(directory, 'tool-requests.png'), fullPage: true});
   console.log('Hosted new tool request submission + own status: PASS');
+  if (process.env.GAB_REQUEST_ONLY) {
+    const verified = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
+import boto3,json,sys,time
+from backend.dynamo_store import DynamoStore
+from backend.foundation_runs import get,put
+state=json.load(open(sys.argv[1]));request_id=sys.argv[2]
+s=boto3.Session(profile_name='account-820',region_name='us-west-2')
+assert s.client('sts').get_caller_identity()['Account']=='820242898417'
+store=DynamoStore(state['app']['outputs']['StateTable'],s.resource('dynamodb'))
+with store.tx() as db:
+ row=get(db,'tool-request:'+request_id)
+ assert row['requester']==state['journeyQA']['subject'] and row['title']=='CRM' and row['status']=='SUBMITTED'
+ assert row['details']=='Synthetic end-to-end test: request a new tool that is not in the Catalog.'
+ row.update(status='IN_REVIEW',response='Reviewing the synthetic CRM connector.',version=2,
+            responded_by='authorized-qa-operator',updated=time.time())
+ put(db,'tool-request:'+request_id,row)
+with store.tx() as db:
+ assert get(db,'tool-request:'+request_id)['status']=='IN_REVIEW'
+print(json.dumps({'request_id':request_id,'storage':'DynamoDB','initial_status':'SUBMITTED','status':'IN_REVIEW','update_source':'scoped QA operator'}))
+`, statePath, toolRequest.id], {encoding: 'utf8', cwd: root, timeout: 60000});
+    if (verified.status !== 0) throw new Error('DynamoDB tool request verification failed: ' + verified.stderr);
+    await expect(page.getByRole('row').filter({hasText: 'Reviewing the synthetic CRM connector.'}).getByText('In review', {exact: true})).toBeVisible();
+    await page.reload({waitUntil: 'domcontentloaded'});
+    await page.getByRole('link', {name: 'Tool requests', exact: true}).click();
+    await expect(page.getByText('Reviewing the synthetic CRM connector.', {exact: true})).toBeVisible();
+    writeFileSync(resolve(directory, 'tool-request-ddb-receipt.json'), verified.stdout, {mode: 0o600});
+    await page.screenshot({path: resolve(directory, 'tool-request-status.png'), fullPage: true});
+    console.log('Short tool name + actual DynamoDB persistence + automatic status refresh + reload: PASS');
+  }
   for (const id of JSON.parse(process.env.GAB_CLEANUP_IDS || '[]')) {
     const detail = await (await read('/api/journey/agents/' + id)).json();
     await page.goto(state.app.outputs.ApplicationOrigin + '/#agent/' + id, {waitUntil: 'domcontentloaded'});
@@ -210,7 +244,7 @@ try {
     await expect(page.getByRole('heading', {name: detail.definition.name, exact: true})).toBeVisible();
     await removeAgent(detail, 'failed-' + id);
   }
-  const scenarios = process.env.GAB_CLEANUP_IDS ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
+  const scenarios = process.env.GAB_CLEANUP_IDS || process.env.GAB_REQUEST_ONLY ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
     {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
     {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
   ];

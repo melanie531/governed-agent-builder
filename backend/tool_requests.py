@@ -13,15 +13,15 @@ from .journey_schema import Strict
 
 
 class NewToolRequest(Strict):
-    title: str = Field(min_length=5, max_length=160)
+    title: str = Field(min_length=1, max_length=160)
     details: str = Field(default="", max_length=4000)
     idempotency_key: str = Field(min_length=8, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
 
     @model_validator(mode="after")
     def normalize(self):
         self.title, self.details = self.title.strip(), self.details.strip()
-        if len(self.title) < 5:
-            raise ValueError("Describe the tool you need in at least five characters")
+        if not self.title:
+            raise ValueError("Enter the name of the tool you need")
         return self
 
 

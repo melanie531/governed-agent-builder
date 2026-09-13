@@ -14,12 +14,28 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const token = useRef(crypto.randomUUID());
   const flight = useRef(false);
+  const generation = useRef(0);
   const statusFor = (item: ToolRequest) => statuses[item.id] || (item.status === 'SUBMITTED' ? 'IN_REVIEW' : item.status);
   async function refresh() {setItems(await api<ToolRequest[]>('/tool-requests'));}
-  useEffect(() => {void refresh().catch(e => setError(e.message));}, []);
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      if (!flight.current) {
+        const before = generation.current;
+        try {
+          const result = await api<ToolRequest[]>('/tool-requests');
+          if (!stopped && !flight.current && before === generation.current) setItems(result);
+        } catch (e) {if (!stopped) setError((e as Error).message);}
+      }
+      if (!stopped) timer = setTimeout(poll, 10000);
+    }
+    void poll();
+    return () => {stopped = true; clearTimeout(timer);};
+  }, []);
   async function act(operation?: () => Promise<void>) {
     if (flight.current) return;
-    flight.current = true; setBusy(true); setError(''); setNotice('');
+    flight.current = true; generation.current++; setBusy(true); setError(''); setNotice('');
     try {await operation?.(); await refresh();}
     catch (e) {setError((e as Error).message);}
     finally {flight.current = false; setBusy(false);}
@@ -29,13 +45,15 @@ export default function ToolRequests({api, admin = false}: {api: Api; admin?: bo
     {notice && <Alert type="success">{notice}</Alert>}
     {!admin && <Container header={<Header variant="h2" description="Describe a tool the AI Catalog does not offer. A platform administrator will review your request and respond here.">
       Request a new tool</Header>}><SpaceBetween size="l">
-      <FormField label="What tool do you need?" constraintText="Short summary, at least 5 characters.">
+      <FormField label="What tool do you need?" constraintText="Tool name or short summary, up to 160 characters."
+        errorText={title.length > 160 ? 'Use 160 characters or fewer.' : undefined}>
         <Input ariaLabel="What tool do you need?" value={title} onChange={({detail}) => {setTitle(detail.value); token.current = crypto.randomUUID();}}/>
       </FormField>
-      <FormField label="Details" description="Business context, expected use, and any constraints (optional).">
+      <FormField label="Details" description="Business context, expected use, and any constraints (optional)."
+        errorText={details.length > 4000 ? 'Use 4,000 characters or fewer.' : undefined}>
         <Textarea ariaLabel="Tool request details" value={details} onChange={({detail}) => {setDetails(detail.value); token.current = crypto.randomUUID();}}/>
       </FormField>
-      <Button variant="primary" disabled={title.trim().length < 5 || busy} loading={busy} onClick={() => void act(async () => {
+      <Button variant="primary" disabled={!title.trim() || title.length > 160 || details.length > 4000 || busy} loading={busy} onClick={() => void act(async () => {
         await api('/tool-requests', {title, details, idempotency_key: token.current});
         setTitle(''); setDetails(''); token.current = crypto.randomUUID(); setNotice('Tool request sent.');
       })}>Send request</Button>
