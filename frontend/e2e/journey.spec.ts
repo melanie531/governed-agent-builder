@@ -88,11 +88,10 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await page.getByRole('tab',{name:'Versions and source'}).click();
  await expect(page.getByRole('cell',{name:'v4',exact:true}).first()).toBeVisible();
  // Request existing capability; Admin must decide; business sees effective result.
- await nav(page,'Capability requests');
- await selectOption(page,'Requested capability','Synthetic strategy insights');
- await page.getByRole('textbox',{name:/^Business reason/}).fill('Need synthetic strategy evidence for research briefs.');
- await page.getByRole('button',{name:'Send request'}).click();
- await expect(page.getByText('Pending approval',{exact:true})).toBeVisible();
+ // Catalog UI request is covered by zz-ai-catalog; seed this legacy fixture through its authenticated API.
+ const identity=await (await page.request.get('/api/me')).json();
+ const accessRequest=await page.request.post('/api/requests',{data:{component_id:'restricted-insights',reason:'Need synthetic strategy evidence for research briefs.'},headers:{'X-CSRF-Token':identity.csrf,origin:'http://127.0.0.1:5188'}});
+ expect(accessRequest.status()).toBe(201);
  await switchPersona(page,'Platform Admin');
  await nav(page,'Policies & approvals');
  await page.getByRole('textbox',{name:/Decision reason for restricted-insights/}).fill('Approved for synthetic research use.');
@@ -100,8 +99,8 @@ test('Cloudscape business journey: create, measured evidence, revise, retest, ex
  await expect(page.getByText('Approved',{exact:true})).toBeVisible();
  await page.screenshot({path:'../artifacts/cloudscape-admin-approval.png',fullPage:true});
  await switchPersona(page,'Alex Morgan');
- await nav(page,'Capability requests');
- await expect(page.getByText('Approved',{exact:true})).toBeVisible();
+ const approvedRequests=await (await page.request.get('/api/requests')).json();
+ expect(approvedRequests.some((r:any)=>r.component==='restricted-insights'&&r.status==='APPROVED')).toBe(true);
  await nav(page,'Create agent');
  await page.getByRole('radio',{name:'Select Research brief'}).click();await next(page);
  await selectOption(page,'Model route','Claude · Bedrock');

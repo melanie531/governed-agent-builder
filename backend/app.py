@@ -373,6 +373,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     if journey is not None:
         from .journey import router as journey_router
         app.include_router(journey_router(journey, who))
+    from .tool_requests import router as tool_requests_router
+    app.include_router(tool_requests_router(store, who))
 
     @app.get("/api/demo/personas")
     def personas():

@@ -20,6 +20,12 @@ constants. `POST /api/journey/catalog/skills` is a platform-admin-only publicati
 API with optimistic version checking. Workspace grants remain separate from
 publication.
 
+The Tool requests page accepts requests for new tools missing from the Catalog.
+Business users see their own requests and administrator responses. Administrators
+respond under Policies & approvals; responding never grants or publishes a
+capability. Access requests for existing models, MCP servers and skills stay in
+their Catalog detail panels.
+
 ## Runtime and evaluation
 
 `backend/journey.py` implements durable deployment, invocation, and evaluation jobs.

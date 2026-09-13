@@ -103,3 +103,34 @@ test('add an MCP server from AI Catalog without losing the domain draft or datas
   await expect(page.getByRole('heading', {name: 'Aurora knowledge', exact: true})).toBeVisible();
   await expect(page.getByRole('checkbox')).toHaveCount(0);
 });
+
+test('Tool requests only submits missing tools and shows the administrator response', async ({page}) => {
+  const signin = async (persona_id: string) => {
+    await page.request.post('/api/demo/session', {data: {persona_id}, headers: {origin: 'http://127.0.0.1:5189'}});
+    await page.goto('/');
+    await expect(page.getByRole('button', {name: new RegExp(persona_id === 'admin' ? 'Platform Admin' : 'Alex Morgan')})).toBeVisible();
+  };
+  const nav = async (name: string) => {
+    const toggle = page.getByRole('button', {name: 'Open side navigation', exact: true});
+    if (await toggle.isVisible()) await toggle.click();
+    await page.getByRole('link', {name, exact: true}).click();
+  };
+  await signin('alex');
+  await nav('Tool requests');
+  await expect(page.getByRole('heading', {name: 'Request a new tool'})).toBeVisible();
+  await expect(page.getByLabel('Requested capability')).toHaveCount(0);
+  await page.getByRole('textbox', {name: 'What tool do you need?'}).fill('Synthetic CRM lookup');
+  await page.getByRole('textbox', {name: 'Details', exact: true}).fill('Look up test account summaries.');
+  await page.getByRole('button', {name: 'Send request', exact: true}).click();
+  await expect(page.getByText('Submitted', {exact: true})).toBeVisible();
+  await signin('admin');
+  await nav('Policies & approvals');
+  await page.getByRole('textbox', {name: 'Response for Synthetic CRM lookup'}).fill('Reviewing the requested CRM connector.');
+  await page.getByRole('button', {name: 'Save response', exact: true}).click();
+  await expect(page.getByText('Response saved.', {exact: true})).toBeVisible();
+  await signin('alex');
+  await nav('Tool requests');
+  await expect(page.getByText('Reviewing the requested CRM connector.', {exact: true})).toBeVisible();
+  await expect(page.getByText('In review', {exact: true})).toBeVisible();
+  await expect(page.getByText('Your capability request history')).toHaveCount(0);
+});

@@ -86,6 +86,7 @@ def configure_app(resources, settings):
         statement(["bedrock-agentcore:CreateAgentRuntime"], "*"),
         statement(["bedrock-agentcore:GetAgentRuntime", "bedrock-agentcore:GetAgentRuntimeEndpoint", "bedrock-agentcore:TagResource",
                    "bedrock-agentcore:CreateAgentRuntimeEndpoint", "bedrock-agentcore:DeleteAgentRuntime",
+                   "bedrock-agentcore:DeleteAgentRuntimeEndpoint",
                    "bedrock-agentcore:ListTagsForResource",
                    "bedrock-agentcore:InvokeAgentRuntime"], [runtime, runtime + "/runtime-endpoint/*"]),
         statement(["iam:PassRole"], settings["runtime_role"]),
@@ -101,6 +102,23 @@ def configure_app(resources, settings):
         {**statement(["logs:DescribeLogGroups"], "*"), "Condition": {"StringEquals": {"aws:RequestedRegion": region}}},
         statement(["logs:DeleteLogGroup"], f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/gab_journey_*:*"),
         statement(["logs:DeleteLogStream"], f"arn:aws:logs:{region}:{account}:log-group:{settings['log_group']}:log-stream:agent-*"),
+        # CreateAgentRuntime authorizes DEFAULT endpoint creation and tagging
+        # against runtime/* before its ID exists. Keep mandatory project tags.
+        {**statement(["bedrock-agentcore:CreateAgentRuntimeEndpoint", "bedrock-agentcore:TagResource"],
+                     f"arn:aws:bedrock-agentcore:{region}:{account}:runtime/*"),
+         "Condition": {"StringEquals": {"aws:RequestTag/project": "governed-agent-builder",
+                                         "aws:RequestTag/journey": "create-agent"}}},
+        {**statement(["bedrock-agentcore:TagResource", "bedrock-agentcore:CreateWorkloadIdentity"],
+                     f"arn:aws:bedrock-agentcore:{region}:{account}:workload-identity-directory/default/workload-identity/*"),
+         "Condition": {"StringEquals": {"aws:RequestTag/project": "governed-agent-builder",
+                                         "aws:RequestTag/journey": "create-agent"}}},
+        {**statement(["bedrock-agentcore:CreateWorkloadIdentity", "bedrock-agentcore:TagResource"],
+                     f"arn:aws:bedrock-agentcore:{region}:{account}:workload-identity-directory/default"),
+         "Condition": {"StringEquals": {"aws:RequestTag/project": "governed-agent-builder",
+                                         "aws:RequestTag/journey": "create-agent"}}},
+        statement(["bedrock-agentcore:DeleteWorkloadIdentity"], [
+            f"arn:aws:bedrock-agentcore:{region}:{account}:workload-identity-directory/default",
+            f"arn:aws:bedrock-agentcore:{region}:{account}:workload-identity-directory/default/workload-identity/gab_journey_*"]),
     ]
     worker_statements[0]["Condition"] = {"StringEquals": {"aws:RequestTag/project": "governed-agent-builder",
                                                           "aws:RequestTag/journey": "create-agent"}}

@@ -82,13 +82,13 @@ test('mid-session gateway 403 surfaces access denied, never auto-signs-out or re
  await page.route('**/api/me',r=>r.fulfill({json:{persona:{id:'synthetic-member',name:'member@example.test',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic-test-csrf',mode:'CLOUD-HOSTED DEMO'}}));
  await page.route('**/auth/verification/status',r=>r.fulfill(noVerification));
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
- await page.route('**/api/capabilities',r=>r.fulfill(expired?{status:403,json:{message:'Forbidden'}}:{json:[]}));
+ await page.route('**/api/tool-requests',r=>r.fulfill(expired?{status:403,json:{message:'Forbidden'}}:{json:[]}));
  await page.route('**/api/requests',r=>r.fulfill(expired?{status:403,json:{message:'Forbidden'}}:{json:[]}));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  expired=true;
- await page.getByRole('link',{name:'Capability requests'}).click();
- await expect(page.getByRole('group',{name:'Action blocked Access is restricted. Request access or contact your administrator.',exact:true})).toBeVisible();
+ await page.getByRole('link',{name:'Tool requests'}).click();
+ await expect(page.getByText('Access is restricted. Request access or contact your administrator.',{exact:true})).toBeVisible();
  // Still signed in; user decides how to recover. No auto sign-out or redirect.
  await expect(page.getByRole('button',{name:'member@example.test · Research studio'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toHaveCount(0);
@@ -101,12 +101,12 @@ test('mid-session 401 expires the session to the anonymous entry',async({page})=
  await page.route('**/api/me',r=>r.fulfill(expired?{status:401,json:{message:'Unauthorized'}}:{json:{persona:{id:'synthetic-member',name:'member@example.test',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic-test-csrf',mode:'CLOUD-HOSTED DEMO'}}));
  await page.route('**/auth/verification/status',r=>r.fulfill(noVerification));
  await page.route('**/api/agents',r=>r.fulfill(expired?{status:401,json:{message:'Unauthorized'}}:{json:[]}));
- await page.route('**/api/capabilities',r=>r.fulfill(expired?{status:401,json:{message:'Unauthorized'}}:{json:[]}));
+ await page.route('**/api/tool-requests',r=>r.fulfill(expired?{status:401,json:{message:'Unauthorized'}}:{json:[]}));
  await page.route('**/api/requests',r=>r.fulfill(expired?{status:401,json:{message:'Unauthorized'}}:{json:[]}));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  expired=true;
- await page.getByRole('link',{name:'Capability requests'}).click();
+ await page.getByRole('link',{name:'Tool requests'}).click();
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toBeEnabled();
 });
 
@@ -114,11 +114,11 @@ test('application 403 with business detail is surfaced verbatim semantics, never
  await page.route('**/studio-config.json',r=>r.fulfill(hostedConfig));
  await page.route('**/api/me',r=>r.fulfill({json:{persona:{id:'synthetic-member',name:'member@example.test',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic-test-csrf',mode:'CLOUD-HOSTED DEMO'}}));
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
- await page.route('**/api/capabilities',r=>r.fulfill({status:403,json:{detail:'Business identity required'}}));
+ await page.route('**/api/tool-requests',r=>r.fulfill({status:403,json:{detail:'Business identity required'}}));
  await page.route('**/api/requests',r=>r.fulfill({status:403,json:{detail:'Business identity required'}}));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
- await page.getByRole('link',{name:'Capability requests'}).click();
+ await page.getByRole('link',{name:'Tool requests'}).click();
  await expect(page.getByText('Business identity required')).toBeVisible();
  await expect(page.getByRole('button',{name:'member@example.test · Research studio'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toHaveCount(0);

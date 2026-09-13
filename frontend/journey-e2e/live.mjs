@@ -28,11 +28,19 @@ const context = await browser.newContext({viewport: {width: 1440, height: 1080}}
 const page = await context.newPage();
 page.setDefaultTimeout(30000);
 const receipts = [];
+async function read(path) {
+  try {
+    return await page.request.get(state.app.outputs.ApplicationOrigin + path, {maxRetries: 3, timeout: 45000});
+  } catch {
+    // Playwright's raw transport errors include cookie headers.
+    throw new Error('Hosted status request failed after transport retries');
+  }
+}
 async function waitStatus(agentId, field, expected) {
   const deadline = Date.now() + 900000;
   let previous;
   while (Date.now() < deadline) {
-    const response = await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/agents/' + agentId);
+    const response = await read('/api/journey/agents/' + agentId);
     if (response.status() === 409 && (await response.json()).detail === 'Concurrent governance update; reload and retry') {
       await pause(1000);
       continue;
@@ -59,7 +67,7 @@ async function runChat(question) {
   if (!response.ok()) throw new Error(`Chat submission failed: HTTP ${response.status()}`);
   const accepted = await response.json();
   await expect.poll(async () => {
-    const r = await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/jobs/' + accepted.job_id);
+    const r = await read('/api/journey/jobs/' + accepted.job_id);
     if (r.status() === 409) return 'RETRY';
     if (!r.ok()) throw new Error(`Chat status HTTP ${r.status()}`);
     const result = await r.json();
@@ -109,8 +117,20 @@ async function removeAgent(detail, index) {
   const verified = spawnSync(resolve(root, '.venv/bin/python'), ['-c', `
 import boto3,json,sys
 from botocore.exceptions import ClientError
+from foundation_harness.config import digest
 d=json.loads(sys.argv[1]);s=boto3.Session(profile_name='account-820',region_name='us-west-2')
 assert s.client('sts').get_caller_identity()['Account']=='820242898417'
+control=s.client('bedrock-agentcore-control')
+name='gab_journey_'+digest([d['definition']['digest'],'deploy'])[:24]
+for operation,field in (('list_agent_runtimes','agentRuntimes'),('list_workload_identities','workloadIdentities')):
+ token=None
+ while True:
+  r=getattr(control,operation)(**({'nextToken':token} if token else {}))
+  assert not any(item.get('agentRuntimeName',item.get('name','')).split('-')[0]==name for item in r.get(field,[])), 'Agent Runtime or identity remains'
+  token=r.get('nextToken')
+  if not token:break
+state=json.load(open(sys.argv[2]))
+assert control.get_gateway(gatewayIdentifier=state['journeyPlatform']['gateway_id'])['status']=='READY'
 b=d['deployment'].get('binding')
 if b:
  try:s.client('bedrock-agentcore-control').get_agent_runtime(agentRuntimeId=b['id'])
@@ -121,7 +141,7 @@ if b:
   r=s3.list_object_versions(Bucket=bucket,Prefix=prefix)
   assert not r.get('Versions') and not r.get('DeleteMarkers'), 'Agent objects remain'
 print('Native resources removed')
-`, JSON.stringify(detail)], {encoding: 'utf8', cwd: root, timeout: 60000});
+`, JSON.stringify(detail), statePath], {encoding: 'utf8', cwd: root, timeout: 60000});
   if (verified.status !== 0) throw new Error('Cleanup verification failed: ' + verified.stderr);
   writeFileSync(resolve(directory, `deleted-${index}.json`), JSON.stringify(removed, null, 2), {mode: 0o600});
   console.log('Confirmed deletion + native resource cleanup: PASS', detail.id);
@@ -153,15 +173,35 @@ try {
     if (state !== 'empty-form' || attempt === 1) throw new Error('Hosted Cognito sign-in did not complete');
   }
   delete credentials.password;
-  const me = await (await page.request.get(state.app.outputs.ApplicationOrigin + '/api/me')).json();
+  const me = await (await read('/api/me')).json();
   if (me.persona.id !== state.journeyQA.subject || me.persona.role !== 'business') throw new Error('Incorrect hosted business identity');
   console.log('Hosted Cognito business sign-in: PASS');
-  const scenarios = process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
+  await page.getByRole('link', {name: 'Tool requests', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Request a new tool', exact: true})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Your capability request history', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeDisabled();
+  const toolTitle = `Synthetic QA tool request ${Date.now()}`;
+  await page.getByRole('textbox', {name: 'What tool do you need?', exact: true}).fill(toolTitle);
+  await page.getByRole('textbox', {name: 'Details', exact: true}).fill('Synthetic end-to-end test: request a new tool that is not in the Catalog.');
+  await page.getByRole('button', {name: 'Send request', exact: true}).click();
+  await expect(page.getByText('Tool request sent.', {exact: true})).toBeVisible();
+  await expect(page.getByRole('cell', {name: toolTitle, exact: true})).toBeVisible();
+  await page.screenshot({path: resolve(directory, 'tool-requests.png'), fullPage: true});
+  console.log('Hosted new tool request submission + own status: PASS');
+  for (const id of JSON.parse(process.env.GAB_CLEANUP_IDS || '[]')) {
+    const detail = await (await read('/api/journey/agents/' + id)).json();
+    if (detail.deletion?.status === 'DELETED') continue;
+    await page.goto(state.app.outputs.ApplicationOrigin + '/#agent/' + id, {waitUntil: 'domcontentloaded'});
+    await expect(page.getByRole('heading', {name: detail.definition.name, exact: true})).toBeVisible();
+    await removeAgent(detail, 'failed-' + id);
+  }
+  const scenarios = process.env.GAB_CLEANUP_IDS ? [] : process.env.GAB_LIVE_SCENARIO ? [JSON.parse(process.env.GAB_LIVE_SCENARIO)] : [
     {template: 'Research', eval: false}, {template: 'Knowledge Q&A', eval: false},
     {template: 'Research', eval: true, model: 'GPT-6 Astra'}, {template: 'Knowledge Q&A', eval: true},
   ];
   for (const [index, scenario] of scenarios.entries()) {
-    if (index) await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});
+    await page.goto(state.app.outputs.ApplicationOrigin, {waitUntil: 'domcontentloaded'});
+    await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible();
     await page.getByRole('button', {name: 'Create agent', exact: true}).click();
     await expect(page.getByRole('radio')).toHaveCount(2);
     await page.getByRole('radio', {name: `Business templates Select ${scenario.template}`, exact: true}).check();
@@ -197,7 +237,7 @@ try {
     await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
     await page.reload({waitUntil: 'domcontentloaded'});
     await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
-    const detail = await (await page.request.get(state.app.outputs.ApplicationOrigin + '/api/journey/agents/' + saved.agent_id)).json();
+    const detail = await (await read('/api/journey/agents/' + saved.agent_id)).json();
     const conversationTools = detail.conversation?.messages.flatMap(message => message.tools || []) || [];
     if (detail.last_invocation?.phase !== 'SUCCEEDED' || !conversationTools.length) throw new Error('Missing actual Gateway call evidence');
     if (scenario.eval && (detail.evaluation.cases.length !== 2 || detail.evaluation.cases.some(c => !c.request_id || c.evaluator_id !== 'Builtin.Correctness'))) throw new Error('Missing native evaluation receipts');
@@ -219,7 +259,7 @@ try {
     await page.screenshot({path: resolve(directory, 'failure.png'), fullPage: true}).catch(() => {});
     writeFileSync(resolve(directory, 'failure-page.txt'), await page.locator('body').innerText(), {mode: 0o600});
   }
-  throw error;
+  throw new Error(String(error.message).split('\n')[0]);
 } finally {
   await browser.close();
 }
