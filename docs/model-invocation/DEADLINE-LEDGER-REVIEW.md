@@ -1,0 +1,11 @@
+# Additive deadline / Decimal / admission review
+
+Based on225ce482. No codec changes or cloud activation.
+
+- Decimal accepts equivalent bounded exponent forms (1E-8,10E-9),canonicalizes via Decimal tuple without context rounding. Nonfinite,negative,>=1e9,>18 effective fractional places and oversized lexical inputs reject. Sum uses isolated64-digit precision; existing over-budget/overprecision negatives retained.
+- Internal capture sets context-local absolute deadline=min(ticket deadline,start+60). IAMTransport rechecks after credential acquisition/frozen-credential refresh/signing,and inside coroutine and immediately before client.stream; elapsed time reduces HTTP timeout. Context is reset in finally; no retry. This is a minimal transport change,not a codec rewrite.
+- Admission now requires structured return {allowed:true,user_id,agent_id}; False,None/bareTrue reject. reserve derives mandatory user/agent bucket keys from this trusted result and reserves them atomically with existing account/workspace ledgers/ticket. consume rechecks same identity; identity change prevents sending. Caller-supplied scopes cannot omit these mandatory buckets. Real production implementation of callback is still NOT wired; test callback is synthetic.
+
+Actual RED on new probes:4failed (exponent,False admission,credential deadline+timeout deduction). GREEN targeted regression:76passed,2existing warnings,1.88s. Includes finite time and precision regressions,False reservation with no ticket/no buckets,False consume with no send,trusted identity ledger keys,identity change rejection,credential/signature deadline crossing with0 wire sends; valid credential delay3seconds yields57second remainder. Existing replay/timeout/crash,Haiku compatibility,packaging and model-client regression passed. Network seam is synthetic,not real AWS.
+
+IMPORTANT: transport.py is in packaged source. Source digest changes; prior4e79c12b ARM artifact and its emulated ARM receipt do NOT verify this new source. Must rebuild/reapprove and rerun ARM before activating this revision. No production grants/Ready/admission generated. Production pricing and approved reserve,authenticated capture binding,service Cedar validation,real response identity and Studio acceptance remain blocked. No cloud write or real inference executed.

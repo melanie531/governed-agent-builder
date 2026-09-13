@@ -12,6 +12,7 @@ REQUEST={'endpoint':URL,'system':'Short','prompt':'Hello','max_tokens':256}
 def admit(db,role,workspace,request_digest):
     if get(db,'capture-approval')!={'role':role,'workspace':workspace,'digest':request_digest}:
         raise ValueError('NO_CAPTURE_ADMISSION')
+    return {'allowed':True,'user_id':'trusted-user','agent_id':'trusted-agent'}
 
 
 def prepared(tmp_path):

@@ -28,12 +28,28 @@ SERVICES = frozenset({'model_input','model_output','gateway_policy','runtime_lif
 
 def _money(value):
     if not isinstance(value,str):raise ValueError('COST_UNKNOWN')
-    if not re.fullmatch(r'(?:0|[1-9][0-9]{0,8})(?:\.[0-9]{1,18})?',value):
+    if len(value)>100 or not re.fullmatch(r'\+?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]{1,4})?',value):
         raise ValueError('COST_PRECISION_INVALID')
     try:amount=Decimal(value)
     except InvalidOperation:raise ValueError('COST_INVALID') from None
-    if not amount.is_finite() or amount<0:raise ValueError('COST_INVALID')
-    return amount
+    if not amount.is_finite() or amount<0 or amount>=Decimal('1000000000'):
+        raise ValueError('COST_INVALID')
+    sign,digits,exponent=amount.as_tuple()
+    digits=list(digits)
+    while digits and digits[-1]==0:
+        digits.pop();exponent+=1
+    if digits and exponent < -18:raise ValueError('COST_PRECISION_INVALID')
+    # Canonicalize exactly, without context-dependent normalize()/rounding.
+    return Decimal((sign,tuple(digits or [0]),exponent if digits else 0))
+
+
+def _admission(check,db,role,workspace,request_digest):
+    result=check(db,role,workspace,request_digest)
+    if (not isinstance(result,dict) or result.get('allowed') is not True
+            or any(not isinstance(result.get(k),str) or not result[k] or len(result[k])>100
+                   for k in ('user_id','agent_id'))):
+        raise ValueError('CAPTURE_ADMISSION_REQUIRED')
+    return {'user_id':result['user_id'],'agent_id':result['agent_id']}
 
 
 def _key(ticket):
@@ -69,7 +85,9 @@ def reserve_capture(store,ticket,*,role,workspace,request_digest,deadline,now,co
                     or not {'account','workspace:'+workspace} <= set(budget_scopes)
                     or len(set(budget_scopes))!=len(budget_scopes) or len(budget_scopes)>8):
                 raise ValueError('CAPTURE_TOTAL_BUDGET_REQUIRED')
-            admission_check(db,role,workspace,request_digest)
+            identity=_admission(admission_check,db,role,workspace,request_digest)
+            budget_scopes=tuple(dict.fromkeys((*budget_scopes,'user:'+identity['user_id'],'agent:'+identity['agent_id'])))
+            row['admission_identity']=identity
             for scope in budget_scopes:
                 if not isinstance(scope,str) or not scope or len(scope)>200:
                     raise ValueError('CAPTURE_BUDGET_SCOPE_INVALID')
@@ -98,7 +116,8 @@ def consume_capture(store,ticket,*,role,workspace,request_digest,now,admission_c
         if now>=row['deadline']:raise ValueError('CAPTURE_EXPIRED')
         if row.get('dispatch_admitted'):
             if not callable(admission_check):raise ValueError('CAPTURE_ADMISSION_REQUIRED')
-            admission_check(db,role,workspace,request_digest)
+            identity=_admission(admission_check,db,role,workspace,request_digest)
+            if identity!=row.get('admission_identity'):raise ValueError('CAPTURE_ADMISSION_IDENTITY_CHANGED')
         elif admission_check is not None:
             raise ValueError('CAPTURE_ADMISSION_REQUIRED')
         row.update(state='CLAIMED',attempts=1)
@@ -128,8 +147,11 @@ def dispatch_capture(store,ticket,*,role,workspace,request,transport,admission_c
     try:
         remaining=row['deadline']-_clock(clock())
         if remaining<=0:raise ValueError('CAPTURE_EXPIRED')
-        result=transport.post(request['endpoint'],body,
-            {'Accept':'application/json','anthropic-version':'2023-06-01'},min(60,remaining))
+        from foundation_harness.transport import capture_deadline
+        now=_clock(clock())
+        with capture_deadline(min(row['deadline'],now+min(60,remaining)),clock):
+            result=transport.post(request['endpoint'],body,
+                {'Accept':'application/json','anthropic-version':'2023-06-01'},min(60,remaining))
     except Exception:
         finish_capture(store,ticket,outcome='UNKNOWN')
         raise
