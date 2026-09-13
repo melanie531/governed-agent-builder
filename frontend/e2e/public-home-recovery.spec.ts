@@ -27,7 +27,7 @@ for(const c of cases){
   await expect(page.getByRole('heading',{name:'Your expertise. Your workspace.',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Session unavailable',exact:true}).click();
   await expect(page.getByRole('menuitem',{name:'Retry session check',exact:true})).toBeVisible();
-  await page.getByRole('menuitem',{name:'Sign in again',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Sign in',exact:true}).click();
   await expect(page).toHaveURL(/\/auth\/login$/);
   await expect(page.getByRole('heading',{name:'Test authentication endpoint'})).toBeVisible();
   expect(loginCalls).toBe(1);

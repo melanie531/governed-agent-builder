@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test';
 // UI-only contract (mocked HTTP, not hosted E2E evidence):
 // 401 = not signed in -> anonymous sign-in page.
 // 403 = access denied for the presented session/identity -> denied/error state
-//       with an explicit user-driven "Sign in again" entry plus retry. Never
+//       with an explicit user-driven "Sign in" entry plus retry. Never
 //       silently treated as signed-out, never auto-redirected.
 // 5xx = service unavailable -> error state with retry and sign-in entry.
 const hostedConfig={json:{hosted:true,mode:'CLOUD-HOSTED DEMO'}};
@@ -21,10 +21,10 @@ for(const [label,me] of Object.entries({
   await page.goto('/');
   // Denied state retains public content, with explicit recovery and no auto navigation.
   await expect(page.getByRole('heading',{name:'Your expertise. Your workspace.',exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Sign in again'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Retry session check'})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toHaveCount(0);
-  await expect(page.getByText('Access was denied for your current session. Retry, or sign in again to start a fresh session.')).toBeVisible();
+  await expect(page.getByText('Access was denied. Sign in or retry the session check.')).toBeVisible();
   expect(new URL(page.url()).pathname).toBe('/');
  });
 }
@@ -35,7 +35,7 @@ test('session-check 401 stays the anonymous sign-in page',async({page})=>{
  await page.route('**/auth/verification/status',r=>r.fulfill(noVerification));
  await page.goto('/');
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toBeEnabled();
- await expect(page.getByRole('button',{name:'Sign in again'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Sign in',exact:true})).toHaveCount(0);
 });
 
 test('session-check 5xx is service unavailable with retry and sign-in entry',async({page})=>{
@@ -45,11 +45,11 @@ test('session-check 5xx is service unavailable with retry and sign-in entry',asy
  await page.goto('/');
  await expect(page.getByText('Studio is unavailable. Try again.')).toBeVisible();
  await expect(page.getByRole('button',{name:'Retry session check'})).toBeEnabled();
- await expect(page.getByRole('button',{name:'Sign in again'})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeEnabled();
  expect(new URL(page.url()).pathname).toBe('/');
 });
 
-test('Session unavailable menu offers Sign in again and retry; sign-in uses server /auth/login',async({page})=>{
+test('Session unavailable menu offers Sign in and retry; sign-in uses server /auth/login',async({page})=>{
  await page.route('**/studio-config.json',r=>r.fulfill(hostedConfig));
  await page.route('**/api/me',r=>r.fulfill({status:403,json:{message:'Forbidden'}}));
  await page.route('**/auth/verification/status',r=>r.fulfill(noVerification));
@@ -57,18 +57,18 @@ test('Session unavailable menu offers Sign in again and retry; sign-in uses serv
  await page.goto('/');
  await page.getByRole('button',{name:'Session unavailable'}).click();
  await expect(page.getByRole('menuitem',{name:'Retry session check'})).toBeVisible();
- await page.getByRole('menuitem',{name:'Sign in again'}).click();
+ await page.getByRole('menuitem',{name:'Sign in',exact:true}).click();
  await page.waitForURL('**/auth/login');
  expect(new URL(page.url()).pathname).toBe('/auth/login');
 });
 
-test('error-page Sign in again button navigates to server /auth/login only on click',async({page})=>{
+test('error-page Sign in button navigates to server /auth/login only on click',async({page})=>{
  await page.route('**/studio-config.json',r=>r.fulfill(hostedConfig));
  await page.route('**/api/me',r=>r.fulfill({status:403,json:{message:'Forbidden'}}));
  await page.route('**/auth/verification/status',r=>r.fulfill(noVerification));
  await page.route('**/auth/login',r=>r.fulfill({contentType:'text/html',body:'<html><body>server-login-flow</body></html>'}));
  await page.goto('/');
- const signIn=page.getByRole('button',{name:'Sign in again'});
+ const signIn=page.getByRole('button',{name:'Sign in',exact:true});
  await expect(signIn).toBeEnabled();
  expect(new URL(page.url()).pathname).toBe('/'); // no auto redirect
  await signIn.click();
