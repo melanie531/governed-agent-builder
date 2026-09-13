@@ -153,36 +153,43 @@ def test_two_racing_callers_exactly_one_send(tmp_path):
     assert total['n'] == 1               # exactly ONE real send across both racers
 
 
-# --------------------------------- crash-after-claim + restart => 0 additional sends
-def test_crash_after_claim_restart_zero_additional_sends(tmp_path):
+# ------------------- crash-BEFORE-send (claim committed, died before dispatch) => 0 sends
+def test_crash_before_send_restart_zero_sends(tmp_path):
+    # Model a crash AFTER the atomic reserve+claim commits but BEFORE the real
+    # dispatch fired: commit the claim directly (no send), then restart. The claim
+    # is persisted (budget held) yet the actual send NEVER fired -> total sends 0,
+    # and the restart cannot re-issue it (CAPTURE_TICKET_EXISTS) -> still 0 sends.
+    from scripts.opus_capture_ticket import reserve_and_claim_capture
     path = tmp_path / 'c.sqlite'
-    s = Store(str(path)); spy = SendSpy('fail')
-    send(s, spy)                          # first (and only) send
-    assert spy.count == 1
-    # Simulate process crash after claim, then a restart re-attempting the ticket.
-    reopened = Store(str(path)); spy2 = SendSpy('fail')
+    s = Store(str(path))
+    reserve_and_claim_capture(s, 'one', role='synthetic-role', workspace='synthetic-project',
+        request_digest='a'*64, deadline=200, now=100, costs=envelope(), cap_usd='0.06')
+    # ... process dies here, before any transport.post. Restart re-attempts:
+    reopened = Store(str(path)); spy = SendSpy('fail')
     with pytest.raises(SendGateDenied, match='EXISTS'):
-        send(reopened, spy2)
-    assert spy2.count == 0                # restart performs ZERO additional sends
+        send(reopened, spy)
+    assert spy.count == 0                 # crash-before-send => ZERO sends total
     with reopened.tx() as db:
         assert get(db, 'opus-capture:one')['held_usd'] == '0.06'  # hold retained
 
 
-# ------------------------------ send-timeout + restart => 0 re-send, budget hold retained
-def test_send_timeout_restart_zero_resend_hold_retained(tmp_path):
+# ---- send-timeout + restart: total may be 1 (pre-timeout send); restart delta == 0
+def test_send_timeout_restart_delta_zero_hold_retained(tmp_path):
+    # A real send may have ALREADY fired ONCE before the timeout. The invariant is
+    # NOT total==0; it is: restart adds ZERO new sends, hold retained, no auto-retry.
     path = tmp_path / 'c.sqlite'
     s = Store(str(path)); spy = SendSpy('timeout')
     out = send(s, spy)                    # dispatch fires once, then times out
-    assert spy.count == 1
+    assert spy.count == 1                 # pre-timeout send counts as 1 (allowed)
     assert out['error'] is not None and 'timeout' in out['error'].lower()
     with s.tx() as db:
         row = get(db, 'opus-capture:one')
         assert row['state'] == 'UNKNOWN'          # unknown outcome, no refund
         assert row['held_usd'] == '0.06'          # full reservation retained
-    # Restart must NOT re-send the timed-out call.
-    reopened = Store(str(path)); spy2 = SendSpy('fail')
+    # Restart must add ZERO new sends (no auto-retry of the timed-out call).
+    reopened = Store(str(path)); restart_spy = SendSpy('fail')
     with pytest.raises(SendGateDenied, match='EXISTS'):
-        send(reopened, spy2)
-    assert spy2.count == 0                # ZERO re-send after timeout
+        send(reopened, restart_spy)
+    assert restart_spy.count == 0         # restart DELTA == 0 (total across run stays 1)
     with reopened.tx() as db:
         assert get(db, 'opus-capture:one')['held_usd'] == '0.06'
