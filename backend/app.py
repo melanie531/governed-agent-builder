@@ -22,7 +22,7 @@ from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
 from .harness import evaluate, run_case
-from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, Grant, Invoke, Login, PolicyUpdate
+from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, GeneralRequest, GeneralRequestStatus, Grant, Invoke, Login, PolicyUpdate
 from .store import Store
 from .hosted_auth import HostedAuth
 from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog
@@ -683,6 +683,46 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             db.insert('settings', {'key': 'request-version:' + request_id, 'body': json.dumps({'version': component['version']})})
             audit(db, persona["id"], "capability_requested", request_id, data.component_id)
         return {"id": request_id}
+
+    # General platform requests: needs outside the AI Catalog. These are not
+    # capability grants — admin handling records a response and never touches
+    # grants, settings scopes or execution bindings.
+    @app.get("/api/general-requests")
+    def general_requests(request: Request):
+        persona = who(request)
+        with store.tx() as db:
+            if persona["role"] == "admin":
+                return [dict(r) for r in db.select('general_requests', order='created', descending=True)]
+            return [dict(r) for r in db.select('general_requests', where=[('requester', '=', persona['id']), ('workspace', '=', persona['workspace'])], order='created', descending=True)]
+
+    @app.post("/api/general-requests", status_code=201)
+    def submit_general_request(data: GeneralRequest, request: Request):
+        persona = who(request)
+        if persona["role"] != "business":
+            raise HTTPException(403, "Business identity required")
+        with store.tx() as db:
+            if db.select('general_requests', where=[('requester', '=', persona['id']), ('workspace', '=', persona['workspace']), ('summary', '=', data.summary), ('status', 'not_in', ('RESOLVED', 'CLOSED'))]).fetchone():
+                raise HTTPException(409, "An identical request is already open; wait for the administrator response")
+            if db.select('general_requests', count=True, where=[('requester', '=', persona['id']), ('created', '>', time.time() - 3600)]).fetchone()[0] >= 30:
+                raise HTTPException(429, 'General request budget: 30 per identity per hour')
+            request_id = uid()
+            now = time.time()
+            db.insert('general_requests', {'id': request_id, 'requester': persona['id'], 'workspace': persona['workspace'], 'summary': data.summary, 'details': data.details, 'status': 'SUBMITTED', 'resolution': None, 'created': now, 'updated': now})
+            audit(db, persona["id"], "general_request_submitted", request_id, json.dumps({"workspace": persona["workspace"]}))
+        return {"id": request_id}
+
+    @app.post("/api/admin/general-requests/{request_id}/status")
+    def handle_general_request(request_id: str, data: GeneralRequestStatus, request: Request):
+        persona = who(request, True)
+        with store.tx() as db:
+            row = db.select('general_requests', where=[('id', '=', request_id)]).fetchone()
+            if not row:
+                raise HTTPException(404, "Request not found")
+            if row["status"] in ("RESOLVED", "CLOSED"):
+                raise HTTPException(409, "Request already resolved or closed")
+            db.update('general_requests', {'status': data.status, 'resolution': data.note, 'updated': time.time()}, where=[('id', '=', request_id)])
+            audit(db, persona["id"], "general_request_updated", request_id, json.dumps({"status": data.status, "workspace": row["workspace"]}))
+        return {"ok": True, "notice": "Administrator response recorded; no access was granted or provisioned automatically"}
 
     @app.get("/api/admin/catalog")
     def admin_catalog(request: Request):

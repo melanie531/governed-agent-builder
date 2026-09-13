@@ -24,6 +24,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, agent TEXT, version INTEGER, requester TEXT, idem TEXT, stage TEXT, result TEXT, created REAL, updated REAL, deadline REAL, attempts INTEGER DEFAULT 0, UNIQUE(agent,requester,idem));
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT, stage TEXT, detail TEXT, created REAL);
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, requester TEXT, workspace TEXT, component TEXT, reason TEXT, status TEXT, decision TEXT, created REAL);
+            CREATE TABLE IF NOT EXISTS general_requests(id TEXT PRIMARY KEY, requester TEXT, workspace TEXT, summary TEXT, details TEXT, status TEXT, resolution TEXT, created REAL, updated REAL);
             CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, resource TEXT, detail TEXT, created REAL);
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, body TEXT);
             ''')

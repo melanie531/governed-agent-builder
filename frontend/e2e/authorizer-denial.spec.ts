@@ -87,7 +87,7 @@ test('mid-session gateway 403 surfaces access denied, never auto-signs-out or re
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  expired=true;
- await page.getByRole('link',{name:'Capability requests'}).click();
+ await page.getByRole('link',{name:'Requests',exact:true}).click();
  await expect(page.getByRole('group',{name:'Action blocked Access is restricted. Request access or contact your administrator.',exact:true})).toBeVisible();
  // Still signed in; user decides how to recover. No auto sign-out or redirect.
  await expect(page.getByRole('button',{name:'member@example.test · Research studio'})).toBeVisible();
@@ -106,7 +106,7 @@ test('mid-session 401 expires the session to the anonymous entry',async({page})=
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  expired=true;
- await page.getByRole('link',{name:'Capability requests'}).click();
+ await page.getByRole('link',{name:'Requests',exact:true}).click();
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toBeEnabled();
 });
 
@@ -118,7 +118,7 @@ test('application 403 with business detail is surfaced verbatim semantics, never
  await page.route('**/api/requests',r=>r.fulfill({status:403,json:{detail:'Business identity required'}}));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
- await page.getByRole('link',{name:'Capability requests'}).click();
+ await page.getByRole('link',{name:'Requests',exact:true}).click();
  await expect(page.getByText('Business identity required')).toBeVisible();
  await expect(page.getByRole('button',{name:'member@example.test · Research studio'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Sign in / Open Studio'})).toHaveCount(0);
