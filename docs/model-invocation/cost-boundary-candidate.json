@@ -1,0 +1,40 @@
+{
+  "status": "CANDIDATE_NOT_APPLIED",
+  "runtime": {
+    "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 60},
+    "networkConfiguration": {"networkMode": "VPC", "networkModeConfig": {"subnets": [], "securityGroups": []}},
+    "roleArn": null,
+    "maximum_session_count": 1,
+    "session_count_enforcement": "NOT_WIRED",
+    "termination_grace_seconds_from_docs": 15
+  },
+  "input": {
+    "max_request_utf8_bytes": 4096,
+    "enforcement": "CANDIDATE_PRE_DISPATCH_REJECT",
+    "provider_token_upper_bound": null,
+    "counting_method": null
+  },
+  "storage": {
+    "bucket": null,
+    "evidence_prefix": null,
+    "rule": {
+      "ID": "opus-capture-evidence-expiry",
+      "Status": "Enabled",
+      "Filter": {"Prefix": null},
+      "Expiration": {"Days": 1},
+      "NoncurrentVersionExpiration": {"NoncurrentDays": 1},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+    },
+    "expired_delete_marker_rule": {
+      "ID": "opus-capture-expired-markers",
+      "Status": "Enabled",
+      "Filter": {"Prefix": null},
+      "Expiration": {"ExpiredObjectDeleteMarker": true}
+    },
+    "maximum_evidence_bytes": 65536,
+    "deletion_is_asynchronous": true
+  },
+  "logs": {"logGroupName": null, "retentionInDays": 1, "ingestion_byte_cap": null},
+  "budget": {"approved_reservation_usd": null, "full_service_upper_bound_usd": null},
+  "unresolved": ["exact existing VPC subnet/SG/egress", "reviewed role binding", "single-session admission control", "provider input token bound", "evidence prefix/versioning and existing lifecycle merge", "log ingestion bound", "all-service quantities and approved dollar reserve"]
+}
