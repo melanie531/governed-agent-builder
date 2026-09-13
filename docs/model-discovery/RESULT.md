@@ -12,7 +12,8 @@
 - [x] 全量回归：`tests/` 1136 passed, 1 failed —— 唯一失败 `test_web_research.py::test_react_renders_malicious_report_as_text`
       为 worktree 环境缺 `frontend/node_modules`（esbuild ERR_MODULE_NOT_FOUND）；同一测试在 /tmp/gab 主
       checkout（有 node_modules）上 1 passed。环境差异，非本改动回归（本分支未触碰任何现有文件）。
-- [ ] 提交并 push 独立分支
+- [x] 提交并 push 独立分支：`feature/model-discovery-module` @ f1e6386f00b854d3b5945fff019867148aeae9dc
+      （`git ls-remote --heads origin` 已确认远端存在；交审不部署）
 - [x] 集成状态说明（见下）
 
 ## 设计契约（与现有 live_catalog 公共契约对齐、但不接线）
