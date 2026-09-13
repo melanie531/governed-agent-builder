@@ -28,8 +28,19 @@ URL = 'https://gab-foundation-model-m0-example.gateway.bedrock-agentcore.us-west
 
 def evidence(definition, store):
     request = {'endpoint': URL, 'system': 'Synthetic diagnostic', 'prompt': 'Hello', 'max_tokens': 256}
-    manifest = {'purpose': PURPOSE, 'source_digest': producer.source_digest(),
-                'definition_digest': definition['digest'], 'request_digest': digest(request)}
+    # Exact deployed 20-field schema; no private manifest or production identities.
+    manifest = {'schema': 'gab-diagnostic-build-manifest-v1', 'purpose': PURPOSE,
+        'release_sha': 'ca333d048343b13d67ba4e47debba2e27f9ace4c', 'region': 'us-west-2',
+        'entrypoint': 'runtime.diagnostic_capture:create_app',
+        'exchange_endpoint': 'https://synthetic.execute-api.us-west-2.amazonaws.com/internal/diagnostic/capture',
+        'source_files': producer.source_files(),
+        'dependency_lock_sha256': '07fe5cbfc8acb410c3bf4eac02f87a50f45db9704e8ed8a836652c7c5fb7b5dd',
+        'dependency_source_zip_sha256': 'f7a877e93567867d5546b56cab7f4047c27f43538d7698f9550f4d92abbacfbe',
+        'definition_digest': definition['digest'], 'agent_id': definition['agent_id'],
+        'agent_version': definition['version'], 'requested_model': 'us.anthropic.claude-opus-5',
+        'max_output_tokens': 256, 'stream': False, 'thinking': 'disabled', 'tools': [],
+        'transport_retries': 0, 'activation': 'disabled-pending-authenticated-authority',
+        'production_admission': False}
     isolation = {'source': 'https://example.invalid/isolation-readback', 'role': ROLE,
         'runtime_arn': ARN, 'runtime_version': '1', 'trust_policy': {'Statement': [{
             'Effect': 'Allow', 'Principal': {'Service': 'bedrock-agentcore.amazonaws.com'},
@@ -40,7 +51,8 @@ def evidence(definition, store):
     runtime = {'role': ROLE, 'runtime_id': 'synthetic-abc', 'runtime_arn': ARN, 'runtime_version': '1',
         'endpoint_name': 'DEFAULT', 'manifest_digest': digest(manifest),
         'definition_digest': definition['digest'], 'model_endpoint': URL,
-        'readback': {'roleArn': ROLE, 'agentRuntimeArtifact': {'codeConfiguration': {'code': {'s3': {
+        'readback': {'roleArn': ROLE, 'agentRuntimeArtifact': {'codeConfiguration': {
+            'runtime': 'PYTHON_3_13', 'entryPoint': ['main.py'], 'code': {'s3': {
             'bucket': 'synthetic-private', 'prefix': 'diagnostic.zip', 'versionId': 'synthetic-version'}}}},
             'networkConfiguration': {'networkMode': 'VPC'}, 'environmentVariables': {
                 'DEFINITION_DIGEST': definition['digest'], 'MANIFEST_DIGEST': digest(manifest)}},
@@ -177,7 +189,7 @@ def test_invalid_candidate_has_no_writes(cloud, candidate, fault):
     elif fault == 'pricecalculation': body['price_sources']['model_input']['rate_usd'] = '0.9'
     elif fault == 'runtime': body['runtime_readback']['agentRuntimeVersion'] = '2'
     elif fault == 'endpoint': body['endpoint_readback']['liveVersion'] = '2'
-    elif fault == 'source': body['manifest']['source_digest'] = 'a'*64
+    elif fault == 'source': body['manifest']['source_files']['runtime/diagnostic_capture.py'] = 'a'*64
     elif fault == 'manifest': body['runtime']['manifest_digest'] = 'b'*64
     elif fault == 'isolation': body['isolation_source']['attached_runtime_versions'].append({'runtime_arn': ARN, 'runtime_version': '2'})
     elif fault == 'budget': body['budget']['capture_usd'] = '5'
@@ -341,4 +353,109 @@ def test_review_rejects_client_identity_and_approval_boolean(cloud, candidate):
     response = cloud[1].post(REVIEW, json={'candidate_ref': ref,
         'reason': 'Independent synthetic review', 'approved': True, 'reviewer': 'forged'})
     assert response.status_code == 422
+    assert states(cloud[0].state.store) == before
+
+
+def rebind_candidate(body, *, manifest=False):
+    """Rehash submitted evidence without rewriting the independent readback."""
+    if manifest:
+        body['runtime']['manifest_digest'] = digest(body['manifest'])
+        body['runtime']['readback']['environmentVariables']['MANIFEST_DIGEST'] = digest(body['manifest'])
+    body['pricing']['runtime_ref'] = digest(body['runtime'])
+    body['authority']['runtime_ref'] = digest(body['runtime'])
+    body['authority']['pricing_ref'] = digest(body['pricing'])
+
+
+def test_v1_build_keeps_digest_and_binds_new_exact_request(cloud, candidate):
+    manifest = copy.deepcopy(candidate['manifest'])
+    manifest_digest = digest(manifest)
+    assert len(manifest) == 20
+    assert len(manifest['source_files']) == 17
+    assert digest(manifest['source_files']) == producer.source_digest()
+    assert 'request_digest' not in manifest and 'source_digest' not in manifest
+    candidate['authority']['request']['prompt'] = 'A different exact synthetic request'
+    candidate['authority']['request']['max_tokens'] = 64
+    candidate['authority']['request_digest'] = digest(candidate['authority']['request'])
+    candidate['pricing']['request_digest'] = candidate['authority']['request_digest']
+    rebind_candidate(candidate)
+    _, capture_ref = reviewed(cloud, candidate)
+    with cloud[0].state.store.tx() as db:
+        resolved = DiagnosticAdmission(capture_ref, ROLE).resolve(db)
+        assert resolved['request'] == candidate['authority']['request']
+        assert resolved['runtime']['manifest_digest'] == manifest_digest
+    assert candidate['manifest'] == manifest
+
+
+@pytest.mark.parametrize('field,value', [
+    ('schema', 'gab-diagnostic-build-manifest-v2'), ('purpose', 'product'),
+    ('release_sha', 'a'*40), ('region', 'us-east-1'),
+    ('entrypoint', 'runtime.other:create_app'),
+    ('exchange_endpoint', 'https://example.invalid/internal/diagnostic/capture'),
+    ('dependency_lock_sha256', 'a'*64), ('dependency_source_zip_sha256', 'a'*64),
+    ('definition_digest', 'a'*64), ('agent_id', 'another-synthetic-agent'),
+    ('agent_version', 2), ('agent_version', True), ('requested_model', 'other-model'),
+    ('max_output_tokens', 257), ('max_output_tokens', 256.0),
+    ('stream', True), ('stream', 0), ('thinking', 'enabled'), ('tools', [{}]),
+    ('transport_retries', 1), ('transport_retries', False),
+    ('activation', 'enabled'), ('production_admission', True), ('production_admission', 0),
+])
+def test_v1_manifest_semantic_drift_rejected_even_rehashed(cloud, candidate, field, value):
+    candidate['manifest'][field] = value
+    rebind_candidate(candidate, manifest=True)
+    # Rebind both attestations too: structural/build checks must still reject it.
+    candidate['runtime_readback']['environmentVariables']['MANIFEST_DIGEST'] = digest(candidate['manifest'])
+    before = states(cloud[0].state.store)
+    response = cloud[1].post(SUBMIT, json=candidate)
+    assert response.status_code == 409, response.text
+    assert states(cloud[0].state.store) == before
+
+
+@pytest.mark.parametrize('fault', ['missing', 'extra', 'hash', 'not_map', 'legacy', 'extra_field',
+    'missing_field', 'tamper_unbound', 'changed_exchange', 'runtime_version', 'runtime_role',
+    'artifact_bucket', 'artifact_prefix', 'artifact_version', 'artifact_mutable', 'artifact_runtime',
+    'artifact_entrypoint', 'request_unbound', 'pricing_request_unbound'])
+def test_v1_source_map_and_runtime_binding_negatives(cloud, candidate, fault):
+    manifest = candidate['manifest']
+    code = candidate['runtime']['readback']['agentRuntimeArtifact']['codeConfiguration']
+    if fault == 'missing': manifest['source_files'].pop('runtime/diagnostic_capture.py')
+    elif fault == 'extra': manifest['source_files']['runtime/unexpected.py'] = 'a'*64
+    elif fault == 'hash': manifest['source_files']['runtime/diagnostic_capture.py'] = 'a'*64
+    elif fault == 'not_map': manifest['source_files'] = []
+    elif fault == 'legacy':
+        candidate['manifest'] = {'purpose': PURPOSE, 'source_digest': producer.source_digest(),
+            'definition_digest': candidate['authority']['definition_digest'],
+            'request_digest': candidate['authority']['request_digest']}
+    elif fault == 'extra_field': manifest['request_digest'] = candidate['authority']['request_digest']
+    elif fault == 'missing_field': manifest.pop('dependency_lock_sha256')
+    elif fault in ('tamper_unbound', 'changed_exchange'):
+        manifest['exchange_endpoint'] = 'https://changed.execute-api.us-west-2.amazonaws.com/internal/diagnostic/capture'
+    elif fault == 'runtime_version': candidate['runtime_readback']['agentRuntimeVersion'] = '2'
+    elif fault == 'runtime_role': candidate['runtime_readback']['roleArn'] = ROLE + '-changed'
+    elif fault.startswith('artifact_'):
+        field = fault.removeprefix('artifact_')
+        if field == 'mutable': code['code']['s3']['versionId'] = 'null'
+        elif field == 'runtime': code['runtime'] = 'PYTHON_3_12'
+        elif field == 'entrypoint': code['entryPoint'] = ['other.py']
+        else: code['code']['s3'][{'bucket': 'bucket', 'prefix': 'prefix', 'version': 'versionId'}[field]] = 'changed'
+    elif fault == 'request_unbound': candidate['authority']['request']['prompt'] = 'Changed without digest'
+    elif fault == 'pricing_request_unbound':
+        candidate['authority']['request']['prompt'] = 'Changed without pricing review'
+        candidate['authority']['request_digest'] = digest(candidate['authority']['request'])
+    if fault != 'tamper_unbound':
+        rebind_candidate(candidate, manifest=True)
+    before = states(cloud[0].state.store)
+    response = cloud[1].post(SUBMIT, json=candidate)
+    assert response.status_code == 409, response.text
+    assert states(cloud[0].state.store) == before
+
+
+def test_review_rechecks_packaged_source_map(cloud, candidate, monkeypatch):
+    ref = submit(cloud, candidate)
+    changed = producer.source_files()
+    changed['runtime/diagnostic_capture.py'] = 'a'*64
+    monkeypatch.setattr(producer, 'source_files', lambda: changed)
+    sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
+    before = states(cloud[0].state.store)
+    response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Synthetic source drift review'})
+    assert response.status_code == 409, response.text
     assert states(cloud[0].state.store) == before

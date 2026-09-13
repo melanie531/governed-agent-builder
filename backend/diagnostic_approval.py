@@ -72,14 +72,55 @@ class _Preview:
         return Result(r for r in rows if matches(r, kwargs.get('where', ())))
 
 
-def source_digest():
+def source_files():
     from pathlib import Path
     from scripts.package_foundation import SOURCES
     root = Path(__file__).resolve().parents[1]
     names = tuple(n for n in SOURCES if n.startswith('foundation_harness/')) + (
         'foundation_harness/diagnostic_exchange.py', 'runtime/__init__.py',
         'runtime/diagnostic_capture.py')
-    return digest({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names})
+    return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
+
+
+def source_digest():
+    return digest(source_files())
+
+
+def validate_manifest(manifest, authority, runtime):
+    """Validate the retained v1 build, never a request-specific replacement.
+
+    Release/dependency pins identify the retained build inputs. verify_runtime
+    checks the final immutable S3 version and environment manifest binding;
+    readbacks remain reviewed attestations, not cloud/ZIP reads by this API.
+    """
+    expected = {
+        'schema': 'gab-diagnostic-build-manifest-v1', 'purpose': PURPOSE,
+        'release_sha': 'ca333d048343b13d67ba4e47debba2e27f9ace4c',
+        'region': 'us-west-2', 'entrypoint': 'runtime.diagnostic_capture:create_app',
+        'exchange_endpoint': manifest.get('exchange_endpoint'),
+        'source_files': source_files(),
+        'dependency_lock_sha256': '07fe5cbfc8acb410c3bf4eac02f87a50f45db9704e8ed8a836652c7c5fb7b5dd',
+        'dependency_source_zip_sha256': 'f7a877e93567867d5546b56cab7f4047c27f43538d7698f9550f4d92abbacfbe',
+        'definition_digest': authority['definition_digest'],
+        'agent_id': authority['agent_id'], 'agent_version': authority['version'],
+        'requested_model': 'us.anthropic.claude-opus-5', 'max_output_tokens': 256,
+        'stream': False, 'thinking': 'disabled', 'tools': [], 'transport_retries': 0,
+        'activation': 'disabled-pending-authenticated-authority', 'production_admission': False,
+    }
+    # Canonical equality also rejects bool/int and float/int substitutions.
+    require(canonical(manifest) == canonical(expected), 'CAPTURE_EXECUTABLE_SOURCE_REQUIRED')
+    require(isinstance(manifest['exchange_endpoint'], str) and re.fullmatch(
+        r'https://[a-z0-9]+\.execute-api\.us-west-2\.amazonaws\.com/internal/diagnostic/capture',
+        manifest['exchange_endpoint']) is not None, 'CAPTURE_EXCHANGE_ENDPOINT_DENIED')
+    require(type(manifest['agent_version']) is int and manifest['agent_version'] > 0,
+            'CAPTURE_MANIFEST_AGENT_VERSION_DENIED')
+    require(runtime['manifest_digest'] == digest(manifest), 'CAPTURE_MANIFEST_BINDING_DENIED')
+    code = runtime['readback']['agentRuntimeArtifact']['codeConfiguration']
+    require(set(code) == {'code', 'runtime', 'entryPoint'} and code['runtime'] == 'PYTHON_3_13'
+            and code['entryPoint'] == ['main.py'] and set(code['code']) == {'s3'}
+            and set(code['code']['s3']) == {'bucket', 'prefix', 'versionId'}
+            and all(isinstance(v, str) and v.strip() and v != 'null'
+                    for v in code['code']['s3'].values()), 'CAPTURE_BUILD_ARTIFACT_REQUIRED')
 
 
 def validate(db, actor, data, now):
@@ -95,10 +136,7 @@ def validate(db, actor, data, now):
         r'arn:aws:iam::\d{12}:role/[A-Za-z0-9_+=,.@-]+', runtime['role']) is not None,
         'CAPTURE_EXACT_WORKLOAD_ROLE_REQUIRED')
     require(now < expiry <= min(now + 3600, admin_expiry), 'CAPTURE_REVIEW_EXPIRY_DENIED')
-    require(data.manifest == {'purpose': PURPOSE, 'source_digest': source_digest(),
-            'definition_digest': a['definition_digest'], 'request_digest': a['request_digest']},
-            'CAPTURE_EXECUTABLE_SOURCE_REQUIRED')
-    require(runtime['manifest_digest'] == digest(data.manifest), 'CAPTURE_MANIFEST_BINDING_DENIED')
+    validate_manifest(data.manifest, a, runtime)
     require(a['runtime_ref'] == digest(runtime) and a['pricing_ref'] == digest(pricing),
             'CAPTURE_CANDIDATE_DIGEST_DENIED')
     require(set(pricing['costs']) == set(pricing['evidence']) == set(data.price_sources) == COST_SERVICES,

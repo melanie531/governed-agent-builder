@@ -33,6 +33,11 @@ update/activation remains the parent cloud writer's work. Do not enable it as a
 side effect of deploying the producer. Do not change Auth, Authorizer, Worker,
 Dispatcher or FoundationExchange permissions or state.
 
+Second existing admin availability remains an unverified, separate operator
+prerequisite. Do not create reviewers or weaken independent review to resolve it.
+The parent owns cloud deployment and the existing US$1 approval; this code fix
+neither spends that approval nor authorizes Runtime recreation.
+
 These calls are callable only **after** the Business application code deployment.
 This delivery makes no claim that the endpoints have been deployed or live-tested.
 
@@ -94,10 +99,26 @@ Build in this order so there is no circular hash dependency:
 * `request`: exactly `{endpoint, system, prompt, max_tokens}`. Use the existing
   reviewed dedicated us-west-2 Gateway `/bedrockrt/v1/messages` URL, exact prompt
   and system strings and bounded integer max_tokens accepted by the consumer.
-* `manifest`: exactly `{purpose, source_digest, definition_digest, request_digest}`.
-  `purpose` is `opus-response-identity-capture-v1`; `source_digest` is returned by
-  `backend.diagnostic_approval.source_digest()` against the packaged diagnostic
-  source set; `request_digest=D(request)`; definition digest is the stored value.
+* `manifest`: use the **unchanged existing** `gab-diagnostic-build-manifest-v1`
+  object, not a newly constructed request manifest. Its exact 20 fields are
+  `{schema, purpose, release_sha, region, entrypoint, exchange_endpoint,
+  source_files, dependency_lock_sha256, dependency_source_zip_sha256,
+  definition_digest, agent_id, agent_version, requested_model, max_output_tokens,
+  stream, thinking, tools, transport_retries, activation, production_admission}`.
+  The producer checks the exact 17-file name/hash map against its packaged bytes,
+  pins the retained `ca333d0` release and dependency lock/source-ZIP digests, and
+  binds the stored agent/version/definition. Fixed settings are us-west-2,
+  `runtime.diagnostic_capture:create_app`, `us.anthropic.claude-opus-5`, 256 output
+  tokens, stream false, thinking disabled, no tools/retries, activation
+  `disabled-pending-authenticated-authority`, production admission false.
+  Exchange must be the us-west-2 execute-api `/internal/diagnostic/capture` URL.
+  The four-field unversioned manifest is rejected. There is no `request_digest`
+  in this build schema: bind the exact request separately through authority and
+  pricing below. Preserve `D(manifest)` already bound into the existing Runtime;
+  do not rewrite the manifest/settings/environment or recreate Runtime.
+  Release/dependency pins describe build inputs, not a hash of the final Runtime
+  ZIP. The independently reviewed immutable S3 artifact and Runtime readback bind
+  that artifact; this producer does not fetch ZIPs, dependencies or cloud facts.
 * `isolation_source`: exactly `{source, role, runtime_arn, runtime_version,
   trust_policy, invoke_policy, attached_runtime_versions}`. Policies are the
   existing actual reviewed readback objects, not boolean attestations.
@@ -111,7 +132,8 @@ Build in this order so there is no circular hash dependency:
   `manifest_digest=D(manifest)` and `model_endpoint=request.endpoint`.
   `readback` has exactly `{roleArn, agentRuntimeArtifact, networkConfiguration,
   environmentVariables}`. Require matching role, VPC network, immutable S3
-  artifact `bucket/prefix/versionId` and the actual environment's
+  artifact `bucket/prefix/versionId`, code runtime `PYTHON_3_13` with
+  `entryPoint=["main.py"]`, and the actual environment's
   `DEFINITION_DIGEST`/`MANIFEST_DIGEST` bindings. No altered deployment is authorized
   to make a candidate pass.
   `isolation_evidence` is exactly `{source, sha256, role, runtime_arn,
@@ -195,7 +217,14 @@ independent review; hashes bind content but are not external signatures.
 Existing project `.venv/bin/python -m pytest -q -rs` over
 `tests/test_diagnostic_approval.py tests/test_diagnostic_live_compat.py
  tests/test_diagnostic_capture.py tests/test_diagnostic_exchange.py
- tests/test_diagnostic_release.py`: **235 passed, 4 skipped**, 27.70 seconds.
+ tests/test_diagnostic_release.py tests/test_catalog_response_compatibility.py
+ tests/test_discovery_api_catalog.py`: **291 passed, 4 skipped**, 45.97 seconds.
+The producer fixture now uses the deployed 20-field schema with synthetic
+identities. Regressions cover rehashed build/source-map drift, legacy-schema
+rejection, artifact/runtime changes, exact request/pricing binding and source
+changes between submission and review. A separate local read-only check accepted
+the retained private manifest with its original digest and matching 17-file map;
+no private manifest or runtime identifiers are copied into tests or this document.
 Four skips are existing DynamoDB-CAS-only cases in SQLite parametrizations;
 producer rollback is exercised on both SQLite and DynamoDB and its concurrent
 publisher CAS test passed. Two dependency deprecation warnings; no installs,
