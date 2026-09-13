@@ -1,0 +1,3 @@
+FAILED tests/test_opus_modelclient.py::test_response_not_in_allowlist_fails_without_retry
+FAILED tests/test_opus_modelclient.py::test_manifest_roundtrip_and_unauthorized_dispatch
+3 failed, 7 passed, 2 warnings in 0.21s
