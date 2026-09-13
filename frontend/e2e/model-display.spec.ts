@@ -16,7 +16,9 @@ test('Models list shows Anthropic / Claude Haiku 4.5; full ID only in View detai
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  // List: verified Haiku shows friendly provider/name, not the raw route ID.
  await expect(page.getByRole('button',{name:'Claude Haiku 4.5',exact:true})).toBeVisible();
- await expect(page.getByText('Anthropic',{exact:true})).toBeVisible();
+ const haikuRow=page.getByRole('row').filter({has:page.getByRole('button',{name:'Claude Haiku 4.5',exact:true})});
+ await expect(haikuRow).toHaveCount(1);
+ await expect(haikuRow.getByText('Anthropic',{exact:true})).toBeVisible();
  const table=page.getByRole('table');
  await expect(table.getByText('demo-target/us.anthropic.claude-haiku-4-5-20251001-v1:0',{exact:true})).toHaveCount(0);
  // Unknown route keeps its raw identity; it is never presented as Haiku.
