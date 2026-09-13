@@ -6,6 +6,7 @@ the trust root, exactly as for foundation_runs. Never expose this module through
 the browser API or accept an admission callback from a request.
 """
 import copy
+import hashlib
 import json
 import re
 import time
@@ -28,6 +29,14 @@ COST_SERVICES = SERVICES | {'network', 'state_store', 'artifact', 'authenticatio
 def require(condition, code):
     if not condition:
         raise Denied(code)
+
+
+def stored_definition_digest(definition):
+    # Match backend.app.digest for saved versions, including ASCII escaping.
+    # Harness manifests and protected records retain their own digest contract.
+    content = {k: v for k, v in definition.items() if k != 'digest'}
+    return hashlib.sha256(json.dumps(content, sort_keys=True, separators=(',', ':'),
+                                     ensure_ascii=True).encode()).hexdigest()
 
 
 def record(db, kind, ref):
@@ -105,7 +114,7 @@ class DiagnosticAdmission:
         require(version is not None, 'CAPTURE_DEFINITION_REQUIRED')
         definition = json.loads(version['body'])
         require(version['digest'] == authority['definition_digest'] == definition.get('digest')
-                == digest({k: v for k, v in definition.items() if k != 'digest'})
+                == stored_definition_digest(definition)
                 and (definition.get('agent_id'), definition.get('version'), definition.get('owner'),
                      definition.get('workspace')) == (agent['id'], authority['version'], owner['id'], agent['workspace']),
                 'CAPTURE_DEFINITION_BINDING_DENIED')
@@ -222,7 +231,10 @@ def verify_runtime(control, runtime):
             and artifact.get('versionId') not in (None, '', 'null'), 'CAPTURE_IMMUTABLE_ARTIFACT_REQUIRED')
     require(endpoint.get('status') == 'READY' and endpoint.get('name') == runtime['endpoint_name']
             and endpoint.get('agentRuntimeArn') == runtime['runtime_arn']
-            and endpoint.get('liveVersion') == endpoint.get('targetVersion') == runtime['runtime_version'],
+            and endpoint.get('liveVersion') == runtime['runtime_version']
+            # READY endpoints can omit targetVersion; an explicit value must match.
+            and ('targetVersion' not in endpoint
+                 or endpoint['targetVersion'] == runtime['runtime_version']),
             'CAPTURE_RUNTIME_ENDPOINT_DENIED')
 
 
