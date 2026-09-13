@@ -644,15 +644,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             #                 judged separately from granted).
             # Deduplicated by top-level component id so one grant is never counted
             # twice. Child tool operations and parent duplicates are excluded.
-            top_level = {p['id']: p for p in items if p['kind'] != 'tool' and not p.get('parent_id')}
-            granted_ids = {cid for cid, p in top_level.items() if p.get('granted') is True}
-            requestable_ids = {cid for cid, p in top_level.items()
-                               if p.get('granted') is not True and p.get('requestable') is True}
-            callable_ids = {cid for cid in granted_ids
-                            if top_level[cid].get('execution_ready') is True
-                            or (top_level[cid].get('execution_binding') or {}).get('status') == 'verified'}
-            access_summary = {"granted": len(granted_ids), "requestable": len(requestable_ids),
-                              "callable": len(callable_ids), "available": len(top_level)}
+            from .model_access_summary import model_access_summary
+            access_summary = model_access_summary(items)
             items = [p for p in items if (kind is None or p['kind'] == kind) and q.casefold() in (p['name'] + ' ' + p['description'] + ' ' + p['provider']).casefold()]
             return {"items": items, "count": sum(p['kind'] != 'tool' and not p.get('parent_id') for p in items), "mode": catalog_mode,
                     "access_summary": access_summary,

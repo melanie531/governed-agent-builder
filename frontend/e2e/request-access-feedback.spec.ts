@@ -12,7 +12,7 @@ const model={id:'discovery:bedrock:anthropic.claude-opus-5',record_id:'discovery
  description:'Anthropic foundation model discovered via bedrock:ListFoundationModels.',
  capabilities:['input:text','output:text'],data_handling:'Discovery metadata only',policy_reason:'',
  origin:'Bedrock foundation-model discovery',refreshed_at:null,fixture:false,approved:true,external:false,
- status:'requestable',usable:false,granted:false,requestable:true,execution_ready:false};
+ recency:'recent',status:'requestable',usable:false,granted:false,requestable:true,execution_ready:false};
 
 async function openRequestForm(page){
  await page.route('**/studio-config.json',r=>r.fulfill({json:{hosted:true,mode:'hosted'}}));
@@ -49,11 +49,18 @@ test('duplicate request 409 shows an in-modal pending message and preserves inpu
  await expect(page.getByText('Access request sent. Pending approval.',{exact:false})).toHaveCount(0);
  // Input is preserved on failure.
  await expect(dialog.getByRole('textbox',{name:'Workspace business purpose'})).toHaveValue(purpose);
+ await page.route('**/api/requests',r=>r.fulfill({json:[{id:'pending-original',component:model.id,reason:purpose,status:'PENDING'}]}));
+ await page.route('**/api/general-requests',r=>r.fulfill({json:[]}));
+ await page.route('**/api/capabilities',r=>r.fulfill({json:[model]}));
+ await dialog.getByRole('button',{name:'View your pending request status',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Requests',exact:true})).toBeVisible();
+ await expect(page.getByText(purpose,{exact:true})).toBeVisible();
+ await expect(page.getByText('Pending approval',{exact:true})).toBeVisible();
 });
 
-test('generic API error is surfaced in-modal and input is preserved',async({page})=>{
+for(const status of [403,409,500,503])test(`API ${status} error is surfaced in-modal and input is preserved`,async({page})=>{
  const dialog=await openRequestForm(page);
- await page.route('**/api/requests',r=>r.fulfill({status:500,contentType:'application/json',body:JSON.stringify({detail:'Server unavailable'})}));
+ await page.route('**/api/requests',r=>r.fulfill({status,contentType:'application/json',body:JSON.stringify({detail:status===409?'Concurrent governance update':status===403?'Forbidden':'Server unavailable'})}));
  const purpose='Synthetic error-path business purpose';
  await dialog.getByRole('textbox',{name:'Workspace business purpose'}).fill(purpose);
  await dialog.getByRole('button',{name:'Submit access request',exact:true}).click();

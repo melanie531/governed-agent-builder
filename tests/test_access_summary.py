@@ -18,12 +18,13 @@ def test_access_summary_is_per_user_real_granted_count_not_catalog_total(client)
     summary, total, items = _summary(client, 'alex')
     # Independently recompute the caller's deduplicated granted set from the
     # per-item projections the same response returned.
-    top = [i for i in items if i['kind'] != 'tool' and not i.get('parent_id')]
+    top = [i for i in items if i['kind'] == 'model' and (i.get('fixture') or i.get('recency') == 'recent') and not i.get('parent_id')]
     granted_ids = {i['id'] for i in top if i.get('granted') is True}
     requestable_ids = {i['id'] for i in top if i.get('granted') is not True and i.get('requestable') is True}
     assert summary['granted'] == len(granted_ids)
     assert summary['requestable'] == len(requestable_ids)
-    assert summary['available'] == total
+    assert summary['available'] == len({i.get('model_id') or i.get('record_id') or i['id'] for i in top})
+    assert summary['available'] < total
     # The granted count is the caller's real authorization, NOT the catalog size.
     assert summary['granted'] < summary['available']
     assert summary['granted'] > 0
@@ -48,7 +49,8 @@ def test_requestable_is_not_counted_as_granted_and_grant_increments_dedup(client
     assert after['granted'] == before['granted'] + 1
     assert after['requestable'] == before['requestable'] - 1
     # Catalog total is unchanged (granted count is not the catalog size).
-    assert total_after == total_before == after['available']
+    assert total_after == total_before
+    assert after['available'] == before['available'] < total_after
 
     # Re-enabling the SAME grant must not double-count (dedup).
     login(client, 'admin')
@@ -59,7 +61,7 @@ def test_requestable_is_not_counted_as_granted_and_grant_increments_dedup(client
 
 def test_callable_is_judged_separately_from_granted(client):
     summary, _, items = _summary(client, 'alex')
-    top = [i for i in items if i['kind'] != 'tool' and not i.get('parent_id')]
+    top = [i for i in items if i['kind'] == 'model' and (i.get('fixture') or i.get('recency') == 'recent') and not i.get('parent_id')]
     granted_ids = {i['id'] for i in top if i.get('granted') is True}
     # "callable" = granted AND execution binding verified; fixture demo routes are
     # granted but NOT execution-verified, so callable is strictly a subset and
