@@ -34,8 +34,8 @@ npm --version
 uv --version
 uv venv --python python3.13 .venv
 uv sync --locked --extra foundation-runtime --python .venv/bin/python
-uv run --locked --extra foundation-runtime pytest -q
 npm --prefix frontend ci
+uv run --locked --extra foundation-runtime pytest -q
 npm --prefix frontend run build
 uv run --locked --extra foundation-runtime python scripts/serverless_package.py
 ```
