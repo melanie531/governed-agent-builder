@@ -380,7 +380,8 @@ class Journey:
                              and (task[0]["kind"] in ("invoke", "evaluation") or task[0]["phase"] == "SMOKE"))
             message = str(exc.detail) if isinstance(exc, HTTPException) else (
                 str(exc) if isinstance(exc, (ValueError, TimeoutError)) else
-                "AWS operation failed: " + exc.response["Error"]["Code"] if isinstance(exc, ClientError) else
+                (exc.operation_name + " failed: " + exc.response["Error"]["Code"]
+                 + " (request " + exc.response.get("ResponseMetadata", {}).get("RequestId", "unavailable") + ")") if isinstance(exc, ClientError) else
                 "The task could not complete. Review its status before retrying.")
             def fail(db):
                 state = job_state(db, job_id)

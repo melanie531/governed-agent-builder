@@ -106,6 +106,15 @@ not modified.
 Use the journey deployment commands for this feature; the original serverless
 deployment command produces the legacy default template without enabling it.
 
+If large ZIP uploads time out on the operator network, run
+`scripts/journey_delta_upload.py` with the same target arguments and
+`--base-key releases/<previous-lambda-sha256>/lambda.zip`, then resume `prepare`.
+This requires a prior release with identical locked dependencies. A temporary
+Lambda reuses only matching compressed entries and verifies that both complete
+ZIPs exactly match the local SHA-256 digests. Its IAM permissions cover only the
+specified input/output objects. The helper stack and source patch are removed
+after use.
+
 ## Verification
 
 ```sh

@@ -57,7 +57,7 @@ def confirm(journey, actor, agent_id, request, session_hash):
         if (not confirmation or confirmation["agent"] != agent_id or confirmation["owner"] != actor["id"]
                 or confirmation["workspace"] != actor["workspace"] or confirmation["session_hash"] != session_hash
                 or confirmation["version"] != request.version or confirmation["digest"] != definition["digest"]
-                or not secrets.compare_digest(request.confirm_name, confirmation["name"])):
+                or request.confirm_name != confirmation["name"]):
             raise HTTPException(403, "Deletion confirmation does not match this agent, version and signed-in session")
         if confirmation["job_id"]:
             return {"job_id": confirmation["job_id"]}

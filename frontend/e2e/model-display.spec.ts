@@ -12,6 +12,7 @@ test('Models list shows Anthropic / Claude Haiku 4.5; full ID only in View detai
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:[haiku,unknown],count:2,mode:'live',agent_listing_implemented:false}}));
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
+ await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  // List: verified Haiku shows friendly provider/name, not the raw route ID.
