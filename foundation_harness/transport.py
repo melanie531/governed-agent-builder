@@ -72,7 +72,14 @@ class IAMTransport:
         # asyncio timeout bounds the whole response, including slow chunk streams.
         timeout = remaining_timeout(timeout)
         async with asyncio.timeout(min(timeout, 60)):
+            async def before_send(request):
+                # HTTPX request hooks run after build/auth preparation, immediately
+                # before transport dispatch. Recompute, never reuse pre-build time.
+                remaining = remaining_timeout(timeout)
+                request.extensions['timeout'] = httpx.Timeout(min(remaining, 10)).as_dict()
+
             async with httpx.AsyncClient(follow_redirects=False, trust_env=False,
+                                         event_hooks={'request': [before_send]},
                                          timeout=httpx.Timeout(min(timeout, 10))) as client:
                 remaining = remaining_timeout(timeout)
                 async with client.stream('POST', url, content=data, headers=headers,
