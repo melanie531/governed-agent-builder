@@ -1,7 +1,7 @@
 """Invite-only Cognito BFF: authorization code + PKCE, server-side tokens.
 
-Only configured Cognito groups map to server-owned workspace policy. The browser
-never chooses a user or role. No provider credentials are required by this module.
+Only configured Cognito groups map to server-owned workspace policy. Explicitly
+enrolled users can select an authorized role for their current session.
 """
 import base64
 import hashlib
@@ -63,6 +63,9 @@ class HostedAuth:
             CREATE TABLE IF NOT EXISTS hosted_sessions(id_hash TEXT PRIMARY KEY, subject TEXT NOT NULL, access_token TEXT NOT NULL, csrf TEXT NOT NULL, expires REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS principals(id TEXT PRIMARY KEY, body TEXT NOT NULL, expires REAL NOT NULL);
             ''')
+            columns = {row[1] for row in db.execute("PRAGMA table_info(hosted_sessions)")}
+            if "active_group" not in columns:
+                db.execute("ALTER TABLE hosted_sessions ADD COLUMN active_group TEXT")
 
     def verify(self, token, purpose):
         if not isinstance(token, str) or len(token) > 16384:
@@ -82,16 +85,46 @@ class HostedAuth:
         except (jwt.PyJWTError, ValueError, TypeError, KeyError):
             raise HTTPException(401, "Invalid or expired authentication") from None
 
-    def membership(self, claims):
+    def approved_groups(self, claims):
         groups = claims.get("cognito:groups", [])
         if not isinstance(groups, list) or any(not isinstance(x, str) for x in groups):
             raise HTTPException(403, "No approved Studio membership")
-        approved = [g for g in groups if g in GROUP_POLICY]
-        # Ambiguous assignments fail closed. Adding workspace switching requires
-        # explicit per-workspace authorization, not a browser-selected role.
-        if len(approved) != 1:
+        approved = [g for g in GROUP_POLICY if g in groups]
+        # Multiple assignments require a separate, operator-managed enrollment.
+        # Retain one canonical business workspace for grants and background jobs.
+        switchable = ("studio-role-switcher" in groups and len(approved) == 2
+                      and "studio-admin" in approved)
+        if len(approved) != 1 and not switchable:
             raise HTTPException(403, "Exactly one approved Studio membership is required")
-        return GROUP_POLICY[approved[0]]
+        return approved
+
+    def membership(self, claims, selected=None):
+        approved = self.approved_groups(claims)
+        if selected is not None and selected not in approved:
+            raise HTTPException(403, "This role is not authorized for your account")
+        return GROUP_POLICY[selected or approved[0]]
+
+    def role_options(self, request):
+        claims, row = self.session(request)
+        approved = self.approved_groups(claims)
+        selected = row.get("active_group") or approved[0]
+        self.membership(claims, selected)
+        return [{"id": group, "label": "Platform Admin" if GROUP_POLICY[group]["role"] == "admin" else "Business User",
+                 "selected": group == selected} for group in approved]
+
+    def switch_role(self, request, group):
+        claims, row = self.session(request)
+        policy = self.membership(claims, group)
+        with self.store.tx() as db:
+            current = db.select("hosted_sessions", where=[("id_hash", "=", row["id_hash"]),
+                                                        ("expires", ">", time.time())]).fetchone()
+            if not current:
+                raise HTTPException(401, "Sign in to Agent Studio")
+            db.update("hosted_sessions", {"active_group": group}, where=[("id_hash", "=", row["id_hash"])])
+            db.insert("audit", {"actor": claims["sub"], "action": "role_switched", "resource": group,
+                               "detail": json.dumps({"role": policy["role"], "workspace": policy["workspace"]}),
+                               "created": time.time()})
+        return {"role": policy["role"]}
 
     def resolve(self, claims, name=None):
         policy = self.membership(claims)
@@ -131,6 +164,14 @@ class HostedAuth:
                 time.sleep(0.05 * (attempt + 1))
 
     def _authenticate(self, request):
+        claims, row = self.session(request)
+        # Persist the canonical membership only. An admin view must not reset
+        # business grants or change authorization for an already-running job.
+        principal = self.resolve(claims)
+        policy = self.membership(claims, row.get("active_group"))
+        return {**principal, **{k: v for k, v in policy.items() if k != "grants"}}, row["csrf"]
+
+    def session(self, request):
         if PENDING_COOKIE in request.cookies:
             raise HTTPException(401, "Verify your email before entering Studio")
         cookie = request.cookies.get(SESSION_COOKIE, "")
@@ -145,7 +186,7 @@ class HostedAuth:
             raise HTTPException(401, "Invalid authentication")
         from .qa_enrollment import approved
         approved(self, claims, required=cookie.startswith('qa.'))
-        return self.resolve(claims), row["csrf"]
+        return claims, dict(row)
 
     def start(self, request=None):
         # Strict cookies may be absent on the cross-site callback. Revoke them

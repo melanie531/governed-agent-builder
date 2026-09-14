@@ -24,7 +24,7 @@ from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
 from .harness import evaluate, run_case
-from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, GeneralRequest, GeneralRequestStatus, Grant, Invoke, Login, PolicyUpdate
+from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, GeneralRequest, GeneralRequestStatus, Grant, Invoke, Login, PolicyUpdate, RoleSwitch
 from .store import Store
 from .hosted_auth import HostedAuth
 from .live_catalog import projection, visibility, has_grant, grant_scope, configured_catalog, data_policy_allows
@@ -371,6 +371,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         def hosted_logout(request: Request):
             return auth.logout(request)
 
+        @app.post("/api/auth/role")
+        def hosted_role(data: RoleSwitch, request: Request):
+            return auth.switch_role(request, data.group_id)
+
     @app.get("/studio-config.json")
     def studio_config():
         return {"hosted": hosted, "mode": mode_label, **({"journey_enabled": True} if journey is not None else {})}
@@ -412,7 +416,8 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.get("/api/me")
     def me(request: Request):
-        return {"persona": who(request), "csrf": request.state.csrf, "mode": mode_label}
+        return {"persona": who(request), "csrf": request.state.csrf, "mode": mode_label,
+                **({"roles": auth.role_options(request)} if hosted else {})}
 
     @app.get("/api/foundations/web-research")
     def web_research_foundation(request: Request):

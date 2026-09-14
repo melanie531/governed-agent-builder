@@ -15,7 +15,7 @@ SCHEMA = {
     "audit": ("id actor action resource detail created", "id"),
     "settings": ("key body", "key"),
     "oidc_flows": ("state_hash verifier nonce expires", "state_hash"),
-    "hosted_sessions": ("id_hash subject access_token csrf expires", "id_hash"),
+    "hosted_sessions": ("id_hash subject access_token csrf expires active_group", "id_hash"),
     "principals": ("id body expires", "id"),
     "job_authority": ("id session_hash", "id"),
 }

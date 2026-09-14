@@ -258,7 +258,7 @@ def test_atomic_failure_rolls_back_records_receipts_audit(cloud, candidate, tmp_
         local = Store(str(tmp_path/'producer.sqlite'), seed_personas=False)
         with store.tx() as source, local.tx() as target:
             target.execute('CREATE TABLE principals(id TEXT PRIMARY KEY, body TEXT, expires REAL)')
-            target.execute('CREATE TABLE hosted_sessions(id_hash TEXT PRIMARY KEY, subject TEXT, access_token TEXT, csrf TEXT, expires REAL)')
+            target.execute('CREATE TABLE hosted_sessions(id_hash TEXT PRIMARY KEY, subject TEXT, access_token TEXT, csrf TEXT, expires REAL, active_group TEXT)')
             for table in ('settings', 'audit', 'principals', 'hosted_sessions', 'agents', 'versions', 'grants', 'components', 'foundations'):
                 target.delete(table)
                 for row in source.select(table): target.insert(table, dict(row))

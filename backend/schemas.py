@@ -73,6 +73,9 @@ class DefinitionInput(Strict):
 class Login(Strict):
     persona_id: Literal["alex", "sam", "admin"]
 
+class RoleSwitch(Strict):
+    group_id: Literal["studio-research", "studio-operations", "studio-admin"]
+
 class Deploy(Strict):
     execution_mode: Literal["fixture", "live"] = "fixture"
     version: int = Field(ge=1)

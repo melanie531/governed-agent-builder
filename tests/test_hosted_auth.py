@@ -46,7 +46,7 @@ def authenticate(app, client, key, subject="subject-a", group="studio-research",
     access = token(app, key, subject, group, **overrides)
     cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     with app.state.store.tx() as db:
-        db.execute("INSERT INTO hosted_sessions VALUES (?,?,?,?,?)", (sha(cookie), subject, access, csrf, time.time() + 1800))
+        db.execute("INSERT INTO hosted_sessions (id_hash,subject,access_token,csrf,expires) VALUES (?,?,?,?,?)", (sha(cookie), subject, access, csrf, time.time() + 1800))
     client.cookies.set(SESSION_COOKIE, cookie)
     client.headers.update({"Origin": ORIGIN, "X-CSRF-Token": csrf})
     return cookie
