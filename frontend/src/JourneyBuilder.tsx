@@ -15,7 +15,7 @@ type Template = {
   id: string; version: string; name: string; description: string; prompt: string;
   tools: string[]; skills: string[]; sample_input: string; sample_dataset: Record<string, unknown>[];
 };
-type Options = {foundation: {name: string; version: string; capabilities: string[]}; templates: Template[]; region: string; mode: string; minimum_evaluation_score?: number};
+type Options = {foundation: {name: string; version: string; capabilities: string[]}; templates: Template[]; choices: Record<string, Entry[]>; region: string; mode: string; minimum_evaluation_score?: number};
 export type Revision = {agentId: string; version: number; definition: Definition};
 export type EditorState = {definition: Definition; dataset: string; step: number};
 const empty: Definition = {template_id: '', name: '', model_id: '', prompt: '', mcp_servers: [], tools: [], skills: [],
@@ -43,11 +43,13 @@ export default function JourneyBuilder({api, onSaved, onCancel, revision, initia
   async function refresh() {
     setBusy(true); setError('');
     try {
-      // The catalog page and this picker read exactly the same backend endpoint.
+      // Catalog metadata is shared; the Journey endpoint defines which entries
+      // belong in this builder. Discovery rows remain on the catalog page.
       const [config, snapshot] = await Promise.all([
         api<Options>('/journey/options'), api<{items: Entry[]}>('/catalog'),
       ]);
-      setOptions(config); setCatalog(snapshot.items);
+      const builderIds = new Set(Object.values(config.choices).flat().map(item => item.id));
+      setOptions(config); setCatalog(snapshot.items.filter(item => builderIds.has(item.id)));
       setDraft(previous => ({...previous, minimum_score: Math.max(previous.minimum_score, config.minimum_evaluation_score ?? .7)}));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }

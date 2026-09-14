@@ -1,5 +1,28 @@
 import {test, expect} from '@playwright/test';
 
+test('model discovery stays in AI Catalog and does not duplicate builder options', async ({page}) => {
+  await page.route('**/api/catalog', async route => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    const published = snapshot.items.find((item: {id: string}) => item.id === 'bedrock-claude');
+    await route.fulfill({response, json: {...snapshot, items: [...snapshot.items, {
+      ...published, id: 'discovery:matching-model', catalog: 'discovery', recency: 'recent',
+      discovery_only: true, usable: false, granted: false, requestable: false, execution_ready: false,
+    }]}});
+  });
+  await page.request.post('/api/demo/session', {data: {persona_id: 'alex'}, headers: {origin: 'http://127.0.0.1:5189'}});
+  await page.goto('/');
+  await page.getByRole('link', {name: 'AI Catalog', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Catalog test model', exact: true})).toHaveCount(2);
+  await page.getByRole('link', {name: 'My agents', exact: true}).click();
+  await page.getByRole('button', {name: 'Create agent', exact: true}).click();
+  await page.getByRole('radio', {name: 'Business templates Select Knowledge Q&A', exact: true}).check();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: /^Model /}).click();
+  await expect(page.getByRole('option', {name: /^Catalog test model/})).toHaveCount(1);
+  await expect(page.getByRole('option', {name: /^Catalog test model/})).toBeEnabled();
+});
+
 for (const template of ['Research', 'Knowledge Q&A']) {
   for (const evaluation of [false, true]) {
     test(`${template}: MCP connection, ${evaluation ? 'synthetic evaluation' : 'no dataset'}, deploy and invoke`, async ({page}) => {
