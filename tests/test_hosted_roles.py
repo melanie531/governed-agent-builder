@@ -104,3 +104,27 @@ def test_old_role_selection_does_not_survive_membership_removal(role_app):
     with app.state.store.tx() as db:
         db.update("hosted_sessions", {"access_token": access}, where=[("id_hash", "=", sha(cookie))])
     assert client.get("/api/admin/catalog").status_code == 403
+
+
+def test_admin_grant_changes_require_fresh_session_and_restore_only_explicitly(role_app):
+    app, client, _ = role_app
+    cookie = session(role_app)
+    assert client.get("/api/me").status_code == 200
+    assert client.post("/api/auth/role", json={"group_id": "studio-admin"}).status_code == 200
+    change = {"persona_id": "demo-subject", "component_id": "bedrock-claude",
+              "enabled": False, "reason": "Revoke demo capability access"}
+    assert client.post("/api/admin/grants", json=change).status_code == 200
+    with app.state.store.tx() as db:
+        db.update("hosted_sessions", {"expires": 0}, where=[("id_hash", "=", sha(cookie))])
+    change.update(enabled=True, reason="Restore reviewed demo access")
+    assert client.post("/api/admin/grants", json=change).status_code == 401
+    session(role_app)
+    assert client.get("/api/me").status_code == 200
+    with app.state.store.tx() as db:
+        assert not db.select("grants", where=[("persona", "=", "demo-subject"),
+                                             ("component", "=", "bedrock-claude")]).fetchone()
+    assert client.post("/api/admin/grants", json=change).status_code == 403
+    assert client.post("/api/auth/role", json={"group_id": "studio-admin"}).status_code == 200
+    assert client.post("/api/admin/grants", json=change).status_code == 200
+    catalog = client.get("/api/admin/catalog").json()
+    assert {"persona": "demo-subject", "component": "bedrock-claude"} in catalog["grants"]
