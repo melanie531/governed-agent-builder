@@ -44,6 +44,13 @@ If a Worker status read conflicts with another governance transaction, the same
 durable job is queued again after ten seconds. Its claim and execution receipt
 still control recovery; queue redelivery does not authorize another model call.
 
+The Worker drains up to 25 cleanup steps per delivery instead of queueing every
+S3 page and DynamoDB batch separately. It starts another cleanup step only with
+at least 250 seconds remaining; otherwise it saves a queue continuation. Runtime
+waits and paid calls still yield after one step. Each step checks the job deadline,
+current user authority and execution claim. Lambda recursion protection remains
+enabled, and queue concurrency stays at two.
+
 `runtime/journey/main.py` runs the platform Foundation on AgentCore Runtime.
 `foundation_harness/journey_runtime.py` executes Bedrock Converse and only the
 selected Gateway MCP operations. The native Runtime accepts user input and a

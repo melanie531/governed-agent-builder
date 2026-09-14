@@ -110,7 +110,9 @@ def worker_handler(event, context):
         try:
             job_id = json.loads(record["body"])["job_id"]
             app = application(worker=True) if (os.getenv('FOUNDATION_PRODUCER_ENABLED', '0') == '1' or os.getenv('FOUNDATION_LIVE_ENABLED', '0') == '1') else application()
-            for _ in ACTIVE:
+            # Drain bounded cleanup pages in one delivery. Each step still uses
+            # Journey's durable claim, deadline and current user authorization.
+            for step_index in range(25):
                 if context.get_remaining_time_in_millis() < 10000:
                     raise TimeoutError("Durable continuation required")
                 with app.state.store.tx() as db:
@@ -123,8 +125,17 @@ def worker_handler(event, context):
                     live = get(db, 'foundation-run:' + job_id) or get(db, 'foundation-pending:' + job_id) or get(db, 'journey-job:' + job_id)
                 if live:
                     if latest['stage'] not in TERMINAL:
+                        if (live.get('kind') == 'delete'
+                                and live.get('phase') in {'DELETE_DATA', 'DELETE_RECORDS'}
+                                and not live.get('claim') and step_index < 24
+                                and context.get_remaining_time_in_millis() >= 250000):
+                            # Reserve room for the SDK's 210-second timeout and
+                            # persistence. Runtime waits and paid calls yield.
+                            continue
                         boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
                             MessageBody=json.dumps({'job_id': job_id}), DelaySeconds=10)
+                    break
+                if step_index >= len(ACTIVE) - 1:
                     break
         except Exception as exc:
             # A governance read can race another transaction before a job is
