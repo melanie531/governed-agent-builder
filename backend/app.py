@@ -759,9 +759,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
 
     @app.post("/api/admin/diagnostic-capture/submissions", status_code=201)
     def submit_diagnostic_capture(data: SubmitDiagnostic, request: Request):
-        actor = who(request, True)
+        actor = who(request)
         if not hosted:
-            raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
+            raise HTTPException(403, "HOSTED_BUSINESS_OWNER_REQUIRED")
         from .hosted_auth import SESSION_COOKIE, sha
         return diagnostic_operator(store, actor, data, session_hash=sha(request.cookies.get(SESSION_COOKIE, '')))
 

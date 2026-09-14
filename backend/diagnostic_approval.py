@@ -1,6 +1,6 @@
-"""Hosted admin submission + independent review; never a Runtime write API.
+"""Hosted exact-owner submission + independent admin review; no Runtime writes.
 
-Candidate evidence is an admin attestation, not a cloud read performed here.
+Candidate evidence is untrusted until admin review, not a cloud read here.
 Only review publishes authority, under the repository serializable transaction.
 """
 import copy
@@ -13,13 +13,14 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from pydantic import Field
 
-from foundation_harness.config import canonical, digest
+from foundation_harness.config import canonical, digest, exact_endpoint
 from foundation_harness.context import Denied
+from foundation_harness.opus_messages import build_request
 from scripts.opus_capture_ticket import _clock, _money
 from .schemas import Strict
 from .foundation_runs import get
 from .diagnostic_capture import (DiagnosticAdmission, PREFIX, PURPOSE, COST_SERVICES,
-                                 principal, require, verify_runtime)
+                                 principal, require, stored_definition_digest, verify_runtime)
 
 
 class SubmitDiagnostic(Strict):
@@ -123,10 +124,8 @@ def validate_manifest(manifest, authority, runtime):
                     for v in code['code']['s3'].values()), 'CAPTURE_BUILD_ARTIFACT_REQUIRED')
 
 
-def validate(db, actor, data, now):
-    """Use the actual consumer on prospective server-derived review receipts."""
-    from .app import validate_definition
-    _, admin_expiry = current_admin(db, actor, now)
+def validate_evidence(data, now, membership_expiry):
+    """Bound the submitted envelope without reading any protected evidence."""
     require(len(canonical(data.model_dump())) <= 128000 and len(data.reason.strip()) >= 10,
             'CAPTURE_EVIDENCE_BOUND_REQUIRED')
     a, runtime, pricing = data.authority, data.runtime, data.pricing
@@ -135,7 +134,7 @@ def validate(db, actor, data, now):
     require(isinstance(runtime['role'], str) and re.fullmatch(
         r'arn:aws:iam::\d{12}:role/[A-Za-z0-9_+=,.@-]+', runtime['role']) is not None,
         'CAPTURE_EXACT_WORKLOAD_ROLE_REQUIRED')
-    require(now < expiry <= min(now + 3600, admin_expiry), 'CAPTURE_REVIEW_EXPIRY_DENIED')
+    require(now < expiry <= min(now + 3600, membership_expiry), 'CAPTURE_REVIEW_EXPIRY_DENIED')
     validate_manifest(data.manifest, a, runtime)
     require(a['runtime_ref'] == digest(runtime) and a['pricing_ref'] == digest(pricing),
             'CAPTURE_CANDIDATE_DIGEST_DENIED')
@@ -153,6 +152,57 @@ def validate(db, actor, data, now):
     require(_money(budget['total_usd']) == 1 and _money(budget['studio_usd']) == _money('0.50')
             and _money(budget['capture_usd']) == _money(pricing['reservation_usd']) == _money('0.50'),
             'CAPTURE_ONE_DOLLAR_ENVELOPE_REQUIRED')
+    return expiry
+
+
+def validate_submission(db, actor, data, now):
+    """Authorize only the current exact owner; never preview admin receipts.
+
+    Reads are limited to the owner's membership/agent/version, current policy
+    and catalog grants. Runtime/pricing/isolation authority is reviewed only by
+    the actual admin through the unchanged consumer below.
+    """
+    from .app import validate_definition
+    owner, owner_expiry = principal(db, actor['id'], now)
+    require(owner.get('role') == actor.get('role') == 'business'
+            and owner.get('workspace') == actor.get('workspace'),
+            'CAPTURE_CURRENT_BUSINESS_OWNER_REQUIRED')
+    a = data.authority
+    require(set(a) == {'purpose', 'agent_id', 'version', 'definition_digest',
+        'request', 'request_digest', 'runtime_ref', 'pricing_ref', 'expires_at',
+        'epoch', 'policy_digest'} and a['purpose'] == PURPOSE, 'CAPTURE_AUTHORITY_SHAPE_DENIED')
+    agent = db.select('agents', where=[('id', '=', a['agent_id']),
+        ('owner', '=', owner['id']), ('workspace', '=', owner['workspace'])]).fetchone()
+    require(agent is not None, 'CAPTURE_EXACT_OWNER_REQUIRED')
+    require(type(a['version']) is int and a['version'] > 0
+            and a['version'] == agent['current_version'], 'CAPTURE_CURRENT_VERSION_REQUIRED')
+    version = db.select('versions', where=[('agent', '=', agent['id']),
+                                         ('version', '=', a['version'])]).fetchone()
+    require(version is not None, 'CAPTURE_DEFINITION_REQUIRED')
+    definition = json.loads(version['body'])
+    require(version['digest'] == a['definition_digest'] == definition.get('digest')
+            == stored_definition_digest(definition)
+            and (definition.get('agent_id'), definition.get('version'), definition.get('owner'),
+                 definition.get('workspace')) == (agent['id'], a['version'], owner['id'], agent['workspace']),
+            'CAPTURE_DEFINITION_BINDING_DENIED')
+    require(type(a['epoch']) is int and a['epoch'] >= 0
+            and a['epoch'] == (get(db, 'foundation-epoch') or 0)
+            and a['policy_digest'] == digest(get(db, 'policy')), 'CAPTURE_POLICY_CHANGED')
+    request = a['request']
+    require(isinstance(request, dict) and set(request) == {'endpoint', 'system', 'prompt', 'max_tokens'}
+            and digest(request) == a['request_digest'], 'CAPTURE_REQUEST_BINDING_DENIED')
+    exact_endpoint(request['endpoint'], '/bedrockrt/v1/messages')
+    build_request('us.anthropic.claude-opus-5', request['system'], request['prompt'], request['max_tokens'])
+    validate_evidence(data, now, owner_expiry)
+    validate_definition(db, owner, definition)
+
+
+def validate(db, actor, data, now):
+    """Use the actual consumer on prospective server-derived admin receipts."""
+    from .app import validate_definition
+    _, admin_expiry = current_admin(db, actor, now)
+    expiry = validate_evidence(data, now, admin_expiry)
+    a, runtime, pricing = data.authority, data.runtime, data.pricing
     records, audits = {}, []
     for kind, value in [('isolation-source', data.isolation_source),
                          *[('price-source', v) for v in data.price_sources.values()]]:
@@ -180,7 +230,7 @@ def validate(db, actor, data, now):
 
 
 def submit(db, actor, data, now):
-    validate(db, actor, data, now)
+    validate_submission(db, actor, data, now)
     candidate = {'evidence': data.model_dump(), 'submitter': actor['id'], 'submitted_at': now}
     ref = digest(candidate)
     insert_once(db, PREFIX + 'candidate:' + ref, candidate)
@@ -196,12 +246,15 @@ def review(db, actor, data, now):
     require(isinstance(candidate, dict) and digest(candidate) == data.candidate_ref,
             'CAPTURE_CANDIDATE_REQUIRED')
     submitter, _ = principal(db, candidate['submitter'], now)
-    current_admin(db, submitter, now)
     require(actor['id'] != submitter['id'], 'CAPTURE_INDEPENDENT_REVIEWER_REQUIRED')
+    require(set(candidate) == {'evidence', 'submitter', 'submitted_at'}
+            and _clock(candidate['submitted_at']) <= now, 'CAPTURE_CANDIDATE_REQUIRED')
     require(db.select('audit', where=[('actor', '=', submitter['id']),
         ('action', '=', 'diagnostic_capture_submitted'), ('resource', '=', data.candidate_ref),
-        ('detail', '=', digest(candidate))]).fetchone() is not None, 'CAPTURE_SUBMISSION_AUDIT_REQUIRED')
+        ('detail', '=', digest(candidate)), ('created', '=', candidate['submitted_at'])]).fetchone()
+        is not None, 'CAPTURE_SUBMISSION_AUDIT_REQUIRED')
     evidence = SubmitDiagnostic.model_validate(candidate['evidence'])
+    validate_submission(db, submitter, evidence, now)
     records, audits = validate(db, actor, evidence, now)
     capture_ref = digest(evidence.authority)
     # Reference the already-approved envelope; never mint budget authority.

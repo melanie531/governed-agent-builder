@@ -33,8 +33,11 @@ update/activation remains the parent cloud writer's work. Do not enable it as a
 side effect of deploying the producer. Do not change Auth, Authorizer, Worker,
 Dispatcher or FoundationExchange permissions or state.
 
-Second existing admin availability remains an unverified, separate operator
-prerequisite. Do not create reviewers or weaken independent review to resolve it.
+An existing exact business owner must be able to authenticate and submit; a
+genuinely distinct existing platform admin must review independently. Their
+actual sign-in possession and human independence remain unverified. Different
+account names alone do not establish independent human review. Do not create or
+promote identities, impersonate an owner, or weaken review to resolve this.
 The parent owns cloud deployment and the existing US$1 approval; this code fix
 neither spends that approval nor authorizes Runtime recreation.
 
@@ -43,11 +46,15 @@ This delivery makes no claim that the endpoints have been deployed or live-teste
 
 ## Authentication and calls
 
-Use two distinct, existing hosted **studio-admin** identities. The stored agent
-owner must remain a current business principal in the agent's workspace. Both
-submitter and reviewer must be distinct from that owner, and reviewer must differ
-from submitter. No JSON identity field, header role, local demo admin or approval
-boolean can substitute for these identities.
+Use the existing authenticated **business owner** of the exact stored agent and
+current version to submit, then a genuinely distinct existing **studio-admin**
+identity in the platform workspace to review. Submitter must equal the current
+owner in that agent workspace; reviewer must differ from both submitter and owner.
+An admin cannot submit as owner, and a submitter later becoming admin still cannot
+self-review. No JSON identity field, header role, local demo identity or approval
+boolean can substitute for these identities. The historical `/api/admin/` path
+is retained for compatibility; only POST submissions admits the business owner.
+GET candidate and POST review remain admin-only, including for the submitter.
 
 In the target site's authenticated browser context, obtain CSRF via `GET /api/me`.
 The existing HttpOnly `__Host-gab_session` cookie is sent by the browser. Never
@@ -55,11 +62,16 @@ copy cookies, tokens, evidence or private readbacks into chat, command arguments
 logs or documentation. POSTs require same-origin and `X-CSRF-Token`; all calls
 require the current hosted session. API responses are private/no-store.
 
-1. **Submitter:** `POST /api/admin/diagnostic-capture/submissions`
+1. **Exact business-owner submitter:** `POST /api/admin/diagnostic-capture/submissions`
    with the exact JSON envelope below. Returns HTTP 201:
    `{"candidate_ref":"<64 lowercase hex>","status":"SUBMITTED_NOT_AUTHORITY"}`.
    Submission writes an immutable candidate and submission audit only. It is not
-   authority and does not reserve money or invoke anything.
+   authority and does not reserve money or invoke anything. Submission verifies
+   owner/session/workspace/current version, stored definition, request, current
+   policy/epoch and grants, manifest bindings and the existing approval envelope.
+   It does not call the consumer or fabricate a reviewer to preview admin receipts.
+   Runtime/pricing/isolation evidence remains untrusted candidate content until
+   full consumer-backed admin review; HTTP 201 does not certify that evidence.
 2. **Independent reviewer:**
    `GET /api/admin/diagnostic-capture/submissions/{candidate_ref}`.
    Returns `{evidence, submitter, submitted_at}`. Inspect this exact stored
@@ -164,7 +176,8 @@ Build in this order so there is no circular hash dependency:
   `policy_digest=D(current protected policy)`. Obtain these from the parent's
   current read-only state metadata, not invented values. Expiry is a finite Unix
   numeric timestamp, strictly future and at most one hour away and no later than
-  the current submitting/reviewing admin membership expiry. Consumption is also
+  the current owner membership expiry, and at review no later than the
+  current reviewing admin membership expiry. Consumption is also
   bounded by owner/reviewer membership expiry. Expired candidates need fresh
   evidence; stored ones cannot be edited.
 * `runtime_readback`: actual GetAgentRuntime response: READY, exact ARN/version,
@@ -180,7 +193,7 @@ Build in this order so there is no circular hash dependency:
   This evidence cannot create budget authority. The review decision carries the
   evidence digest to prevent a second capture from reusing that same envelope.
 
-Readbacks and price sources remain admin attestations reviewed independently,
+Submitted readbacks and price sources become admin attestations only after independent review,
 not cloud facts fetched by this API. Consumer runtime/endpoint readback is checked
 again before reserving. If deployed metadata does not satisfy a required binding,
 report the exact mismatch to the parent; do not rewrite evidence, definition,
@@ -189,13 +202,20 @@ permissions or runtime configuration here.
 ## Durable effects and safety evidence
 
 Submission: `diagnostic-capture:candidate:<ref>` plus
-`diagnostic_capture_submitted` audit.
+`diagnostic_capture_submitted` audit. Validation does not select protected
+authority/runtime/pricing/isolation records or scan candidate/audit collections.
+It reads current policy/epoch and the owner-bound definition/catalog grants;
+the immutable candidate-key existence check prevents replacement. Submission
+returns only its reference/status, never privileged evidence. Existing repository
+transaction adapters and their internal partition loading are unchanged.
 Review atomically writes content-addressed `authority`, `runtime`, `pricing`,
 `isolation-source`, `price-source` records; three immutable `review:<digest>`
 receipts and `diagnostic_capture_reviewed` audits; immutable
 `decision:<candidate_ref>` and `diagnostic_capture_published` audit. Sources may be
 reused only unchanged. Revalidation covers current principals, owner/version,
 grants, policy, epoch, evidence, expiry and actual consumer admission logic.
+Review rechecks the exact current submitter/owner, immutable candidate digest,
+submission audit actor/digest/timestamp, and actual distinct current admin.
 Any failure rolls back all producer writes; DynamoDB's revision CAS permits only
 one concurrent publisher. No budget authority, tickets, grants, agent versions,
 product approval or inference records are created by these endpoints.
@@ -212,7 +232,7 @@ seams); sustainability (reuse existing services, no new infrastructure). Remaini
 security limit: authenticity of submitted cloud/pricing evidence requires human
 independent review; hashes bind content but are not external signatures.
 
-## Local verification receipt (2026-09-14)
+## Previous manifest-fix verification receipt (base revision, 2026-09-14)
 
 Existing project `.venv/bin/python -m pytest -q -rs` over
 `tests/test_diagnostic_approval.py tests/test_diagnostic_live_compat.py
@@ -235,3 +255,24 @@ worktree base was `ca333d0` (already on `origin/feat/studio-opus-deploy-now`). T
 added dependency is already-published owner fix `1fdbe52` on
 `origin/fix/diagnostic-live-compat`. Producer publication must introduce only its
 own commit beyond these existing remote commits; no force push or PR.
+
+## Owner-to-admin allocation revision
+
+This code-only revision is based on `7a25d0de4436f5fb31aa8d2ef860acf08a3a043a`.
+It preserves `backend/diagnostic_capture.py` byte-for-byte and the retained
+20-field build manifest. Focused owner/admin regressions also cover unrelated
+owners, admin-as-owner, business review, role-change self-review, stale owner/
+reviewer/session/grants/policy/version/source, candidate/audit tampering,
+CSRF/origin, forged JSON/header identities, duplicate review/envelope reuse,
+rollback and concurrent publish/governance CAS. Tests use synthetic signed JWTs
+and offline stores, not evidence of real human sign-in or independent review.
+Parent review of the exact commit is required before any deployment. No cloud,
+identity provisioning, authority-record operation, budget minting, activation or
+inference is performed by this delivery. ENFORCE and product gates are untouched.
+
+Bounded verification with the existing project venv: producer + diagnostic
+consumer/live-compatibility/exchange/release tests: **326 passed, 4 skipped**
+in 65.72s. Eight subsequently added stale-owner submission cases: **8 passed**
+in 2.35s (135 other producer cases deselected). Combined coverage: **334 passed,
+4 existing SQLite/CAS-specific skips**, two dependency deprecation warnings
+per run. No full suite, dependency install, real cloud operation or inference.

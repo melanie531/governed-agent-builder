@@ -94,7 +94,6 @@ def candidate(cloud, payload):
     sign_in(cloud)
     definition = create(client, payload)
     body = evidence(definition, app.state.store)
-    sign_in(cloud, 'synthetic-submitter', 'studio-admin')
     return body
 
 
@@ -113,6 +112,23 @@ def submit(cloud, body):
     response = cloud[1].post(SUBMIT, json=body)
     assert response.status_code == 201, response.text
     return response.json()['candidate_ref']
+
+
+def assert_evidence_denied(cloud, body, *, at_review=False):
+    store = cloud[0].state.store
+    if at_review:
+        ref = submit(cloud, body)
+        sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
+        before = states(store)
+        response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Reject untrusted candidate evidence'})
+    else:
+        before = states(store)
+        response = cloud[1].post(SUBMIT, json=body)
+    assert response.status_code in (403, 409, 422), response.text
+    assert states(store) == before
+    with store.tx() as db:
+        assert not any(r['key'].startswith((PREFIX+'authority:', PREFIX+'review:', PREFIX+'decision:'))
+                       for r in db.select('settings'))
 
 
 def reviewed(cloud, body):
@@ -136,7 +152,7 @@ def test_authenticated_producer_to_consumer_and_exchange(cloud, candidate):
     inspection = cloud[1].get(SUBMIT + '/' + ref)
     assert inspection.status_code == 200
     assert digest(inspection.json()) == ref
-    assert inspection.json()['submitter'] == 'synthetic-submitter'
+    assert inspection.json()['submitter'] == 'subject-a'
     assert inspection.json()['evidence'] == candidate
     response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Independent synthetic review'})
     assert response.status_code == 200, response.text
@@ -181,7 +197,7 @@ def test_auth_boundary(cloud, candidate, who):
 
 @pytest.mark.parametrize('fault', ['expiry', 'digest', 'priceunknown', 'pricecalculation', 'runtime',
     'endpoint', 'source', 'manifest', 'isolation', 'budget', 'lifecycle', 'owner', 'grant', 'payloadidentity'])
-def test_invalid_candidate_has_no_writes(cloud, candidate, fault):
+def test_invalid_evidence_never_publishes(cloud, candidate, fault):
     body = copy.deepcopy(candidate)
     if fault == 'expiry': body['authority']['expires_at'] = time.time()-1
     elif fault == 'digest': body['authority']['request_digest'] = 'a'*64
@@ -214,10 +230,8 @@ def test_invalid_candidate_has_no_writes(cloud, candidate, fault):
         body['pricing']['runtime_ref'] = digest(body['runtime'])
         body['authority']['runtime_ref'] = digest(body['runtime'])
         body['authority']['pricing_ref'] = digest(body['pricing'])
-    before = states(cloud[0].state.store)
-    response = cloud[1].post(SUBMIT, json=body)
-    assert response.status_code in (403, 409, 422), response.text
-    assert states(cloud[0].state.store) == before
+    assert_evidence_denied(cloud, body, at_review=fault in {
+        'priceunknown', 'pricecalculation', 'runtime', 'endpoint', 'isolation', 'lifecycle'})
 
 
 @pytest.mark.parametrize('fault', ['membership', 'owner_membership', 'grant', 'epoch', 'policy', 'version', 'expired', 'submission_audit'])
@@ -227,18 +241,18 @@ def test_review_revalidates_current_state(cloud, candidate, fault):
     store = cloud[0].state.store
     with store.tx() as db:
         if fault in ('membership', 'owner_membership'):
-            db.update('principals', {'expires': time.time()-1}, where=[('id', '=', 'synthetic-submitter' if fault == 'membership' else 'subject-a')])
+            db.update('principals', {'expires': time.time()-1}, where=[('id', '=', 'synthetic-reviewer' if fault == 'membership' else 'subject-a')])
         elif fault == 'grant': db.delete('grants', where=[('persona', '=', 'subject-a')])
         elif fault in ('epoch', 'policy'):
             db.insert('settings', {'key': 'foundation-epoch' if fault == 'epoch' else 'policy', 'body': '99'}, upsert=True)
         elif fault == 'version': db.update('agents', {'current_version': 2}, where=[('id', '=', candidate['authority']['agent_id'])])
         elif fault == 'submission_audit': db.delete('audit', where=[('action', '=', 'diagnostic_capture_submitted')])
     before = states(store)
-    if fault == 'expired':
+    if fault in ('expired', 'membership'):
         with pytest.raises(HTTPException):
             producer.handle(store, {'id': 'synthetic-reviewer', 'role': 'admin', 'workspace': 'platform'},
                 producer.ReviewDiagnostic(candidate_ref=ref, reason='Synthetic expiry rejection'),
-                session_hash=session_hash(cloud), clock=lambda: candidate['authority']['expires_at']+1)
+                session_hash=session_hash(cloud), clock=lambda: candidate['authority']['expires_at']+1 if fault == 'expired' else time.time())
     else:
         response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Synthetic state drift rejection'})
         assert response.status_code in (403, 409), response.text
@@ -251,7 +265,7 @@ def test_immutable_review_audit_and_budget_replay(cloud, candidate):
     response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Attempt to overwrite review'})
     assert response.status_code == 409
     assert states(cloud[0].state.store) == before
-    sign_in(cloud, 'synthetic-submitter', 'studio-admin')
+    sign_in(cloud)
     candidate['authority']['expires_at'] += 1
     second = submit(cloud, candidate)
     sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
@@ -330,6 +344,9 @@ def test_strict_payload_rejected_without_writes(cloud, candidate, fault):
     elif fault == 'blank_reason': body['reason'] = ' '*20
     elif fault == 'oversized_evidence': body['runtime_readback']['unexpected'] = 'x'*128001
     elif fault == 'explicit_null_target': body['endpoint_readback']['targetVersion'] = None
+    if fault == 'explicit_null_target':
+        assert_evidence_denied(cloud, body, at_review=True)
+        return
     before = states(cloud[0].state.store)
     expected = 413 if fault == 'oversized_evidence' else 409
     assert cloud[1].post(SUBMIT, json=body).status_code == expected
@@ -338,9 +355,10 @@ def test_strict_payload_rejected_without_writes(cloud, candidate, fault):
 
 def test_candidate_inspection_rejects_missing_session_safely(cloud, candidate):
     ref = submit(cloud, candidate)
+    sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
     with pytest.raises(HTTPException) as error:
         producer.inspect_candidate(cloud[0].state.store,
-            {'id': 'synthetic-submitter', 'role': 'admin', 'workspace': 'platform'},
+            {'id': 'synthetic-reviewer', 'role': 'admin', 'workspace': 'platform'},
             ref, session_hash='not-a-session')
     assert error.value.status_code == 409
     assert error.value.detail == 'CAPTURE_CURRENT_HOSTED_SESSION_REQUIRED'
@@ -443,10 +461,9 @@ def test_v1_source_map_and_runtime_binding_negatives(cloud, candidate, fault):
         candidate['authority']['request_digest'] = digest(candidate['authority']['request'])
     if fault != 'tamper_unbound':
         rebind_candidate(candidate, manifest=True)
-    before = states(cloud[0].state.store)
-    response = cloud[1].post(SUBMIT, json=candidate)
-    assert response.status_code == 409, response.text
-    assert states(cloud[0].state.store) == before
+    assert_evidence_denied(cloud, candidate, at_review=fault in {
+        'changed_exchange', 'runtime_version', 'runtime_role', 'artifact_bucket',
+        'artifact_prefix', 'artifact_version', 'pricing_request_unbound'})
 
 
 def test_review_rechecks_packaged_source_map(cloud, candidate, monkeypatch):
@@ -459,3 +476,199 @@ def test_review_rechecks_packaged_source_map(cloud, candidate, monkeypatch):
     response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Synthetic source drift review'})
     assert response.status_code == 409, response.text
     assert states(cloud[0].state.store) == before
+
+
+@pytest.mark.parametrize('fault', ['unrelated_owner', 'cross_workspace', 'admin', 'admin_as_owner',
+    'owner_workspace_drift', 'anonymous', 'csrf_missing', 'csrf_wrong', 'origin', 'cross_site',
+    'spoof_headers', 'expired_session', 'wrong_session_subject'])
+def test_submission_authentication_and_exact_owner(cloud, candidate, fault):
+    store, client = cloud[0].state.store, cloud[1]
+    if fault in ('unrelated_owner', 'spoof_headers'):
+        sign_in(cloud, 'unrelated-owner')
+        if fault == 'spoof_headers':
+            client.headers.update({'X-User-Id': 'subject-a', 'X-Role': 'business', 'X-Workspace': 'research'})
+    elif fault == 'cross_workspace': sign_in(cloud, 'unrelated-owner', 'studio-operations')
+    elif fault in ('admin', 'admin_as_owner'):
+        sign_in(cloud, 'synthetic-admin', 'studio-admin')
+        if fault == 'admin_as_owner':
+            with store.tx() as db:
+                db.update('agents', {'owner': 'synthetic-admin', 'workspace': 'platform'},
+                          where=[('id', '=', candidate['authority']['agent_id'])])
+    elif fault == 'owner_workspace_drift':
+        sign_in(cloud, 'subject-a', 'studio-operations')
+    elif fault == 'anonymous': client.cookies.clear()
+    elif fault == 'csrf_missing': client.headers.pop('X-CSRF-Token')
+    elif fault == 'csrf_wrong': client.headers['X-CSRF-Token'] = 'synthetic-wrong-csrf'
+    elif fault == 'origin': client.headers['Origin'] = 'https://untrusted.invalid'
+    elif fault == 'cross_site': client.headers['Sec-Fetch-Site'] = 'cross-site'
+    elif fault in ('expired_session', 'wrong_session_subject'):
+        with store.tx() as db:
+            db.update('hosted_sessions', {'expires': time.time()-1} if fault == 'expired_session'
+                      else {'subject': 'unrelated-owner'}, where=[('id_hash', '=', session_hash(cloud))])
+    before = states(store)
+    response = client.post(SUBMIT, json=candidate)
+    assert response.status_code in (401, 403, 409), response.text
+    assert states(store) == before
+
+
+@pytest.mark.parametrize('field', ['owner', 'submitter', 'reviewer', 'role', 'workspace', 'approved'])
+@pytest.mark.parametrize('nested', [False, True])
+def test_submission_never_accepts_supplied_identity(cloud, candidate, field, nested):
+    target = candidate['authority'] if nested else candidate
+    target[field] = True if field == 'approved' else 'forged-synthetic-identity'
+    assert_evidence_denied(cloud, candidate)
+
+
+@pytest.mark.parametrize('who', ['owner', 'unrelated_owner', 'anonymous', 'spoof'])
+def test_candidate_get_remains_admin_only(cloud, candidate, who):
+    ref = submit(cloud, candidate)
+    if who == 'unrelated_owner': sign_in(cloud, 'unrelated-owner')
+    elif who == 'anonymous': cloud[1].cookies.clear()
+    elif who == 'spoof': cloud[1].headers.update({'X-User-Id': 'synthetic-reviewer', 'X-Role': 'admin'})
+    before = states(cloud[0].state.store)
+    response = cloud[1].get(SUBMIT + '/' + ref)
+    assert response.status_code in (401, 403)
+    assert 'evidence' not in response.json()
+    assert response.headers['cache-control'] == 'no-store'
+    assert states(cloud[0].state.store) == before
+
+
+def test_owner_cannot_self_review_even_after_admin_role_change(cloud, candidate):
+    ref = submit(cloud, candidate)
+    sign_in(cloud, 'subject-a', 'studio-admin')
+    before = states(cloud[0].state.store)
+    response = cloud[1].post(REVIEW, json={'candidate_ref': ref, 'reason': 'Attempt self review after role change'})
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'CAPTURE_INDEPENDENT_REVIEWER_REQUIRED'
+    assert states(cloud[0].state.store) == before
+
+
+@pytest.mark.parametrize('fault', ['candidate_tamper', 'audit_detail', 'audit_actor', 'audit_time',
+    'owner_changed', 'owner_role', 'owner_workspace', 'definition_digest', 'definition_body',
+    'reviewer_role', 'reviewer_workspace', 'session_deleted'])
+def test_review_rejects_tamper_and_current_identity_drift(cloud, candidate, fault):
+    store = cloud[0].state.store
+    ref = submit(cloud, candidate)
+    sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
+    with store.tx() as db:
+        if fault == 'candidate_tamper':
+            value = get(db, PREFIX+'candidate:'+ref)
+            value['evidence']['reason'] = 'Altered immutable submission'
+            db.update('settings', {'body': json.dumps(value)}, where=[('key', '=', PREFIX+'candidate:'+ref)])
+        elif fault.startswith('audit_'):
+            column, value = {'audit_detail': ('detail', 'a'*64),
+                             'audit_actor': ('actor', 'unrelated-owner'),
+                             'audit_time': ('created', 0)}[fault]
+            db.update('audit', {column: value}, where=[('action', '=', 'diagnostic_capture_submitted')])
+        elif fault == 'owner_changed':
+            db.update('agents', {'owner': 'unrelated-owner'}, where=[('id', '=', candidate['authority']['agent_id'])])
+        elif fault in ('owner_role', 'owner_workspace', 'reviewer_role', 'reviewer_workspace'):
+            subject = 'subject-a' if fault.startswith('owner_') else 'synthetic-reviewer'
+            row = db.select('principals', where=[('id', '=', subject)]).fetchone()
+            value = json.loads(row['body'])
+            value['role' if fault.endswith('role') else 'workspace'] = 'unrelated'
+            db.update('principals', {'body': json.dumps(value)}, where=[('id', '=', subject)])
+        elif fault in ('definition_digest', 'definition_body'):
+            row = db.select('versions', where=[('agent', '=', candidate['authority']['agent_id'])]).fetchone()
+            value = json.loads(row['body'])
+            value['prompt'] = 'Tampered stored prompt'
+            db.update('versions', {'digest': 'a'*64} if fault == 'definition_digest'
+                      else {'body': json.dumps(value)}, where=[('agent', '=', candidate['authority']['agent_id'])])
+        elif fault == 'session_deleted':
+            db.delete('hosted_sessions', where=[('id_hash', '=', session_hash(cloud))])
+    before = states(store)
+    # Direct server seam avoids HTTP auth refreshing the intentionally stale reviewer snapshot.
+    with pytest.raises(HTTPException):
+        producer.handle(store, {'id': 'synthetic-reviewer', 'role': 'admin', 'workspace': 'platform'},
+            producer.ReviewDiagnostic(candidate_ref=ref, reason='Reject immutable or current-state drift'),
+            session_hash=session_hash(cloud))
+    assert states(store) == before
+
+
+def test_submission_has_no_privileged_validation_or_authority_writes(cloud, candidate, monkeypatch):
+    from backend.dynamo_store import DynamoUnit
+    store = cloud[0].state.store
+    original_select, original_insert = DynamoUnit.select, DynamoUnit.insert
+    def limited_select(db, table, **kwargs):
+        if table == 'settings':
+            where = kwargs.get('where', ())
+            assert len(where) == 1 and where[0][:2] == ('key', '=')
+            key = where[0][2]
+            assert key in ('policy', 'foundation-epoch') or key.startswith(PREFIX+'candidate:')
+        else:
+            assert table in {'hosted_sessions', 'principals', 'agents', 'versions', 'foundations', 'components', 'grants'}
+        return original_select(db, table, **kwargs)
+    def limited_insert(db, table, value, **kwargs):
+        assert (table == 'settings' and value['key'].startswith(PREFIX+'candidate:')) or (
+            table == 'audit' and value['action'] == 'diagnostic_capture_submitted')
+        return original_insert(db, table, value, **kwargs)
+    def no_admin_preview(*args, **kwargs):
+        pytest.fail('Owner submission attempted privileged review/consumer validation')
+    with monkeypatch.context() as m:
+        m.setattr(DynamoUnit, 'select', limited_select)
+        m.setattr(DynamoUnit, 'insert', limited_insert)
+        m.setattr(producer, 'validate', no_admin_preview)
+        m.setattr(producer.DiagnosticAdmission, 'resolve', no_admin_preview)
+        result = producer.handle(store, {'id': 'subject-a', 'role': 'business', 'workspace': 'research'},
+            producer.SubmitDiagnostic.model_validate(candidate), session_hash=session_hash(cloud))
+    assert result['status'] == 'SUBMITTED_NOT_AUTHORITY'
+
+
+@pytest.mark.parametrize('fault', ['membership', 'session', 'actor_role', 'actor_workspace',
+    'version', 'epoch', 'policy', 'definition_digest'])
+def test_submission_rechecks_current_owner_state(cloud, candidate, fault):
+    store = cloud[0].state.store
+    actor = {'id': 'subject-a', 'role': 'business', 'workspace': 'research'}
+    with store.tx() as db:
+        if fault == 'membership':
+            db.update('principals', {'expires': time.time()-1}, where=[('id', '=', actor['id'])])
+        elif fault == 'session':
+            db.delete('hosted_sessions', where=[('id_hash', '=', session_hash(cloud))])
+        elif fault == 'actor_role': actor['role'] = 'admin'
+        elif fault == 'actor_workspace': actor['workspace'] = 'operations'
+        elif fault == 'version':
+            db.update('agents', {'current_version': 2}, where=[('id', '=', candidate['authority']['agent_id'])])
+        elif fault in ('epoch', 'policy'):
+            db.insert('settings', {'key': 'foundation-epoch' if fault == 'epoch' else 'policy',
+                                  'body': '99'}, upsert=True)
+        elif fault == 'definition_digest':
+            db.update('versions', {'digest': 'a'*64}, where=[('agent', '=', candidate['authority']['agent_id'])])
+    before = states(store)
+    with pytest.raises(HTTPException):
+        producer.handle(store, actor, producer.SubmitDiagnostic.model_validate(candidate),
+                        session_hash=session_hash(cloud))
+    assert states(store) == before
+
+
+def test_identical_submission_is_insert_once(cloud, candidate):
+    store = cloud[0].state.store
+    actor = {'id': 'subject-a', 'role': 'business', 'workspace': 'research'}
+    now = time.time()
+    data = producer.SubmitDiagnostic.model_validate(candidate)
+    producer.handle(store, actor, data, session_hash=session_hash(cloud), clock=lambda: now)
+    before = states(store)
+    with pytest.raises(HTTPException) as error:
+        producer.handle(store, actor, data, session_hash=session_hash(cloud), clock=lambda: now)
+    assert error.value.detail == 'CAPTURE_IMMUTABLE_RECORD_EXISTS'
+    assert states(store) == before
+
+
+@pytest.mark.parametrize('operation', ['submit', 'review'])
+def test_governance_change_during_transaction_fails_cas(cloud, candidate, operation):
+    from backend.dynamo_store import DynamoUnit
+    store = cloud[0].state.store
+    if operation == 'review':
+        ref = submit(cloud, candidate)
+        sign_in(cloud, 'synthetic-reviewer', 'studio-admin')
+    pending = DynamoUnit(store.table)
+    if operation == 'submit':
+        producer.submit(pending, {'id': 'subject-a', 'role': 'business', 'workspace': 'research'},
+                        producer.SubmitDiagnostic.model_validate(candidate), time.time())
+    else:
+        producer.review(pending, {'id': 'synthetic-reviewer', 'role': 'admin', 'workspace': 'platform'},
+                        producer.ReviewDiagnostic(candidate_ref=ref, reason='Concurrent governance review'), time.time())
+    with store.tx() as db:
+        db.delete('grants', where=[('persona', '=', 'subject-a')])
+    before = states(store)
+    with pytest.raises(HTTPException): pending.commit()
+    assert states(store) == before
