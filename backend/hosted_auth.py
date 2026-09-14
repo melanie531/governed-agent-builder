@@ -345,8 +345,18 @@ class HostedAuth:
         return result
 
     def logout(self, request):
-        with self.store.tx() as db:
-            db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
+        # Concurrent requests can advance DynamoDB's transaction fence while
+        # signing out. Retry this idempotent deletion, never token verification.
+        for attempt in range(6):
+            try:
+                with self.store.tx() as db:
+                    db.delete('hosted_sessions', where=[('id_hash', '=', sha(request.cookies.get(SESSION_COOKIE, '')))])
+                break
+            except HTTPException as exc:
+                if (exc.status_code != 409 or exc.detail != "Concurrent governance update; reload and retry"
+                        or attempt == 5):
+                    raise
+                time.sleep(0.05 * (attempt + 1))
         result = JSONResponse({"logout_url": self.domain + "/logout?" + urlencode({"client_id": self.client_id, "logout_uri": self.public_url + "/"})})
         result.delete_cookie(SESSION_COOKIE, secure=True, httponly=True, samesite="strict")
         return result

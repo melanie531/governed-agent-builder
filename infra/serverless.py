@@ -146,11 +146,13 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
     resources["SessionAuthorizer"] = {"Type": "AWS::ApiGatewayV2::Authorizer", "Properties": {"ApiId": ref("Api"), "Name": "server-session", "AuthorizerType": "REQUEST", "AuthorizerPayloadFormatVersion": "2.0", "EnableSimpleResponses": True, "AuthorizerResultTtlInSeconds": 0, "IdentitySource": ["$request.header.Cookie"], "AuthorizerUri": sub("arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Authorizer.Arn}/invocations")}}
     for name in ("Business", "Auth"):
         resources[name+"Integration"] = {"Type": "AWS::ApiGatewayV2::Integration", "Properties": {"ApiId": ref("Api"), "IntegrationType": "AWS_PROXY", "IntegrationMethod": "POST", "IntegrationUri": attr(name), "PayloadFormatVersion": "2.0", "TimeoutInMillis": 29000}}
-    for index, route in enumerate(("ANY /api", "ANY /api/{proxy+}", "GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify")):
+    # An exact logout route takes precedence over the protected API wildcard.
+    # Its Auth handler enforces same-origin revocation without a valid session.
+    for index, route in enumerate(("ANY /api", "ANY /api/{proxy+}", "GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify", "POST /api/auth/logout")):
         protected = index < 2
         resources["Route"+str(index)] = {"Type": "AWS::ApiGatewayV2::Route", "Properties": {"ApiId": ref("Api"), "RouteKey": route, "AuthorizationType": "CUSTOM" if protected else "NONE", "Target": {"Fn::Join": ["/", ["integrations", ref("BusinessIntegration" if protected else "AuthIntegration")]]}, **({"AuthorizerId": ref("SessionAuthorizer")} if protected else {})}}
     for name in ("Business", "Auth", "Authorizer"):
-        paths = ["authorizers/*"] if name == "Authorizer" else ["*/*/api", "*/*/api/*"] if name == "Business" else ["*/GET/auth/login", "*/GET/auth/callback", "*/GET/studio-config.json", "*/GET/auth/verification/status", "*/POST/auth/verification/send", "*/POST/auth/verification/verify"]
+        paths = ["authorizers/*"] if name == "Authorizer" else ["*/*/api", "*/*/api/*"] if name == "Business" else ["*/GET/auth/login", "*/GET/auth/callback", "*/GET/studio-config.json", "*/GET/auth/verification/status", "*/POST/auth/verification/send", "*/POST/auth/verification/verify", "*/POST/api/auth/logout"]
         for index, path in enumerate(paths):
             resources[name+"Permission"+str(index)] = {"Type": "AWS::Lambda::Permission", "Properties": {"FunctionName": ref(name), "Action": "lambda:InvokeFunction", "Principal": "apigateway.amazonaws.com", "SourceAccount": ref("AWS::AccountId"), "SourceArn": sub("arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/"+path)}}
     resources["ApiLogs"] = {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain", "Properties": {"LogGroupName": "/governed-agent-builder-serverless/http-api", "RetentionInDays": 14}}

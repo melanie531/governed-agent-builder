@@ -269,7 +269,15 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         callback_request = hosted and request.url.path == "/auth/callback" and request.method == "GET"
         verification_request = hosted and request.url.path.startswith("/auth/verification/")
         api_request = request.url.path == "/api" or request.url.path.startswith("/api/")
-        if hosted and api_request:
+        logout_request = hosted and request.url.path == "/api/auth/logout" and request.method == "POST"
+        # Ending a session must work after its token, membership or CSRF has
+        # expired. This exact route only revokes the presented cookie; enforce
+        # browser origin here without granting access to any business endpoint.
+        if logout_request and (request.headers.get("origin") not in origins
+                               or request.headers.get("sec-fetch-site") not in (None, "same-origin")):
+            return JSONResponse({"detail": "Same-origin request required"}, status_code=403,
+                                headers={"Cache-Control": "no-store"})
+        if hosted and api_request and not logout_request:
             try:
                 request.state.persona, request.state.csrf = await asyncio.to_thread(auth.authenticate, request)
             except HTTPException as exc:

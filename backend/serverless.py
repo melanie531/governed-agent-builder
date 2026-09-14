@@ -82,7 +82,9 @@ def api_handler(event, context):
 def auth_handler(event, context):
     path = event.get("rawPath", "")
     method = event.get("requestContext", {}).get("http", {}).get("method")
-    allowed = {("GET", p) for p in ("/auth/login", "/auth/callback", "/studio-config.json", "/auth/verification/status")} | {("POST", "/auth/verification/" + p) for p in ("send", "verify")}
+    allowed = ({("GET", p) for p in ("/auth/login", "/auth/callback", "/studio-config.json", "/auth/verification/status")}
+               | {("POST", "/auth/verification/" + p) for p in ("send", "verify")}
+               | {("POST", "/api/auth/logout")})
     if (method, path) not in allowed:
         return {"statusCode": 404, "body": "Not found"}
     return proxy(event, context)

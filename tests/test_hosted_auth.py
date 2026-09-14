@@ -162,7 +162,8 @@ def test_business_admin_and_subject_isolation(hosted, payload):
 def test_csrf_host_and_cookie_session_logout(hosted):
     app, c, key = hosted
     cookie = authenticate(app, c, key)
-    assert c.post("/api/auth/logout", json={}, headers={"X-CSRF-Token": "wrong"}).status_code == 403
+    # Business mutations still require session CSRF; logout instead uses Origin.
+    assert c.post("/api/auth/role", json={"group_id": "studio-research"}, headers={"X-CSRF-Token": "wrong"}).status_code == 403
     assert c.post("/api/auth/logout", json={}, headers={"Origin": "https://evil.example.test"}).status_code == 403
     assert c.get("/api/me", headers={"Host": "evil.example.test", "X-Forwarded-Host": "studio.example.test"}).status_code == 400
     assert c.get("/api/me", headers={"X-Forwarded-Host": "evil.example.test", "X-Forwarded-User": "admin"}).json()["persona"]["role"] == "business"

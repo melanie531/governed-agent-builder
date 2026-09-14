@@ -21,7 +21,11 @@ def test_business_authorizer_and_separate_auth_routes():
     assert auth["AuthorizerResultTtlInSeconds"] == 0
     routes = [x["Properties"] for x in r.values() if x["Type"] == "AWS::ApiGatewayV2::Route"]
     for route in routes:
-        if "/api" in route["RouteKey"]:
+        if route["RouteKey"] == "POST /api/auth/logout":
+            assert route["AuthorizationType"] == "NONE"
+            assert "AuthorizerId" not in route
+            assert "AuthIntegration" in str(route["Target"])
+        elif "/api" in route["RouteKey"]:
             assert route["AuthorizationType"] == "CUSTOM"
         elif route["RouteKey"] == "POST /internal/foundation/exchange":
             assert route["AuthorizationType"] == "AWS_IAM"
@@ -30,6 +34,8 @@ def test_business_authorizer_and_separate_auth_routes():
         else:
             assert route["RouteKey"] in ("GET /auth/login", "GET /auth/callback", "GET /studio-config.json", "GET /auth/verification/status", "POST /auth/verification/send", "POST /auth/verification/verify")
             assert "AuthIntegration" in str(route["Target"])
+    assert sum(x["RouteKey"] == "POST /api/auth/logout" for x in routes) == 1
+    assert r["AuthPermission6"]["Properties"]["SourceArn"]["Fn::Sub"].endswith("/*/POST/api/auth/logout")
     assert r["Pool"]["Properties"]["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"]
     assert not r["Client"]["Properties"]["GenerateSecret"]
     assert r["Pool"]["Properties"]["EnabledMfas"] == ["SOFTWARE_TOKEN_MFA"]
