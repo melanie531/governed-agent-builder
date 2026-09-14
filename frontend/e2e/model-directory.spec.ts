@@ -6,7 +6,7 @@ test('backend models grouped by provider and filtered by modality without rewrit
  await page.route('**/api/me',r=>r.fulfill({json:{persona:{id:'qa',name:'QA',role:'business',workspace:'research',workspace_name:'Research studio'},csrf:'synthetic'}}));
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:rows,count:2,mode:'live',agent_listing_implemented:true}}));
- await page.goto('/');await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
+ await page.goto('/');await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Anthropic (1)',exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'OpenAI (1)',exact:true})).toBeVisible();
  await page.getByLabel('Filter models by capability',{exact:true}).selectOption('input:Image');
@@ -32,7 +32,7 @@ test('access summary reflects per-user granted/callable/requestable, not the cat
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
  // access_summary is the REAL per-user set; count (catalog total) is deliberately larger.
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:models,count:42,mode:'live',agent_listing_implemented:true,access_summary:{granted:1,requestable:1,callable:0,available:42}}}));
- await page.goto('/');await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
+ await page.goto('/');await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  const summary=page.getByTestId('access-summary');
  await expect(summary).toBeVisible();
  // Shows the per-user granted (1), callable (0) and requestable (1) — never the total (42).

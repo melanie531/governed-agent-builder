@@ -20,6 +20,7 @@ async function openRequestForm(page){
  await page.route('**/api/agents',r=>r.fulfill({json:[]}));
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:[model],count:1,mode:'live',agent_listing_implemented:true}}));
  await page.goto('/');
+ await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  await page.getByRole('button',{name:'View details',exact:true}).click();
  const dialog=page.getByRole('dialog');

@@ -40,6 +40,7 @@ async function openCatalog(page){
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:[opus5,sonnet5,gpt6],count:3,mode:'live',agent_listing_implemented:false}}));
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
+ await expect(page.getByRole('button',{name:'Sam Taylor · Operations desk',exact:true})).toBeVisible();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
 }
