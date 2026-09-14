@@ -58,6 +58,7 @@ async function openCatalog(page,rows,summary?:{granted:number;available:number;c
  await page.route('**/api/catalog',r=>r.fulfill({json:{items:rows,count:rows.length,mode:'live',agent_listing_implemented:true,...(summary?{access_summary:summary}:{})}}));
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
+ await expect(page.getByRole('button',{name:'Sam Taylor · Operations desk',exact:true})).toBeVisible();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  await expect(page.getByRole('button',{name:'Claude Opus 5',exact:true})).toBeVisible();
