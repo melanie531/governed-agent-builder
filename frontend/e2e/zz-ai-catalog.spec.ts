@@ -4,6 +4,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await page.route('**/api/catalog', async route=>{const response=await route.fetch();const data=await response.json(); const parent={...data.items.find((x:any)=>x.id==='restricted-insights'),id:'offline-server',record_id:'offline-server',name:'Synthetic offline server',kind:'mcp_server',protocol:'MCP'};data.items=data.items.map((x:any)=>x.kind==='tool'?{...x,parent_id:parent.id,protocol:'MCP'}:x);data.items.push(parent);await route.fulfill({json:data});});
  await page.goto('/');
  await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
+ await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  const navigate=async(name:string)=>{const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();await page.getByRole('link',{name,exact:true}).click();};
  await navigate('AI Catalog');
  await expect(page.getByRole('button',{name:'Refresh catalog',exact:true})).toBeVisible();
@@ -17,12 +18,14 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  await page.getByRole('button',{name:'Back to catalog',exact:true}).click();
  await page.getByRole('button',{name:/Sam Taylor · Operations desk/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();
+ await expect(page.getByRole('button',{name:/Platform Admin · Platform governance/})).toBeVisible();
  await navigate('Policies & approvals');
  await page.getByRole('textbox',{name:'Decision reason for restricted-insights'}).fill('Synthetic browser approval for research');
  await page.getByRole('button',{name:'Approve access',exact:true}).click();
  await expect(page.getByText('Approved',{exact:true}).last()).toBeVisible();
  await page.getByRole('button',{name:/Platform Admin · Platform governance/}).click();
  await page.getByRole('menuitem',{name:/Sam Taylor/}).click();
+ await expect(page.getByRole('button',{name:/Sam Taylor · Operations desk/})).toBeVisible();
  await navigate('AI Catalog');
  await page.getByRole('tab',{name:'MCP servers',exact:true}).click();
  await page.getByRole('button',{name:'View details',exact:true}).click();
@@ -32,6 +35,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
  // Restore the grant changed by this test; later preserved journeys share this fixture server.
  await page.getByRole('button',{name:/Sam Taylor · Operations desk/}).click();
  await page.getByRole('menuitem',{name:/Platform Admin/}).click();
+ await expect(page.getByRole('button',{name:/Platform Admin · Platform governance/})).toBeVisible();
  await navigate('Tools & skills');
  const grant=page.getByRole('checkbox',{name:'Sam Taylor access to Synthetic strategy insights',exact:true});
  await grant.click();await expect(grant).not.toBeChecked();
@@ -40,6 +44,7 @@ test('AI Catalog development fixture request, admin approval and refreshed selec
 test('AI Catalog provider unavailable cannot display fixture fallback (synthetic browser adapter)',async({page})=>{
  await page.route('**/api/catalog',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Live catalog unavailable; no fixture fallback.'})}));
  await page.goto('/');await page.getByRole('button',{name:'Enter as Sam Taylor'}).click();
+ await expect(page.getByRole('heading',{name:'My agents',exact:true})).toBeVisible();
  const toggle=page.getByRole('button',{name:'Open side navigation',exact:true});if(await toggle.isVisible())await toggle.click();
  await page.getByRole('link',{name:'AI Catalog',exact:true}).click();
  await expect(page.getByText('Catalog unavailable.',{exact:true}).first()).toBeVisible();

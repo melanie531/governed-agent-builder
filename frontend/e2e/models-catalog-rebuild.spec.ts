@@ -22,6 +22,7 @@ async function open(page, items) {
     mode: 'live', agent_listing_implemented: false}}));
   await page.goto('/');
   await page.getByRole('button', {name: 'Enter as Sam Taylor'}).click();
+  await expect(page.getByRole('heading', {name: 'My agents', exact: true})).toBeVisible();
   const toggle = page.getByRole('button', {name: 'Open side navigation', exact: true});
   if (await toggle.isVisible()) await toggle.click();
   await page.getByRole('link', {name: 'AI Catalog', exact: true}).click();
