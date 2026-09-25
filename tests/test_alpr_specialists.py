@@ -110,6 +110,7 @@ def test_investigate_case_returns_advisory_report_only(transport):
     assert report["actions_executed"] == []
     assert report["policy_version"] == "DEMO-1"
     assert report["synthetic"] is True
+    assert report["live"] is False, "aggregated report must carry the transport's live flag"
     # evidence references must be present and case-scoped
     assert any(e.startswith("REM-") for e in report["evidence"]["remediation_ids"])
 

@@ -176,4 +176,7 @@ def investigate_case(reader, case_id):
         "policy_approval_status": (policy["rows"][0]["APPROVAL_STATUS"]
                                    if policy["rows"] else None),
         "synthetic": all(p["synthetic"] for p in (ownership, billing, remediation)),
+        # live truthfully reflects the reader's transport (same reader served
+        # every specialist and the policy fetch of this report).
+        "live": bool(policy.get("live")),
     }
