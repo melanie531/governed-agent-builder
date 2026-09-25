@@ -32,5 +32,15 @@
     "workspaces": ["research", "operations"],
     "external": false,
     "data_handling": "Searches the platform's synthetic Aurora knowledge collection through AgentCore Gateway."
+  },
+  {
+    "id": "specialist-risk-analyst",
+    "target": "risk-analyst-specialist",
+    "operation": "agent-risk-analyst",
+    "probe_arguments": {"question": "What is the renewal risk?"},
+    "name": "Ask the risk analyst specialist (simulated data)",
+    "workspaces": ["research"],
+    "external": false,
+    "data_handling": "The question is sent to the platform specialist MCP Runtime through AgentCore Gateway. Answers are built from SIMULATED synthetic data."
   }
 ]

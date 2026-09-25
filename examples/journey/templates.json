@@ -60,5 +60,29 @@
         "require_citation": true
       }
     ]
+  },
+  {
+    "id": "risk-review",
+    "name": "Risk review (specialist)",
+    "description": "Ask the platform-curated risk analyst specialist about renewal risk. Its data is simulated.",
+    "prompt": "You are an account risk assistant. For questions about renewal or account risk, immediately call the risk analyst specialist tool with the user's question as written; do not ask for an account identifier, because the specialist serves one synthetic account. Then summarize its answer in two or three sentences. Say that the specialist's data is simulated (synthetic). If the tool fails, say so; never invent a risk assessment.",
+    "tools": [
+      "specialist-risk-analyst"
+    ],
+    "skills": [
+      "concise"
+    ],
+    "sample_input": "What is the renewal risk for our synthetic account? Ask the risk analyst specialist.",
+    "sample_dataset": [
+      {
+        "id": "renewal-risk",
+        "input": "What is the renewal risk for our synthetic account? Ask the risk analyst specialist.",
+        "expected_response": "The specialist reports elevated renewal risk (simulated data) and recommends an account review before renewal.",
+        "required_terms": [
+          "elevated"
+        ],
+        "require_citation": false
+      }
+    ]
   }
 ]

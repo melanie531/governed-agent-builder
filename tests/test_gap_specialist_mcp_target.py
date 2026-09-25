@@ -11,8 +11,8 @@ Scope of each pin (no over-assertion):
    signs every RPC it sends with SigV4 for the bedrock-agentcore service. This proves only
    the behavior of this client class, not that the runtime as a whole cannot reach other
    endpoints by other means.
-3. infra/journey.template GatewayRole has no bedrock-agentcore:InvokeAgentRuntime permission
-   today (flips when the outbound-signing slice is implemented).
+3. infra/journey.template GatewayRole may bedrock-agentcore:InvokeAgentRuntime only the
+   explicitly registered specialist Runtime ARNs, and nothing when none is registered.
 """
 import json
 import re
@@ -272,19 +272,33 @@ def test_discovery_and_call_are_sigv4_signed_for_any_target_type(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 3. IAM: GatewayRole cannot reach a Runtime-B target yet
+# 3. IAM: GatewayRole reaches only the registered Runtime-B targets
 # ---------------------------------------------------------------------------
 
-def test_gateway_role_lacks_invoke_agent_runtime_today():
-    """GAP PIN (flips when implemented): the journey Gateway execution role has no
-    bedrock-agentcore:InvokeAgentRuntime statement, so an mcpServer target pointing at a
-    Runtime B cannot be IAM-signed outbound by this Gateway today. Owner slice: add a scoped
-    InvokeAgentRuntime statement for the specialist runtime ARN prefix to infra/journey.py."""
+def gateway_statements(**kwargs):
     from infra.journey import template
-    body = template("arn:aws:bedrock-agentcore:us-west-2:" + ACCOUNT + ":token-vault/default/apikeycredentialprovider/synthetic",
-                    "arn:aws:secretsmanager:us-west-2:" + ACCOUNT + ":secret:synthetic")
-    statements = body["Resources"]["GatewayRole"]["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
-    actions = [action for statement in statements
-               for action in (statement["Action"] if isinstance(statement["Action"], list) else [statement["Action"]])]
-    assert "lambda:InvokeFunction" in actions
-    assert "bedrock-agentcore:InvokeAgentRuntime" not in actions
+    body = template(**kwargs)
+    return body["Resources"]["GatewayRole"]["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+
+
+def actions(statements):
+    return [action for statement in statements
+            for action in (statement["Action"] if isinstance(statement["Action"], list) else [statement["Action"]])]
+
+
+def test_gateway_role_invokes_only_registered_specialist_runtimes():
+    runtime = "arn:aws:bedrock-agentcore:us-west-2:" + ACCOUNT + ":runtime/governed_mcp_specialist-SYNTH00001"
+    statements = gateway_statements(specialist_runtime_arns=[runtime])
+    invoke = [statement for statement in statements if statement["Action"] == ["bedrock-agentcore:InvokeAgentRuntime"]]
+    assert len(invoke) == 1 and invoke[0]["Resource"] == [runtime, runtime + "/*"]
+    assert "lambda:InvokeFunction" in actions(statements)
+
+
+def test_gateway_role_has_no_runtime_or_api_key_access_by_default():
+    listed = actions(gateway_statements())
+    assert "bedrock-agentcore:InvokeAgentRuntime" not in listed
+    assert "bedrock-agentcore:GetResourceApiKey" not in listed and "secretsmanager:GetSecretValue" not in listed
+    with_tavily = actions(gateway_statements(
+        provider_arn="arn:aws:bedrock-agentcore:us-west-2:" + ACCOUNT + ":token-vault/default/apikeycredentialprovider/synthetic",
+        secret_arn="arn:aws:secretsmanager:us-west-2:" + ACCOUNT + ":secret:synthetic"))
+    assert "bedrock-agentcore:GetResourceApiKey" in with_tavily and "bedrock-agentcore:InvokeAgentRuntime" not in with_tavily

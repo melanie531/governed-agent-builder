@@ -279,7 +279,7 @@ def test_ai_catalog_and_builder_use_the_same_backend_source(setup):
         options = client.get("/api/journey/options").json()
         assert {item["id"] for item in snapshot["items"] if item["kind"] == "skill"} == {
             item["id"] for item in options["choices"]["skills"]}
-        assert len(options["templates"]) == 2
+        assert len(options["templates"]) == 3
         assert client.get("/studio-config.json").json()["journey_enabled"]
         servers = {item["id"] for item in snapshot["items"] if item["kind"] == "mcp_server"}
         assert servers == {"mcp-tavily", "mcp-knowledge"}

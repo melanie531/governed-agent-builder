@@ -8,8 +8,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
+import urllib.parse
 import zipfile
 
 from botocore.exceptions import ClientError
@@ -17,6 +19,7 @@ from botocore.exceptions import ClientError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.dynamo_store import DynamoStore
+from backend.foundation_approval import iam_sigv4_credentials, runtime_mcp_endpoint
 from backend.foundation_runs import get, put
 from backend.journey_catalog import records
 from backend.live_catalog import grant_scope, visibility
@@ -100,7 +103,9 @@ def credential(target, control):
         return saved
     key = os.environ.get("TAVILY_API_KEY")
     if not key:
-        raise RuntimeError("TAVILY_API_KEY is required for initial provider publication")
+        # Tavily is optional: without a key its target, tools and template are not published.
+        print("TAVILY_API_KEY not set: Tavily web tools and the Research template are unavailable", flush=True)
+        return None
     result = control.create_api_key_credential_provider(name="gab-journey-tavily", apiKey=key)
     secret = result["apiKeySecretArn"]
     saved = {"name": result["name"], "provider_arn": result["credentialProviderArn"],
@@ -110,8 +115,26 @@ def credential(target, control):
     return saved
 
 
-def stack(target, credential, bucket, key):
-    body = platform_template(credential["provider_arn"], credential["secret_arn"])
+def specialist(target, runtime_arn):
+    """Platform-curated specialist MCP Runtime in this account/region, or None."""
+    saved = target.state.get("journeySpecialist")
+    if runtime_arn is None:
+        return saved
+    account, region = target.binding["account"], target.binding["region"]
+    if not re.fullmatch(rf"arn:aws:bedrock-agentcore:{region}:{account}:runtime/[A-Za-z0-9_][A-Za-z0-9_-]{{0,99}}", runtime_arn):
+        raise RuntimeError("Specialist runtime must be an AgentCore Runtime in this platform account and region")
+    endpoint = (f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{urllib.parse.quote(runtime_arn, safe='')}"
+                "/invocations?qualifier=DEFAULT")
+    if not runtime_mcp_endpoint(endpoint, account):
+        raise RuntimeError("Specialist endpoint is not this account's Runtime MCP URL")
+    saved = {"runtime_arn": runtime_arn, "endpoint": endpoint}
+    target.save("journeySpecialist", saved)
+    return saved
+
+
+def stack(target, credential, bucket, key, specialist=None):
+    body = platform_template(credential and credential["provider_arn"], credential and credential["secret_arn"],
+                             [specialist["runtime_arn"]] if specialist else ())
     target.cf.validate_template(TemplateBody=json.dumps(body))
     request = {"StackName": STACK, "TemplateBody": json.dumps(body), "Capabilities": ["CAPABILITY_IAM"],
                "Tags": [{"Key": key, "Value": value} for key, value in TAGS.items()],
@@ -141,7 +164,7 @@ def stack(target, credential, bucket, key):
     return outputs
 
 
-def gateway(target, control, outputs, credential):
+def gateway(target, control, outputs, credential, specialist=None):
     saved = target.state.get("journeyGateway")
     if not saved:
         created = control.create_gateway(name="gab-journey-tools", roleArn=outputs["GatewayRole"],
@@ -153,12 +176,21 @@ def gateway(target, control, outputs, credential):
     current = wait(lambda: control.get_gateway(gatewayIdentifier=saved["id"]))
     if current["roleArn"] != outputs["GatewayRole"] or current["authorizerType"] != "AWS_IAM":
         raise RuntimeError("Gateway security binding changed")
-    configurations = {
-        "tavily": {"targetConfiguration": {"mcp": {"mcpServer": {"endpoint": "https://mcp.tavily.com/mcp/"}}},
-                   "credentialProviderConfigurations": [{"credentialProviderType": "API_KEY", "credentialProvider": {
-                       "apiKeyCredentialProvider": {"providerArn": credential["provider_arn"],
-                           "credentialParameterName": "Authorization", "credentialPrefix": "Bearer", "credentialLocation": "HEADER"}}}]},
-    }
+    configurations = {}
+    if credential:
+        configurations["tavily"] = {
+            "targetConfiguration": {"mcp": {"mcpServer": {"endpoint": "https://mcp.tavily.com/mcp/"}}},
+            "credentialProviderConfigurations": [{"credentialProviderType": "API_KEY", "credentialProvider": {
+                "apiKeyCredentialProvider": {"providerArn": credential["provider_arn"],
+                    "credentialParameterName": "Authorization", "credentialPrefix": "Bearer", "credentialLocation": "HEADER"}}}]}
+    if specialist:
+        # Outbound SigV4 as the Gateway role, which may invoke only this Runtime (infra/journey.py).
+        configurations["risk-analyst-specialist"] = {
+            "targetConfiguration": {"mcp": {"mcpServer": {"endpoint": specialist["endpoint"]}}},
+            "credentialProviderConfigurations": [{"credentialProviderType": "GATEWAY_IAM_ROLE", "credentialProvider": {
+                "iamCredentialProvider": {"service": "bedrock-agentcore", "region": target.binding["region"]}}}]}
+        if not iam_sigv4_credentials(configurations["risk-analyst-specialist"]["credentialProviderConfigurations"]):
+            raise RuntimeError("Specialist target requires complete IAM SigV4 credentials")
     from tools.knowledge_search import SCHEMA
     configurations["knowledge"] = {
         "targetConfiguration": {"mcp": {"lambda": {"lambdaArn": outputs["KnowledgeFunction"],
@@ -171,7 +203,16 @@ def gateway(target, control, outputs, credential):
                 clientToken=digest([saved["id"], name]), **config)
             targets[name] = result["targetId"]
             target.save("journeyTargets", targets)
-        result = wait(lambda: control.get_gateway_target(gatewayIdentifier=saved["id"], targetId=targets[name]))
+        try:
+            result = wait(lambda: control.get_gateway_target(gatewayIdentifier=saved["id"], targetId=targets[name]))
+        except RuntimeError:
+            if name != "risk-analyst-specialist":
+                raise
+            # The first tool sync can race IAM propagation of the new Gateway role statement.
+            print("Specialist target sync failed; resynchronizing once", flush=True)
+            time.sleep(20)
+            control.synchronize_gateway_targets(gatewayIdentifier=saved["id"], targetIdList=[targets[name]])
+            result = wait(lambda: control.get_gateway_target(gatewayIdentifier=saved["id"], targetId=targets[name]))
         if result["targetConfiguration"] != config["targetConfiguration"]:
             raise RuntimeError("Gateway target changed")
     saved["url"] = current["gatewayUrl"]
@@ -182,6 +223,8 @@ def gateway(target, control, outputs, credential):
     target.save("journeyDiscovery", {"tools": tools, "time": time.time()})
     probes = []
     for publication in json.loads((ROOT / "examples/journey/tool-publications.json").read_text()):
+        if publication["target"] not in targets:
+            continue
         name = publication["target"] + "___" + publication["operation"]
         text = client.call(name, publication["probe_arguments"])
         probes.append({"name": name, "success": bool(text.strip()), "time": time.time()})
@@ -228,8 +271,11 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
         binding = {"type": "instructions", "instructions": skill["instruction"], "content_digest": digest(skill["instruction"])}
         items.append(item(skill["id"], skill["name"], "skill", skill["description"], binding,
                           ["research", "operations"], provider="Platform skill library", protocol="instructions"))
-    tool_inputs = json.loads((data / "tool-publications.json").read_text())
+    tool_inputs = [tool for tool in json.loads((data / "tool-publications.json").read_text()) if tool["target"] in targets]
+    published_tools = {tool["id"] for tool in tool_inputs}
     for server in json.loads((data / "mcp-servers.json").read_text()):
+        if server["target"] not in targets:
+            continue
         binding = {"type": "mcp-server", "gateway_id": gateway["id"], "target_id": targets[server["target"]]}
         items.append(item(server["id"], server["name"], "mcp_server", server["description"], binding, server["workspaces"],
                           provider=server["provider"], protocol="MCP", external=server["external"],
@@ -268,8 +314,9 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
             stored = db.select("foundations", where=[("id", "=", entry["id"])]).fetchone()
             if stored and json.loads(stored["body"]).get("managed_by") == "platform-admin":
                 continue
-            entry.update(catalog="journey", version="1", approved=True, workspaces=["research", "operations"],
-                         requires_tool=entry["id"] == "knowledge")
+            # A template whose tools are not published (e.g. no Tavily key) is unavailable.
+            entry.update(catalog="journey", version="1", approved=set(entry["tools"]) <= published_tools,
+                         workspaces=["research", "operations"], requires_tool=entry["id"] == "knowledge")
             db.insert("foundations", {"id": entry["id"], "body": json.dumps(entry)}, upsert=True)
         put(db, "journey-platform", settings)
         if not get(db, "journey-grants-migrated"):
@@ -281,21 +328,23 @@ def publish(target, outputs, artifact, gateway, targets, discovered):
                         put(db, grant_scope(actor, entry["id"]), True)
             put(db, "journey-grants-migrated", True)
     target.save("journeyPlatform", settings)
-    print("Published backend Catalog:", len(items), "capabilities; two templates", flush=True)
+    print("Published backend Catalog:", len(items), "capabilities", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["prepare", "activate", "publish-ui"])
+    parser.add_argument("--specialist-runtime-arn", help="Platform-curated specialist MCP Runtime to register as a Gateway target")
     target_arguments(parser)
     args = parser.parse_args()
     target = DeploymentTarget(args.expected_account, args.profile, args.region, args.state)
     if args.action == "prepare":
         control = target.session.client("bedrock-agentcore-control")
         provider = credential(target, control)
+        curated = specialist(target, args.specialist_runtime_arn)
         bucket, key, artifact = upload(target)
-        outputs = stack(target, provider, bucket, key)
-        gw, targets, tools = gateway(target, control, outputs, provider)
+        outputs = stack(target, provider, bucket, key, curated)
+        gw, targets, tools = gateway(target, control, outputs, provider, curated)
         publish(target, outputs, artifact, gw, targets, tools)
     else:
         from scripts import serverless_deploy as release

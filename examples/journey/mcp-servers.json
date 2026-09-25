@@ -12,5 +12,12 @@
     "provider": "Platform knowledge", "workspaces": ["research", "operations"], "external": false,
     "default_tool_ids": ["knowledge-search"],
     "data_handling": "Searches the platform's synthetic knowledge collection through AgentCore Gateway."
+  },
+  {
+    "id": "mcp-risk-analyst-specialist", "target": "risk-analyst-specialist", "name": "Risk analyst specialist",
+    "description": "Platform-curated specialist agent served as an MCP tool. Its underlying account data is SIMULATED (synthetic fixtures).",
+    "provider": "Platform specialist · AgentCore Runtime", "workspaces": ["research"], "external": false,
+    "default_tool_ids": ["specialist-risk-analyst"],
+    "data_handling": "Questions go through AgentCore Gateway (IAM SigV4) to the platform's specialist MCP Runtime. The specialist answers from SIMULATED synthetic data, not real customer or Snowflake data."
   }
 ]

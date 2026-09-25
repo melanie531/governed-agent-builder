@@ -15,7 +15,9 @@ def role(service, statements, source):
         "Policies": [{"PolicyName": "JourneyScope", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
 
 
-def template(provider_arn, secret_arn):
+def template(provider_arn=None, secret_arn=None, specialist_runtime_arns=()):
+    """provider/secret are the optional Tavily API-key binding; specialist_runtime_arns are
+    platform-curated MCP Runtimes the Gateway may SigV4-invoke as mcpServer targets."""
     resources = {"Evidence": bucket(), "EvidenceTLS": tls_policy("Evidence"),
                  "Traces": {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain",
                             "Properties": {"LogGroupName": "/governed-agent-builder/journey/traces", "RetentionInDays": 14}},
@@ -52,14 +54,18 @@ def template(provider_arn, secret_arn):
         "Role": attr("KnowledgeRole"), "MemorySize": 128, "Timeout": 15,
         "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")},
         "LoggingConfig": {"LogGroup": ref("KnowledgeLogs")}}}
-    resources["GatewayRole"] = role("bedrock-agentcore.amazonaws.com", [
-        statement(["lambda:InvokeFunction"], attr("Knowledge")),
+    api_key = [
         statement(["bedrock-agentcore:GetResourceApiKey"], [
             provider_arn,
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:token-vault/default"),
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"),
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/gab-journey-tools-*")]),
-        statement(["secretsmanager:GetSecretValue"], secret_arn),
+        statement(["secretsmanager:GetSecretValue"], secret_arn)] if provider_arn else []
+    specialists = [statement(["bedrock-agentcore:InvokeAgentRuntime"],
+                             [arn + suffix for arn in specialist_runtime_arns for suffix in ("", "/*")])] if specialist_runtime_arns else []
+    resources["GatewayRole"] = role("bedrock-agentcore.amazonaws.com", [
+        statement(["lambda:InvokeFunction"], attr("Knowledge")),
+        *api_key, *specialists,
         statement(["bedrock-agentcore:GetWorkloadAccessToken"], [
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"),
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/gab-journey-tools-*")]),
