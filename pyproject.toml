@@ -12,6 +12,9 @@ dependencies = [
     "httpx>=0.28,<1",
     "mangum>=0.19,<1",
     "urllib3==2.7.0",
+    # Official Snowflake connector (PyPI project owned by Snowflake Inc.), pinned for the
+    # governed ALPR live path; cryptography comes with pyjwt[crypto].
+    "snowflake-connector-python==4.7.5",
 ]
 
 [project.optional-dependencies]

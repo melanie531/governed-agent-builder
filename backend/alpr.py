@@ -29,6 +29,7 @@ VIEWS = {
 }
 CASE_ID = re.compile(r"^ALPR-C\d{3}$")
 ROW_LIMIT = 200
+LOGIN_TIMEOUT, NETWORK_TIMEOUT, STATEMENT_TIMEOUT = 15, 60, 60
 SNAPSHOT = Path(__file__).with_name("alpr_views_snapshot.json")
 ZERO = decimal.Decimal("0")
 
@@ -53,17 +54,49 @@ def normalize(value):
 _live = {}
 
 
+def _ssm_client():
+    import boto3
+    return boto3.client("ssm")
+
+
+def private_key_der():
+    """Key material stays in memory only; never logged, echoed or baked into artifacts."""
+    from cryptography.hazmat.primitives import serialization
+    prefix = os.environ.get("ALPR_SNOWFLAKE_SSM_PREFIX")
+    parameter = (prefix + "/private-key") if prefix else os.environ.get("ALPR_SNOWFLAKE_KEY_SSM_PARAM")
+    if parameter:
+        pem = _ssm_client().get_parameter(Name=parameter, WithDecryption=True)["Parameter"]["Value"].encode()
+    else:
+        with open(os.environ["ALPR_SNOWFLAKE_KEY_PATH"], "rb") as f:
+            pem = f.read()
+    return serialization.load_pem_private_key(pem, password=None).private_bytes(
+        serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+
+
+def account_and_user():
+    """Account and user come from env, or from project SSM parameters (never committed)."""
+    prefix = os.environ.get("ALPR_SNOWFLAKE_SSM_PREFIX")
+    account, user = os.environ.get("ALPR_SNOWFLAKE_ACCOUNT"), os.environ.get("ALPR_SNOWFLAKE_USER")
+    if prefix and not (account and user):
+        ssm = _ssm_client()
+        account = ssm.get_parameter(Name=prefix + "/account", WithDecryption=True)["Parameter"]["Value"]
+        user = ssm.get_parameter(Name=prefix + "/user", WithDecryption=True)["Parameter"]["Value"]
+    if not account or not user:
+        raise ViewUnavailable("ALPR_LIVE_VIEW_FAILED:ConfigMissing")
+    return account, user
+
+
 def live_connection():
     connection = _live.get("connection")
     if connection is not None and not connection.is_closed():
         return connection
     import snowflake.connector
-    from cryptography.hazmat.primitives import serialization
-    with open(os.environ["ALPR_SNOWFLAKE_KEY_PATH"], "rb") as f:
-        der = serialization.load_pem_private_key(f.read(), password=None).private_bytes(
-            serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    connection = snowflake.connector.connect(account=os.environ["ALPR_SNOWFLAKE_ACCOUNT"], user=os.environ["ALPR_SNOWFLAKE_USER"],
-                                             private_key=der, role=ROLE, warehouse=WAREHOUSE)
+    account, user = account_and_user()
+    connection = snowflake.connector.connect(
+        account=account, user=user,
+        private_key=private_key_der(), role=ROLE, warehouse=WAREHOUSE,
+        login_timeout=LOGIN_TIMEOUT, network_timeout=NETWORK_TIMEOUT,
+        session_parameters={"STATEMENT_TIMEOUT_IN_SECONDS": STATEMENT_TIMEOUT})
     _live["connection"] = isolate(connection)
     return connection
 
@@ -84,8 +117,17 @@ def live_rows(query_id: str, case_id: str) -> list:
     view, order = VIEWS[query_id]
     cursor = live_connection().cursor()
     cursor.execute(f"SELECT * FROM {view} WHERE CASE_ID = %s ORDER BY {order} LIMIT {ROW_LIMIT}", (case_id,))
+    # Real Snowflake query id (cursor.sfqid): joins the Studio run trace to Snowflake QUERY_HISTORY.
+    _live.setdefault("query_ids", []).append({
+        "query_id": query_id, "case_id": case_id, "view": view,
+        "snowflake_query_id": getattr(cursor, "sfqid", None)})
     columns = [c[0] for c in cursor.description]
     return [{k: normalize(v) for k, v in zip(columns, row)} for row in cursor.fetchall()]
+
+
+def consume_query_ids() -> list:
+    """Drain the Snowflake query ids recorded since the last call (evidence, not data)."""
+    return _live.pop("query_ids", [])
 
 
 def rows(query_id: str, case_id: str) -> list:

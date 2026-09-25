@@ -153,7 +153,8 @@ def call_tool(definition: dict, tool_id: str, arguments: dict, scope: dict | Non
                 inner = call_tool(agent["manifest"], inner_tool, dict(inner_arguments), scope)
             except ToolDenied as exc:
                 raise ToolDenied(str(exc) if str(exc).startswith(("CALLER_", "ALPR_")) else "SPECIALIST_INNER_TOOL_DENIED") from exc
-            inner_calls.append({"tool": inner_tool, "via": GATEWAY, "identity": agent["service_identity"], "source": f"snowflake:{inner['query_id']}"})
+            inner_calls.append({"tool": inner_tool, "via": GATEWAY, "identity": agent["service_identity"], "source": f"snowflake:{inner['query_id']}",
+                                **({"snowflake_query_ids": inner["snowflake_query_ids"]} if inner.get("snowflake_query_ids") else {})})
             found[inner["query_id"]] = inner["rows"]
         if case_id:
             from backend import alpr
@@ -184,7 +185,9 @@ def call_tool(definition: dict, tool_id: str, arguments: dict, scope: dict | Non
             raise ToolDenied(str(exc)) from None
         # Owner names are synthetic placeholders, not masked values.
         return {"query_id": arguments["query_id"], "case_id": arguments["case_id"], "view": query["view"], "via": GATEWAY,
-                "rows": rows, "masked": False, "synthetic": True}
+                "rows": rows, "masked": False, "synthetic": True,
+                # Real Snowflake query ids (cursor.sfqid) for this call; [] on the snapshot path.
+                "snowflake_query_ids": alpr.consume_query_ids()}
     return {"query_id": arguments["query_id"], "view": query["view"], "via": GATEWAY, "rows": [dict(r) for r in query["rows"]], "masked": True}
 
 

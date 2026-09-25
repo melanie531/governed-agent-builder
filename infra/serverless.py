@@ -74,6 +74,12 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
     env = {"HOSTED_PREVIEW": "1", "EXECUTION_MODE": "local", "PUBLIC_URL": sub("https://${Distribution.DomainName}"), "STATE_TABLE": ref("State"), "EXPORT_BUCKET": ref("Exports"), "COGNITO_REGION": ref("AWS::Region"), "COGNITO_USER_POOL_ID": ref("Pool"), "COGNITO_CLIENT_ID": ref("Client"), "COGNITO_DOMAIN": sub("https://${Domain}.auth.${AWS::Region}.amazoncognito.com"), "JOB_QUEUE_URL": ref("Jobs")}
     read = {"Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"], "Resource": attr("State")}
     write = {"Effect": "Allow", "Action": ["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"], "Resource": attr("State")}
+    # Live governed ALPR connector: pinned live source (fails closed, no snapshot fallback) and
+    # protected credential injection via SSM SecureString; the private key is never baked into
+    # the artifact. Only the two lambdas that execute cases get the env and the parameter read.
+    alpr_env = {"ALPR_VIEW_SOURCE": "live", "ALPR_SNOWFLAKE_SSM_PREFIX": "/governed-agent-builder/alpr"}
+    alpr_read = {"Effect": "Allow", "Action": "ssm:GetParameter",
+                 "Resource": sub("arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/governed-agent-builder/alpr/*")}
     for name, handler, timeout in [("Business", "api_handler", 29), ("Auth", "auth_handler", 29), ("Authorizer", "authorizer", 15), ("Worker", "worker_handler", 60), ("Dispatcher", "dispatch_handler", 30)]:
         logs = name+"Logs"
         resources[logs] = {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain", "Properties": {"LogGroupName": sub("/governed-agent-builder-serverless/"+name.lower()), "RetentionInDays": 14}}
@@ -96,12 +102,13 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
         if name == "Worker" and foundation_producer is not None:
             statements.extend(foundation_producer_statements(**foundation_producer))
         if name == "Worker": statements.append({"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:SendMessage"], "Resource": attr("Jobs")})
+        if name in ("Business", "Worker"): statements.append(copy.deepcopy(alpr_read))
         if name == "Dispatcher": statements.extend([
             {"Effect": "Allow", "Action": ["dynamodb:DescribeStream", "dynamodb:GetRecords", "dynamodb:GetShardIterator"], "Resource": attr("State", "StreamArn")},
             {"Effect": "Allow", "Action": "dynamodb:ListStreams", "Resource": attr("State", "StreamArn")},
             {"Effect": "Allow", "Action": "sqs:SendMessage", "Resource": [attr("Jobs"), attr("DispatchFailures")]}])
         resources[name+"Role"] = {"Type": "AWS::IAM::Role", "Properties": {"AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}, "Policies": [{"PolicyName": "ScopedRuntime", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
-        resources[name] = {"Type": "AWS::Lambda::Function", "Properties": {"Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless."+handler, "Role": attr(name+"Role"), "MemorySize": 512, "Timeout": timeout, "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")}, "Environment": {"Variables": {**env, **({"VERIFICATION_TABLE": ref("Verification")} if name == "Auth" else {})} if name != "Dispatcher" else {"JOB_QUEUE_URL": ref("Jobs")}}, "LoggingConfig": {"LogGroup": ref(logs)}}}
+        resources[name] = {"Type": "AWS::Lambda::Function", "Properties": {"Runtime": "python3.13", "Architectures": ["arm64"], "Handler": "backend.serverless."+handler, "Role": attr(name+"Role"), "MemorySize": 512, "Timeout": timeout, "Code": {"S3Bucket": ref("ArtifactBucket"), "S3Key": ref("ArtifactKey")}, "Environment": {"Variables": {**env, **(alpr_env if name in ("Business", "Worker") else {}), **({"VERIFICATION_TABLE": ref("Verification")} if name == "Auth" else {})} if name != "Dispatcher" else {"JOB_QUEUE_URL": ref("Jobs")}}, "LoggingConfig": {"LogGroup": ref(logs)}}}
     # Dedicated workload integration, deliberately outside /api and CloudFront.
     # Uses the existing authority table; no session auth or model permission.
     exchange_keys = ["_revision", "components", "foundations", "grants", "agents", "versions",
