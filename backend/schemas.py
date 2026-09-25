@@ -109,11 +109,17 @@ class Decision(Strict):
     approve: bool
     reason: str = Field(min_length=5, max_length=1000)
 
+class GrantScope(Strict):
+    operations: list[str] = Field(max_length=20)
+    data: list[str] = Field(max_length=50)
+
 class Grant(Strict):
     reason: str | None = Field(default=None, max_length=1000)
     persona_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     component_id: str
     enabled: bool
+    # Caller's approved business operations + data scope; omitted = the capability's full declared scope.
+    scope: GrantScope | None = None
 
 class CatalogUpdate(Strict):
     approved: bool

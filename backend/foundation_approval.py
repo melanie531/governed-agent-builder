@@ -5,7 +5,9 @@ later. All writes participate in the repository's serializable CAS transaction.
 """
 import copy
 import json
+import re
 import time
+from urllib.parse import urlparse
 from fastapi import HTTPException
 from pydantic import Field
 from .schemas import Strict
@@ -176,8 +178,25 @@ def gateway_tools(session, url):
     return GatewayMCP(session, url).discover()
 
 
-def platform_metadata(raw=None):
-    """Resolve endpoint/role ONLY from current project CFN; verify actual targets."""
+def verify_discovered_tools(session, endpoint, tools):
+    """mcpServer targets expose no inline schema, so live Gateway discovery must expose
+    EXACTLY the approved tool names/schemas. Every mismatch fails closed with a 409."""
+    try:
+        discovered = {t['name']: t.get('inputSchema') for t in gateway_tools(session, endpoint)}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(409, 'TOOL_TARGET_DISCOVERY_REQUIRED') from None
+    for tool in tools:
+        if discovered.get(tool['name']) != tool['inputSchema'] or tool['endpoint'] != endpoint:
+            raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
+
+
+def platform_metadata(raw=None, approved_targets=None):
+    """Resolve endpoint/role ONLY from current project CFN; verify actual targets.
+
+    approved_targets maps Gateway target name -> tool_target() record from the catalog.
+    """
     from scripts.foundation_target import StudioTarget, PROJECT, STACK
     import boto3
     session = boto3.Session(region_name=GATEWAY_REGION)
@@ -215,41 +234,83 @@ def platform_metadata(raw=None):
                 if raw['model']['targetDigest'] != digest(detail['targetConfiguration']):
                     raise HTTPException(409, 'MODEL_TARGET_DIGEST_REQUIRED')
             else:
-                mcp = detail['targetConfiguration'].get('mcp') or {}
-                if 'lambda' in mcp:
-                    inline = mcp['lambda']['toolSchema']['inlinePayload']
-                    for tool in raw['tools']:
-                        match = next((t for t in inline if detail['name']+'___'+t['name'] == tool['name']), None)
-                        if not match or match['inputSchema'] != tool['inputSchema'] or tool['endpoint'] != base+suffix:
-                            raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
-                elif 'mcpServer' in mcp:
-                    # An mcpServer target (e.g. a specialist Runtime B behind this Gateway)
-                    # has no inline schema in the target configuration. Verify: (1) the
-                    # endpoint is this account's same-region Runtime data plane, (2) the
-                    # credential configuration is a complete IAM SigV4 provider, and
-                    # (3) live Gateway discovery exposes EXACTLY the approved tool
-                    # names/schemas. Every mismatch fails closed with a controlled 409.
-                    if not runtime_mcp_endpoint(mcp['mcpServer'].get('endpoint'), target.account):
-                        raise HTTPException(409, 'RUNTIME_MCP_SERVER_ENDPOINT_REQUIRED')
-                    if not iam_sigv4_credentials(detail.get('credentialProviderConfigurations')):
-                        raise HTTPException(409, 'IAM_SIGV4_CREDENTIAL_PROVIDER_REQUIRED')
-                    try:
-                        discovered = {t['name']: t.get('inputSchema') for t in gateway_tools(session, base + suffix)}
-                    except HTTPException:
-                        raise
-                    except Exception:
-                        raise HTTPException(409, 'TOOL_TARGET_DISCOVERY_REQUIRED') from None
-                    for tool in raw['tools']:
-                        if (discovered.get(tool['name']) != tool['inputSchema']
-                                or tool['endpoint'] != base+suffix):
-                            raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
-                else:
-                    # Unknown tools target shape (openApiSchema/smithyModel/absent): fail closed.
-                    raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
+                verify_tool_target(detail, raw['tools'], base+suffix, approved_targets or {},
+                                   session, target.account)
     result = {'endpoint': endpoint, 'role': role}
     if raw is not None and runtime_model is not None:
         result['model'] = runtime_model
     return result
+
+
+# AgentCore Gateway MCP target types an approved catalog tool may bind to, with the
+# outbound auth each accepts. Data only: nothing here calls the cloud.
+TARGET_OUTBOUND_AUTH = {'lambda': {'GATEWAY_IAM_ROLE'}, 'mcpServer': {'GATEWAY_IAM_ROLE', 'OAUTH', 'API_KEY'}}
+TARGET_FIELDS = {'lambda': {'type', 'name', 'lambda_arn', 'outbound_auth'},
+                 'mcpServer': {'type', 'name', 'endpoint', 'outbound_auth'}}
+
+
+def tool_target(component):
+    """Validated Gateway target record of a catalog tool; None for a local-only tool."""
+    target = component.get('target')
+    if target is None:
+        return None
+    kind = target.get('type') if isinstance(target, dict) else None
+    fields = TARGET_FIELDS.get(kind, set())
+    if (not fields or set(target) - {'placeholder'} != fields or target.get('placeholder', False) not in (True, False)
+            or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', str(target['name']))
+            or target['outbound_auth'] not in TARGET_OUTBOUND_AUTH[kind]):
+        raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
+    if kind == 'mcpServer':
+        url = urlparse(str(target['endpoint']))
+        if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+            raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
+    elif not re.fullmatch(r'arn:aws:lambda:[a-z0-9-]+:\d{12}:function:[A-Za-z0-9_-]+', str(target['lambda_arn'])):
+        raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
+    return dict(target)
+
+
+def verify_tool_target(detail, tools, endpoint, approved_targets, session=None, account=None):
+    """Lambda targets carry an inline schema. mcpServer targets expose no inline schema, so they
+    are verified against governance records instead. Two admissible mcpServer shapes:
+
+    1. A catalog-approved, non-placeholder target record (external MCP servers registered in the
+       catalog): live endpoint and outbound auth must exactly match the approved record, and tool
+       names must carry the Gateway target prefix.
+    2. No catalog record (a specialist Runtime B behind this Gateway): the endpoint must be this
+       account's same-region AgentCore Runtime data plane and the credential configuration a
+       complete IAM SigV4 provider.
+
+    In both shapes, when a live session is available, Gateway discovery must expose EXACTLY the
+    approved tool names/schemas. Every mismatch fails closed with a controlled 409.
+    """
+    mcp = detail['targetConfiguration'].get('mcp') or {}
+    if set(mcp) == {'lambda'}:
+        inline = mcp['lambda']['toolSchema']['inlinePayload']
+        for tool in tools:
+            match = next((t for t in inline if detail['name']+'___'+t['name'] == tool['name']), None)
+            if not match or match['inputSchema'] != tool['inputSchema'] or tool['endpoint'] != endpoint:
+                raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
+        return
+    approved = approved_targets.get(detail['name'])
+    if set(mcp) != {'mcpServer'}:
+        # Unknown tools target shape (openApiSchema/smithyModel/absent): fail closed. When the
+        # target name was approved as an mcpServer record, surface the drift explicitly.
+        raise HTTPException(409, 'APPROVED_MCP_SERVER_TARGET_REQUIRED' if approved else 'TOOL_TARGET_SCHEMA_REQUIRED')
+    if approved is not None:
+        auth = [c.get('credentialProviderType') for c in detail.get('credentialProviderConfigurations', [])]
+        if (approved['type'] != 'mcpServer' or approved.get('placeholder')
+                or mcp['mcpServer'] != {'endpoint': approved['endpoint']} or auth != [approved['outbound_auth']]):
+            raise HTTPException(409, 'APPROVED_MCP_SERVER_TARGET_REQUIRED')
+        for tool in tools:
+            if not tool['name'].startswith(detail['name']+'___') or tool['endpoint'] != endpoint:
+                raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
+    else:
+        if not runtime_mcp_endpoint(mcp['mcpServer'].get('endpoint'), account):
+            raise HTTPException(409, 'RUNTIME_MCP_SERVER_ENDPOINT_REQUIRED')
+        if not iam_sigv4_credentials(detail.get('credentialProviderConfigurations')):
+            raise HTTPException(409, 'IAM_SIGV4_CREDENTIAL_PROVIDER_REQUIRED')
+    if session is not None:
+        verify_discovered_tools(session, endpoint, tools)
 
 
 def runtime_platform_model(control, account, model):

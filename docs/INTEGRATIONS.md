@@ -58,3 +58,44 @@ CloudWatch and existing Splunk are **not connected**. The UI trace is a local SQ
 ## Integration-test gate
 
 No live integration test is enabled in the test suite or GitHub workflow. Required preconditions: explicit operator approval for cloud resources/model spend, a configured approved AWS account/region and least-privilege workload identity, Okta production authentication, both verified Gateways, approved real model routes, quotas, runtime artifact and version/digest checks, isolated synthetic integration data, budget and teardown plan. Until all are ready, `EXECUTION_MODE=aws` fails closed. Never silently substitute the local fixture runner in real mode.
+
+## Tool-integration patterns: specialist as MCP tool via Gateway and builtin MCP Snowflake
+
+Both are fixture catalog `tool` components (`agent-risk-analyst`, `snowflake-approved-views`)
+composed only by the Research foundation. Both are MCP tools served through the Tool Gateway:
+the upper agent discovers them with `tools/list` and invokes them with `tools/call`, exactly
+like any other MCP tool. There is no agent-to-agent (A2A) path or A2A Registry record. They
+follow the same Catalog → Manifest → Governance path as other tools: not in initial grants,
+admin grant or approved request required, version pinned in `component_versions`, and grants
+re-checked on every job step and invoke, so revocation blocks later calls.
+`backend/harness.py` simulates the Gateway locally (`list_tools`, `call_tool`); nothing is
+deployed or connected.
+
+- **Specialist as MCP tool via Gateway** — use when the question needs extra business reasoning
+  or multi-step orchestration. A specialist is a platform-curated, admin-owned catalog entry
+  (synthetic, pinned v1). Only a `question` argument is accepted; `role`, `tenant_id` or any
+  other model-supplied identity field is rejected, never interpreted.
+- **Builder-created agents** built in the Studio are directly usable (test, then invoke). They do
+  not need to be republished as specialists, and they are not MCP tools of other agents.
+- **Nested governance** — when a specialist runs its own inner tools, the specialist's own
+  manifest and service identity govern them. The caller's grant only decides whether the caller
+  may call the specialist tool. Caller tool grants are never inherited or intersected into the
+  specialist's internals; an inner call that the specialist's manifest does not allow fails closed.
+- **Builtin MCP Snowflake connector** — use for pure retrieval of pre-approved data. Only
+  whitelisted `query_id` values over approved read-only views run; there is no SQL argument
+  and no generic `execute_sql`. Rows are synthetic and masked.
+
+Before any live connection: a least-privilege read-only Snowflake service identity, a
+credential held only in an approved secret store, e.g. server-side placeholders
+`SNOWFLAKE_MCP_SECRET_ARN=<approved-secret-store-reference>` and
+`SNOWFLAKE_MCP_SERVICE_ROLE=<least-privilege-read-only-role>`, and a verified AgentCore
+Gateway target for the builtin connector. Credentials never belong in prompts, logs, browser
+bundles, git or command arguments. These variable names are documentation, not an
+implemented configuration contract. `EXECUTION_MODE=aws` still fails closed.
+
+`scripts/snowflake_readonly_smoke.py` is a separate, opt-in operator smoke of the read-only
+approved-view contract against a real account. It is not used by the app. It refuses unless
+`SNOWFLAKE_SMOKE=1` and every `SNOWFLAKE_SMOKE_SSM_*` variable holds an SSM parameter name;
+all values, including the view whitelist, are read from SSM at run time. It only runs
+`SELECT * FROM "<db>"."<schema>"."<approved view>" LIMIT 5`, accepts no SQL, and prints counts
+only.

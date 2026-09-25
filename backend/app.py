@@ -16,14 +16,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact
+from .foundation_approval import RegisterFoundation, ApproveFoundation, register as register_source, compile_approval, platform_metadata, FinalizeFoundation, finalize_artifact, tool_target
 from .diagnostic_approval import (SubmitDiagnostic, ReviewDiagnostic, handle as diagnostic_operator,
                                   inspect_candidate as diagnostic_candidate)
 from . import self_service_admission as self_service
 from .foundation_runs import get as get_foundation_record
 from .catalog import PERSONAS, SAMPLE_DATASET
 from foundations.web_research import FOUNDATION as WEB_FOUNDATION, SKILLS as REPORT_SKILLS, skill_binding
-from .harness import evaluate, run_case
+from .harness import evaluate, run_case, tool_scope
 from .schemas import CapabilityRequest, CatalogUpdate, Decision, DefinitionInput, Deploy, GeneralRequest, GeneralRequestStatus, Grant, Invoke, Login, PolicyUpdate, RoleSwitch
 from .store import Store
 from .hosted_auth import HostedAuth
@@ -87,7 +87,39 @@ def validate_definition(db, persona, definition):
             raise HTTPException(403, f"Component not authorized or compatible: {component_id}")
         if component["version"] != definition["component_versions"][component_id]:
             raise HTTPException(409, "Component version changed; revise and retest")
+        tool_target(component)
     return foundation
+
+
+def approved_targets(db, tool_ids):
+    """Gateway target name -> approved catalog target record for the given tools."""
+    targets = [tool_target(resource(db, "components", i)) for i in tool_ids]
+    return {t["name"]: t for t in targets if t}
+
+
+def caller_scope_key(persona, component_id):
+    return "caller-scope:" + grant_scope(persona, component_id)
+
+
+def put_caller_scope(db, persona, component_id, requested=None):
+    """Snapshot the caller's approved operations + data scope at grant time. Admins may only
+    narrow the capability's declared scope, so a later catalog change never widens a grant."""
+    full = tool_scope(component_id)
+    if full is None:
+        if requested is not None:
+            raise HTTPException(422, "Capability has no operation or data scope")
+        return
+    scope = requested or full
+    if not set(scope["operations"]) <= set(full["operations"]) or not set(scope["data"]) <= set(full["data"]):
+        raise HTTPException(422, "Grant scope must narrow the capability's declared scope")
+    db.insert('settings', {'key': caller_scope_key(persona, component_id),
+                           'body': json.dumps({k: sorted(set(scope[k])) for k in ("operations", "data")})}, upsert=True)
+
+
+def caller_scopes(db, persona, definition):
+    """Server-held caller grant scopes for the definition's tools; never read from the definition."""
+    rows = {t: db.select('settings', columns=['body'], where=[('key', '=', caller_scope_key(persona, t))]).fetchone() for t in definition["tools"]}
+    return {t: json.loads(row[0]) for t, row in rows.items() if row}
 
 
 def agent_access(db, persona, agent_id):
@@ -648,7 +680,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 raise HTTPException(409, "Stale evaluation evidence or changed policy; retest required")
             if db.select('audit', count=True, where=[('actor', '=', persona['id']), ('action', '=', 'local_invoke'), ('created', '>', time.time() - 60)]).fetchone()[0] >= 30:
                 raise HTTPException(429, "Local invocation cap: 30 per minute")
-            output = run_case(definition, data.input)
+            output = run_case(definition, data.input, caller_scopes(db, persona, definition))
             audit(db, persona["id"], "local_invoke", agent_id, f"version={data.version}")
             return {**output, "mode": mode_label, "version": data.version}
 
@@ -808,7 +840,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         actor = who(request, True)
         if not hosted:
             raise HTTPException(403, "HOSTED_ADMIN_REVIEW_REQUIRED")
-        platform = platform_metadata(data.config)
+        with store.tx() as db:
+            targets = approved_targets(db, data.tool_ids)
+        platform = platform_metadata(data.config, targets)
         with store.tx() as db:
             return register_source(db, actor, data, platform)
 
@@ -847,7 +881,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             source = get_foundation_record(db, 'foundation-source:'+definition['foundation_id'])
             if not source:
                 raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
-            platform = platform_metadata(source['config'])
+            platform = platform_metadata(source['config'], approved_targets(db, source['tool_ids']))
             return compile_approval(db, actor, data, principal(db, definition['owner']), platform)
 
     @app.post("/api/admin/foundation-artifacts/finalize")
@@ -861,7 +895,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if not source:
                 raise HTTPException(409, "REGISTERED_SOURCE_REQUIRED")
             return finalize_artifact(db, principal(db, actor['id']), data,
-                principal(db, definition['owner']), platform_metadata(source['config']))
+                principal(db, definition['owner']), platform_metadata(source['config'], approved_targets(db, source['tool_ids'])))
 
     @app.post("/api/admin/foundation-policies")
     def approve_self_service_policy(data: self_service.FoundationPolicy, request: Request):
@@ -909,9 +943,11 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             if data.enabled:
                 db.insert('grants', {'persona': data.persona_id, 'component': data.component_id}, ignore=True)
                 db.insert('settings', {'key': grant_scope(subject, data.component_id), 'body': 'true'}, upsert=True)
+                put_caller_scope(db, subject, data.component_id, data.scope.model_dump() if data.scope else None)
             else:
                 db.delete('grants', where=[('persona', '=', data.persona_id), ('component', '=', data.component_id)])
                 db.delete('settings', where=[('key', '=', grant_scope(subject, data.component_id))])
+                db.delete('settings', where=[('key', '=', caller_scope_key(subject, data.component_id))])
             from .foundation_runs import get as epoch_get, put as epoch_put
             epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
             audit(db, persona["id"], "grant" if data.enabled else "revoke", data.persona_id, json.dumps({"component": data.component_id, "reason": data.reason}))
@@ -942,6 +978,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                     raise HTTPException(403, "Approval or data policy blocks this capability")
                 db.insert('grants', {'persona': row['requester'], 'component': row['component']}, ignore=True)
                 db.insert('settings', {'key': grant_scope(subject, row['component']), 'body': 'true'}, upsert=True)
+                put_caller_scope(db, subject, row['component'])
             db.update('requests', {'status': 'APPROVED' if data.approve else 'REJECTED', 'decision': data.reason}, where=[('id', '=', request_id)])
             from .foundation_runs import get as epoch_get, put as epoch_put
             epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
@@ -1041,7 +1078,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 validate_current(db, persona, definition)
                 stage = job["stage"]
                 if stage == "EVALUATING":
-                    result = evaluate(definition, policy(db))
+                    result = evaluate(definition, policy(db), caller_scopes(db, persona, definition))
                     result.update({"definition_digest": definition["digest"], "dataset_ref": definition["dataset_ref"], "version": job["version"], "policy_version": policy(db)["version"]})
                     next_stage = "PASS" if result["passed"] else "NEEDS_CHANGES"
                     db.update('jobs', {'result': json.dumps(result)}, where=[('id', '=', job_id)])
