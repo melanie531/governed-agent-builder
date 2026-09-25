@@ -47,16 +47,48 @@ def test_live_requires_explicit_confirmation():
         build_reader(cfg(live_confirmed=False))
 
 
-def test_bootstrap_identities_are_refused():
-    with pytest.raises(AlprLiveConfigError, match="[Bb]ootstrap"):
-        build_reader(cfg(user="GAB_BOOTSTRAP"))
-    with pytest.raises(AlprLiveConfigError, match="[Bb]ootstrap"):
+def test_bootstrap_role_is_refused_but_bootstrap_user_is_accepted():
+    # Provisioning grants GAB_QUERY_READONLY to USER GAB_BOOTSTRAP: the user
+    # name is acceptable; what must NEVER be used is a bootstrap ROLE, and the
+    # active role is verified in-session by the reader.
+    with pytest.raises(AlprLiveConfigError, match="role"):
         build_reader(cfg(role="GAB_BOOTSTRAP_ROLE"))
+    reader = build_reader(cfg(user="GAB_BOOTSTRAP"))
+    assert isinstance(reader, AlprReadOnlyReader)
 
 
 def test_only_readonly_role_is_accepted():
     with pytest.raises(AlprLiveConfigError, match="role"):
         build_reader(cfg(role="ACCOUNTADMIN"))
+
+
+def test_account_url_must_be_exact_https_snowflake_host():
+    """JWT egress guard: the bearer token may only ever go to the exact
+    HTTPS *.snowflakecomputing.com host — no other scheme, userinfo, port,
+    path, query or fragment."""
+    for bad in (
+        "http://tcljaka-hr19243.snowflakecomputing.com",          # not https
+        "https://evil.example.com",                                # wrong domain
+        "https://tcljaka-hr19243.snowflakecomputing.com.evil.com", # suffix spoof
+        "https://user@tcljaka-hr19243.snowflakecomputing.com",     # userinfo
+        "https://tcljaka-hr19243.snowflakecomputing.com/steal",    # path
+        "https://tcljaka-hr19243.snowflakecomputing.com:8443",     # port
+        "https://tcljaka-hr19243.snowflakecomputing.com?x=1",      # query
+        "https://snowflakecomputing.com",                          # no account
+    ):
+        with pytest.raises(AlprLiveConfigError, match="account_url"):
+            build_reader(cfg(account_url=bad))
+
+
+def test_live_transport_is_marked_live():
+    assert LiveSqlApiTransport(cfg()).is_live is True
+
+
+def test_live_http_calls_never_follow_redirects():
+    import inspect
+    src = inspect.getsource(__import__("backend.alpr_live", fromlist=["x"]))
+    assert "allow_redirects=False" in src, \
+        "requests must not follow redirects: a redirect could exfiltrate the JWT"
 
 
 def test_offline_mode_requires_injected_transport_no_silent_fixture():

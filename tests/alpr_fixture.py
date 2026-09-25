@@ -18,6 +18,7 @@ that matter for the fail-closed reader design:
   separately.
 """
 import copy
+import re
 from decimal import Decimal
 
 EVENT_AT = "2026-08-10 10:00:00"
@@ -148,10 +149,12 @@ class FakeSqlApiTransport:
     session unless an explicit session is requested).
     """
 
-    def __init__(self, views=None, *, force_role=None, force_secondary=None):
+    def __init__(self, views=None, *, force_role=None, force_secondary=None,
+                 force_partitions=None):
         self.views = views if views is not None else fixture_views()
         self.force_role = force_role
         self.force_secondary = force_secondary
+        self.force_partitions = force_partitions
         self.submitted = []
         self.calls = 0
         self._responses = {}
@@ -168,6 +171,12 @@ class FakeSqlApiTransport:
         self.calls += 1
         self.submitted.append(body)
         stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+            raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
         role = body.get("role")
         secondary = SECONDARY_ALL  # fresh session default: secondary roles not proven off
         handles = []
@@ -183,9 +192,16 @@ class FakeSqlApiTransport:
                         "data": [[self.force_role or role, self.force_secondary or secondary]]}
             elif upper.startswith("SELECT") and " FROM " in upper:
                 view = self._view_of(stmt)
-                case_id = body["bindings"]["1"]["value"]
+                match = re.search(r"WHERE CASE_ID = '(CASE-[0-9]{3})'", stmt)
+                if not match:
+                    raise AssertionError(f"data SELECT lacks a validated case literal: {stmt}")
+                case_id = match.group(1)
                 rows = [list(r) for r in self.views[view]["rows"] if r[0] == case_id]
-                resp = {"resultSetMetaData": {"rowType": self.views[view]["types"]}, "data": rows}
+                meta = {"rowType": self.views[view]["types"]}
+                if self.force_partitions:
+                    meta["partitionInfo"] = [{"rowCount": len(rows)}
+                                             for _ in range(self.force_partitions)]
+                resp = {"resultSetMetaData": meta, "data": rows}
             else:
                 resp = {"resultSetMetaData": {"rowType": [_t("status")]},
                         "data": [["Statement executed successfully."]]}

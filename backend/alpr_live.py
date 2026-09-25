@@ -30,21 +30,43 @@ This module prepares (but does not perform) live Snowflake access:
 import base64
 import hashlib
 import json
+import re
 import time
+from urllib.parse import urlsplit
 
 from backend.alpr_reader import AlprReadOnlyReader, READER_ROLE
 
 _REQUIRED_LIVE_FIELDS = ("account_url", "user", "role", "warehouse", "private_key_path")
 _APPROVED = "GAB_DEMO_DB.ALPR_APPROVED"
 _BASE = "GAB_DEMO_DB.ALPR_DEMO"
+# JWT egress guard: exact HTTPS Snowflake host only — account label followed by
+# .snowflakecomputing.com, no userinfo, port, path, query or fragment.
+_SNOWFLAKE_HOST = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.snowflakecomputing\.com\Z",
+                             re.ASCII)
 
 
 class AlprLiveConfigError(Exception):
     """Configuration rejected; the reader fails closed."""
 
 
-def _is_bootstrap(name):
+def _is_bootstrap_role(name):
     return "BOOTSTRAP" in str(name).upper()
+
+
+def _validate_account_url(url):
+    """Return the canonical https base URL or raise. The bearer JWT may only
+    ever be sent to this exact host: refuse anything that could redirect or
+    exfiltrate the token."""
+    parts = urlsplit(str(url))
+    if (parts.scheme != "https" or parts.username is not None
+            or parts.password is not None or parts.port is not None
+            or parts.path not in ("", "/") or parts.query or parts.fragment
+            or not parts.hostname
+            or not _SNOWFLAKE_HOST.fullmatch(parts.hostname)):
+        raise AlprLiveConfigError(
+            "account_url must be exactly https://<account>.snowflakecomputing.com "
+            "(no userinfo, port, path, query or fragment)")
+    return f"https://{parts.hostname}"
 
 
 def build_reader(config, *, transport=None, **reader_kwargs):
@@ -68,8 +90,12 @@ def build_reader(config, *, transport=None, **reader_kwargs):
     for field in _REQUIRED_LIVE_FIELDS:
         if not config.get(field):
             raise AlprLiveConfigError(f"live config missing required field: {field}")
-    if _is_bootstrap(config["user"]) or _is_bootstrap(config["role"]):
-        raise AlprLiveConfigError("bootstrap identities are forbidden for the live reader")
+    _validate_account_url(config["account_url"])
+    # The provisioned account grants GAB_QUERY_READONLY to USER GAB_BOOTSTRAP:
+    # that USER is acceptable. What is forbidden is any bootstrap ROLE; the
+    # reader also verifies the active role in-session on every fetch.
+    if _is_bootstrap_role(config["role"]):
+        raise AlprLiveConfigError("bootstrap role is forbidden for the live reader")
     if config["role"] != READER_ROLE:
         raise AlprLiveConfigError(f"live role must be {READER_ROLE}")
     if transport is not None:
@@ -90,13 +116,14 @@ class LiveSqlApiTransport:
         for field in _REQUIRED_LIVE_FIELDS:
             if not config.get(field):
                 raise AlprLiveConfigError(f"live config missing required field: {field}")
-        if _is_bootstrap(config["user"]) or _is_bootstrap(config["role"]):
-            raise AlprLiveConfigError("bootstrap identities are forbidden")
+        if _is_bootstrap_role(config["role"]):
+            raise AlprLiveConfigError("bootstrap role is forbidden")
         self._config = dict(config)
-        self._base = config["account_url"].rstrip("/")
+        self._base = _validate_account_url(config["account_url"])
         self._key_loaded = False
         self._key = None
         self.calls = 0
+        self.is_live = True
 
     # -- auth (lazy) ------------------------------------------------
     def _load_key(self):
@@ -139,9 +166,22 @@ class LiveSqlApiTransport:
         payload = dict(body)
         payload.setdefault("warehouse", self._config["warehouse"])
         response = requests.post(self._base + "/api/v2/statements",
-                                 headers=self._headers(), json=payload, timeout=35)
+                                 headers=self._headers(), json=payload, timeout=35,
+                                 allow_redirects=False)
         document = response.json()
-        if response.status_code not in (200, 202):
+        # Async multi-statement: 202 + statementStatusUrl; poll the parent
+        # handle until the request completes, then read statementHandles.
+        deadline = time.time() + 120
+        while response.status_code == 202:
+            if time.time() > deadline:
+                raise AlprLiveConfigError("SQL API request still running at deadline")
+            time.sleep(2)
+            handle = document["statementHandle"]
+            response = requests.get(self._base + "/api/v2/statements/" + handle,
+                                    headers=self._headers(), timeout=30,
+                                    allow_redirects=False)
+            document = response.json()
+        if response.status_code != 200:
             raise AlprLiveConfigError(
                 f"SQL API rejected the request (HTTP {response.status_code}, "
                 f"code {document.get('code')})")
@@ -153,13 +193,15 @@ class LiveSqlApiTransport:
         import requests
         self.calls += 1
         response = requests.get(self._base + "/api/v2/statements/" + handle,
-                                headers=self._headers(), timeout=30)
+                                headers=self._headers(), timeout=30,
+                                allow_redirects=False)
         for _ in range(15):
             if response.status_code != 202:
                 break
             time.sleep(2)
             response = requests.get(self._base + "/api/v2/statements/" + handle,
-                                    headers=self._headers(), timeout=30)
+                                    headers=self._headers(), timeout=30,
+                                    allow_redirects=False)
         document = response.json()
         if response.status_code != 200:
             raise AlprLiveConfigError(
