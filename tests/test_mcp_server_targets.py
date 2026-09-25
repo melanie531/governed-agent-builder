@@ -15,6 +15,12 @@ ENDPOINT = "https://synthetic-gateway.example.invalid/mcp"
 MCP_TARGET = {"type": "mcpServer", "name": "synthetic-mcp", "endpoint": "https://synthetic-mcp.example.invalid/mcp", "outbound_auth": "OAUTH"}
 LAMBDA_TARGET = {"type": "lambda", "name": "synthetic-fn", "lambda_arn": "arn:aws:lambda:us-west-2:000000000000:function:synthetic-fn", "outbound_auth": "GATEWAY_IAM_ROLE"}
 TOOL = {"name": "synthetic-mcp___lookup", "endpoint": ENDPOINT, "inputSchema": {"type": "object"}}
+RUNTIME_TARGET = {"type": "mcpServer", "name": "synthetic-runtime", "outbound_auth": "GATEWAY_IAM_ROLE",
+                  "endpoint": "https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-west-2%3A000000000000%3Aruntime%2Fsynthetic-abc/invocations?qualifier=DEFAULT"}
+
+
+def discover(url):
+    return [{"name": TOOL["name"], "inputSchema": TOOL["inputSchema"]}]
 
 
 def component(component_id):
@@ -38,7 +44,7 @@ def test_specialist_is_registered_as_admin_owned_platform_curated_mcp_server_tar
     assert tool_target(component("synthetic-search")) is None
 
 
-@pytest.mark.parametrize("target", [MCP_TARGET, LAMBDA_TARGET, {**MCP_TARGET, "outbound_auth": "API_KEY"}])
+@pytest.mark.parametrize("target", [MCP_TARGET, LAMBDA_TARGET, {**MCP_TARGET, "outbound_auth": "API_KEY"}, RUNTIME_TARGET])
 def test_lambda_and_mcp_server_targets_are_both_supported(target):
     assert tool_target({"target": target}) == target
 
@@ -54,6 +60,9 @@ def test_lambda_and_mcp_server_targets_are_both_supported(target):
     {**MCP_TARGET, "placeholder": "yes"},
     {**LAMBDA_TARGET, "outbound_auth": "OAUTH"},
     {**LAMBDA_TARGET, "lambda_arn": "arn:aws:lambda:us-west-2:1:function:x"},
+    # IAM SigV4 outbound is only for a same-region AgentCore Runtime MCP endpoint.
+    {**MCP_TARGET, "outbound_auth": "GATEWAY_IAM_ROLE"},
+    {**RUNTIME_TARGET, "endpoint": RUNTIME_TARGET["endpoint"].replace("us-west-2", "us-east-1")},
     "mcpServer",
 ])
 def test_malformed_targets_fail_closed(target):
@@ -107,9 +116,14 @@ def test_lambda_target_verification_is_unchanged():
 
 def test_mcp_server_gateway_target_must_match_an_approved_catalog_record():
     approved = {"synthetic-mcp": MCP_TARGET}
-    verify_tool_target(mcp_detail(), [TOOL], ENDPOINT, approved)
+    verify_tool_target(mcp_detail(), [TOOL], ENDPOINT, approved, discover=discover)
     with pytest.raises(HTTPException, match="TOOL_TARGET_SCHEMA_REQUIRED"):
-        verify_tool_target(mcp_detail(), [{**TOOL, "name": "other___lookup"}], ENDPOINT, approved)
+        verify_tool_target(mcp_detail(), [{**TOOL, "name": "other___lookup"}], ENDPOINT, approved, discover=discover)
+    # No inline schema: live discovery is required and must match exactly.
+    with pytest.raises(HTTPException, match="TOOL_TARGET_DISCOVERY_REQUIRED"):
+        verify_tool_target(mcp_detail(), [TOOL], ENDPOINT, approved)
+    with pytest.raises(HTTPException, match="TOOL_TARGET_SCHEMA_REQUIRED"):
+        verify_tool_target(mcp_detail(), [TOOL], ENDPOINT, approved, discover=lambda url: [])
 
 
 @pytest.mark.parametrize("detail,approved", [
@@ -118,8 +132,13 @@ def test_mcp_server_gateway_target_must_match_an_approved_catalog_record():
     (mcp_detail(endpoint="https://drifted.example.invalid/mcp"), {"synthetic-mcp": MCP_TARGET}),
     (mcp_detail(auth="API_KEY"), {"synthetic-mcp": MCP_TARGET}),
     (mcp_detail(name="unapproved"), {"synthetic-mcp": MCP_TARGET}),
-    ({"name": "synthetic-mcp", "targetConfiguration": {"mcp": {"openApiSchema": {}}}}, {"synthetic-mcp": MCP_TARGET}),
 ])
 def test_unapproved_placeholder_or_drifted_mcp_server_targets_fail_closed(detail, approved):
     with pytest.raises(HTTPException, match="APPROVED_MCP_SERVER_TARGET_REQUIRED"):
-        verify_tool_target(detail, [TOOL], ENDPOINT, approved)
+        verify_tool_target(detail, [TOOL], ENDPOINT, approved, discover=discover)
+
+
+def test_unknown_target_shape_fails_closed():
+    detail = {"name": "synthetic-mcp", "targetConfiguration": {"mcp": {"openApiSchema": {}}}}
+    with pytest.raises(HTTPException, match="TOOL_TARGET_SCHEMA_REQUIRED"):
+        verify_tool_target(detail, [TOOL], ENDPOINT, {"synthetic-mcp": MCP_TARGET}, discover=discover)

@@ -133,6 +133,52 @@ def compile_approval(db, actor, data, owner, platform):
     return result
 
 
+GATEWAY_REGION = 'us-west-2'
+
+
+def runtime_mcp_endpoint(endpoint, account):
+    """Only a same-account, same-region AgentCore Runtime data-plane MCP URL qualifies.
+
+    Shape (per InvokeAgentRuntime data-plane): https://bedrock-agentcore.<region>.amazonaws.com
+    /runtimes/<urlencoded runtime ARN>/invocations?qualifier=<...>. Anything else fails closed.
+    account=None checks only the shape (any 12-digit account); used for catalog records, which
+    are pinned to the current account at approval time.
+    """
+    pattern = (r'https://bedrock-agentcore\.' + re.escape(GATEWAY_REGION)
+               + r'\.amazonaws\.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3A'
+               + re.escape(GATEWAY_REGION) + r'%3A' + (r'\d{12}' if account is None else re.escape(str(account)))
+               + r'%3Aruntime%2F[A-Za-z0-9_][A-Za-z0-9_-]{0,99}/invocations'
+               + r'\?qualifier=[A-Za-z0-9_-]{1,100}')
+    return isinstance(endpoint, str) and bool(re.fullmatch(pattern, endpoint))
+
+
+def iam_sigv4_credentials(configurations):
+    """Exactly one GATEWAY_IAM_ROLE entry with an explicit IamCredentialProvider.
+
+    The bedrock-agentcore-control service model requires IamCredentialProvider.service;
+    a bare GATEWAY_IAM_ROLE entry (valid for lambda targets) is NOT a complete SigV4
+    configuration for an mcpServer target. Region, when present, must be this region.
+    """
+    if not isinstance(configurations, list) or len(configurations) != 1:
+        return False
+    entry = configurations[0]
+    if not isinstance(entry, dict) or entry.get('credentialProviderType') != 'GATEWAY_IAM_ROLE':
+        return False
+    provider = entry.get('credentialProvider')
+    if not isinstance(provider, dict) or set(provider) != {'iamCredentialProvider'}:
+        return False
+    iam = provider['iamCredentialProvider']
+    if not isinstance(iam, dict) or iam.get('service') != 'bedrock-agentcore':
+        return False
+    return iam.get('region') in (None, GATEWAY_REGION)
+
+
+def gateway_tools(session, url):
+    """Live Gateway MCP discovery (SigV4, gateway-domain pinned by GatewayMCP)."""
+    from foundation_harness.journey_mcp import GatewayMCP
+    return GatewayMCP(session, url).discover()
+
+
 def platform_metadata(raw=None, approved_targets=None):
     """Resolve endpoint/role ONLY from current project CFN; verify actual targets.
 
@@ -140,7 +186,8 @@ def platform_metadata(raw=None, approved_targets=None):
     """
     from scripts.foundation_target import StudioTarget, PROJECT, STACK
     import boto3
-    target = StudioTarget(boto3.Session(region_name="us-west-2"))
+    session = boto3.Session(region_name=GATEWAY_REGION)
+    target = StudioTarget(session)
     target.verify()
     cf = target.client('cloudformation')
     def outputs(name):
@@ -174,7 +221,8 @@ def platform_metadata(raw=None, approved_targets=None):
                 if raw['model']['targetDigest'] != digest(detail['targetConfiguration']):
                     raise HTTPException(409, 'MODEL_TARGET_DIGEST_REQUIRED')
             else:
-                verify_tool_target(detail, raw['tools'], base+suffix, approved_targets or {})
+                verify_tool_target(detail, raw['tools'], base+suffix, approved_targets or {},
+                                   target.account, lambda url: gateway_tools(session, url))
     result = {'endpoint': endpoint, 'role': role}
     if raw is not None and runtime_model is not None:
         result['model'] = runtime_model
@@ -199,7 +247,11 @@ def tool_target(component):
             or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', str(target['name']))
             or target['outbound_auth'] not in TARGET_OUTBOUND_AUTH[kind]):
         raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
-    if kind == 'mcpServer':
+    if kind == 'mcpServer' and target['outbound_auth'] == 'GATEWAY_IAM_ROLE':
+        # IAM SigV4 outbound is only for an AgentCore Runtime MCP server (e.g. a specialist).
+        if not runtime_mcp_endpoint(target['endpoint'], None):
+            raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
+    elif kind == 'mcpServer':
         url = urlparse(str(target['endpoint']))
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
             raise HTTPException(409, 'SUPPORTED_TOOL_TARGET_REQUIRED')
@@ -208,10 +260,14 @@ def tool_target(component):
     return dict(target)
 
 
-def verify_tool_target(detail, tools, endpoint, approved_targets):
+def verify_tool_target(detail, tools, endpoint, approved_targets, account=None, discover=None):
     """Lambda targets carry an inline schema. mcpServer targets expose no inline schema, so the
-    live target must exactly match an approved, non-placeholder catalog target record."""
-    mcp = detail['targetConfiguration'].get('mcp', {})
+    live target must (1) exactly match an approved, non-placeholder catalog target record and
+    (2) expose, via live Gateway discovery, EXACTLY the approved tool names/schemas. An IAM
+    (GATEWAY_IAM_ROLE) mcpServer target must additionally be this account's same-region Runtime
+    data-plane endpoint with a complete IAM SigV4 credential provider. Every mismatch fails
+    closed with a controlled 409."""
+    mcp = detail['targetConfiguration'].get('mcp') or {}
     if set(mcp) == {'lambda'}:
         inline = mcp['lambda']['toolSchema']['inlinePayload']
         for tool in tools:
@@ -219,13 +275,33 @@ def verify_tool_target(detail, tools, endpoint, approved_targets):
             if not match or match['inputSchema'] != tool['inputSchema'] or tool['endpoint'] != endpoint:
                 raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
         return
+    if set(mcp) != {'mcpServer'}:
+        # Unknown tools target shape (openApiSchema/smithyModel/absent): fail closed.
+        raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
     approved = approved_targets.get(detail['name'])
-    auth = [c.get('credentialProviderType') for c in detail.get('credentialProviderConfigurations', [])]
-    if (set(mcp) != {'mcpServer'} or not approved or approved['type'] != 'mcpServer' or approved.get('placeholder')
+    configurations = detail.get('credentialProviderConfigurations') or []
+    auth = [c.get('credentialProviderType') for c in configurations if isinstance(c, dict)]
+    if 'GATEWAY_IAM_ROLE' in auth or (approved or {}).get('outbound_auth') == 'GATEWAY_IAM_ROLE':
+        if not runtime_mcp_endpoint(mcp['mcpServer'].get('endpoint'), account):
+            raise HTTPException(409, 'RUNTIME_MCP_SERVER_ENDPOINT_REQUIRED')
+        if not iam_sigv4_credentials(configurations):
+            raise HTTPException(409, 'IAM_SIGV4_CREDENTIAL_PROVIDER_REQUIRED')
+    if (not approved or approved['type'] != 'mcpServer' or approved.get('placeholder')
             or mcp['mcpServer'] != {'endpoint': approved['endpoint']} or auth != [approved['outbound_auth']]):
         raise HTTPException(409, 'APPROVED_MCP_SERVER_TARGET_REQUIRED')
     for tool in tools:
         if not tool['name'].startswith(detail['name']+'___') or tool['endpoint'] != endpoint:
+            raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
+    if discover is None:
+        raise HTTPException(409, 'TOOL_TARGET_DISCOVERY_REQUIRED')
+    try:
+        discovered = {t['name']: t.get('inputSchema') for t in discover(endpoint)}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(409, 'TOOL_TARGET_DISCOVERY_REQUIRED') from None
+    for tool in tools:
+        if discovered.get(tool['name']) != tool['inputSchema']:
             raise HTTPException(409, 'TOOL_TARGET_SCHEMA_REQUIRED')
 
 
