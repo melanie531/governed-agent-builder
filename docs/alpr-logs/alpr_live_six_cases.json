@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "passed": 6,
+    "total": 6,
+    "all_live": true
+  },
+  "cases": {
+    "CASE-001": {
+      "live": true,
+      "synthetic": true,
+      "finding": "BOTH_ACCOUNTS_CHARGED",
+      "recommendation": "REVIEW_WRONG_UNPAID_NOTICE_NO_SECOND_CORRECT_CHARGE",
+      "expected_finding": "BOTH_ACCOUNTS_CHARGED",
+      "expected_recommendation": "REVIEW_WRONG_UNPAID_NOTICE_NO_SECOND_CORRECT_CHARGE",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-001"
+      ],
+      "policy_version": "DEMO-1"
+    },
+    "CASE-002": {
+      "live": true,
+      "synthetic": true,
+      "finding": "ALREADY_REFUNDED",
+      "recommendation": "NO_DUPLICATE_REFUND",
+      "expected_finding": "ALREADY_REFUNDED",
+      "expected_recommendation": "NO_DUPLICATE_REFUND",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-002"
+      ],
+      "policy_version": "DEMO-1"
+    },
+    "CASE-003": {
+      "live": true,
+      "synthetic": true,
+      "finding": "ALREADY_WRITTEN_OFF",
+      "recommendation": "NO_DUPLICATE_WRITEOFF",
+      "expected_finding": "ALREADY_WRITTEN_OFF",
+      "expected_recommendation": "NO_DUPLICATE_WRITEOFF",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-003"
+      ],
+      "policy_version": "DEMO-1"
+    },
+    "CASE-004": {
+      "live": true,
+      "synthetic": true,
+      "finding": "MISSING_EVENT_TIME_OWNER",
+      "recommendation": "MANUAL_REVIEW_NO_FINANCIAL_ACTION",
+      "expected_finding": "MISSING_EVENT_TIME_OWNER",
+      "expected_recommendation": "MANUAL_REVIEW_NO_FINANCIAL_ACTION",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-004"
+      ],
+      "policy_version": "DEMO-1"
+    },
+    "CASE-005": {
+      "live": true,
+      "synthetic": true,
+      "finding": "CONFLICTING_EVENT_TIME_OWNERS",
+      "recommendation": "MANUAL_REVIEW_NO_FINANCIAL_ACTION",
+      "expected_finding": "CONFLICTING_EVENT_TIME_OWNERS",
+      "expected_recommendation": "MANUAL_REVIEW_NO_FINANCIAL_ACTION",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-005"
+      ],
+      "policy_version": "DEMO-1"
+    },
+    "CASE-006": {
+      "live": true,
+      "synthetic": true,
+      "finding": "POST_EVENT_TRANSFER_WRONG_PAYMENT",
+      "recommendation": "REVIEW_REFUND_12_50_USE_OLD_OWNER",
+      "expected_finding": "POST_EVENT_TRANSFER_WRONG_PAYMENT",
+      "expected_recommendation": "REVIEW_REFUND_12_50_USE_OLD_OWNER",
+      "match": {
+        "finding": true,
+        "recommendation": true
+      },
+      "passed": true,
+      "evidence_event_ids": [
+        "EV-006"
+      ],
+      "policy_version": "DEMO-1"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{"CASE-001": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"CASE-002": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"CASE-003": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"CASE-004": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"CASE-005": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"CASE-006": {"passed": true, "live": true, "match": {"finding": true, "recommendation": true}}}
+{"passed": 6, "total": 6, "all_live": true}
+LIVE_EXIT=0

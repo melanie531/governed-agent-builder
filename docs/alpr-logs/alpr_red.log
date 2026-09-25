@@ -1,0 +1,1519 @@
+.FFFFFFFFFFF..FFFF..F..F.FFF.......FFFFFFFFFFFF.FFFFFFFFFFF...           [100%]
+=================================== FAILURES ===================================
+__________ test_fetch_returns_case_rows_with_synthetic_label_and_ids ___________
+
+    def test_fetch_returns_case_rows_with_synthetic_label_and_ids():
+        reader, _ = make_reader()
+>       result = reader.fetch("ACCOUNT_VEHICLE", "CASE-001")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_reader.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83376300>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_________ test_policy_fetch_exposes_policy_version_and_approval_status _________
+
+    def test_policy_fetch_exposes_policy_version_and_approval_status():
+        reader, _ = make_reader()
+>       result = reader.fetch("POLICY", "CASE-004")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_reader.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc8326b7a0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-004'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________ test_session_pinning_happens_in_the_same_request_as_the_select ________
+
+    def test_session_pinning_happens_in_the_same_request_as_the_select():
+        reader, transport = make_reader()
+>       reader.fetch("BILLING_NOTICE", "CASE-002")
+
+tests/test_alpr_reader.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833761e0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-002'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________ test_case_id_is_validated_safe_literal_and_bindings_are_absent ________
+
+    def test_case_id_is_validated_safe_literal_and_bindings_are_absent():
+        """Official SQL API docs: multi-statement requests do NOT support bindings.
+    
+        The case key is therefore embedded as a literal, but ONLY after strict
+        ASCII CASE-[0-9]{3} validation: no arbitrary SQL can ever reach the text.
+        """
+        reader, transport = make_reader()
+>       reader.fetch("REMEDIATION", "CASE-003")
+
+tests/test_alpr_reader.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833b7650>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-003'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________________ test_case_id_validation_is_strict_ascii ____________________
+
+    def test_case_id_validation_is_strict_ascii():
+        reader, transport = make_reader()
+        for bad in ("CASE-\uff10\uff10\uff11",  # fullwidth digits: \d matches, [0-9] must not
+                    "CASE-٠٠١",                # arabic-indic digits
+                    "case-001", "CASE-001\n", " CASE-001"):
+            with pytest.raises(AlprReaderDenied, match="case_id"):
+>               reader.fetch("POLICY", bad)
+
+tests/test_alpr_reader.py:86: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d2f60>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-００１'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+______________ test_role_mismatch_is_rejected_before_reading_data ______________
+
+    def test_role_mismatch_is_rejected_before_reading_data():
+        transport = FakeSqlApiTransport(force_role="GAB_BOOTSTRAP_ROLE")
+        reader = AlprReadOnlyReader(transport)
+        with pytest.raises(AlprReaderDenied, match="CURRENT_ROLE"):
+>           reader.fetch("ACCOUNT_VEHICLE", "CASE-001")
+
+tests/test_alpr_reader.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d3680>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________________ test_active_secondary_roles_are_rejected ___________________
+
+    def test_active_secondary_roles_are_rejected():
+        transport = FakeSqlApiTransport(force_secondary=SECONDARY_ALL)
+        reader = AlprReadOnlyReader(transport)
+        with pytest.raises(AlprReaderDenied, match="SECONDARY"):
+>           reader.fetch("ACCOUNT_VEHICLE", "CASE-001")
+
+tests/test_alpr_reader.py:103: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833b7c50>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____ test_secondary_verification_rejects_missing_keys_or_unknown_structure _____
+
+    def test_secondary_verification_rejects_missing_keys_or_unknown_structure():
+        for weird in ('{"unexpected": ""}', '{"roles": ""}', '{"value": ""}',
+                      '{}', 'not-json', None, '["roles"]'):
+            transport = FakeSqlApiTransport(force_secondary=weird)
+            reader = AlprReadOnlyReader(transport)
+            with pytest.raises(AlprReaderDenied, match="SECONDARY"):
+>               reader.fetch("ACCOUNT_VEHICLE", "CASE-001")
+
+tests/test_alpr_reader.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d3f20>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________ test_secondary_verification_accepts_the_real_empty_shape ___________
+
+    def test_secondary_verification_accepts_the_real_empty_shape():
+        # The provisioned account really returns {"roles":"","value":""}.
+        transport = FakeSqlApiTransport(force_secondary='{"roles":"","value":""}')
+        reader = AlprReadOnlyReader(transport)
+>       assert reader.fetch("ACCOUNT_VEHICLE", "CASE-001")["row_count"] == 2
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_reader.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d3d70>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____________ test_multi_partition_results_fail_loud_never_drop_rows ____________
+
+    def test_multi_partition_results_fail_loud_never_drop_rows():
+        transport = FakeSqlApiTransport(force_partitions=2)
+        reader = AlprReadOnlyReader(transport)
+        with pytest.raises(AlprReaderDenied, match="partition"):
+>           reader.fetch("ACCOUNT_VEHICLE", "CASE-001")
+
+tests/test_alpr_reader.py:126: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d2e10>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+__________________ test_live_flag_follows_the_real_transport ___________________
+
+    def test_live_flag_follows_the_real_transport():
+        class LiveMarked(FakeSqlApiTransport):
+            is_live = True
+    
+>       assert AlprReadOnlyReader(FakeSqlApiTransport()).fetch("POLICY", "CASE-001")["live"] is False
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_reader.py:133: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833b6510>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____________ test_no_statement_ever_references_gold_or_base_schema _____________
+
+    def test_no_statement_ever_references_gold_or_base_schema():
+        reader, transport = make_reader()
+        for view in APPROVED_VIEWS:
+>           reader.fetch(view, "CASE-005")
+
+tests/test_alpr_reader.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d2720>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-005'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_________________________ test_row_budget_is_enforced __________________________
+
+    def test_row_budget_is_enforced():
+        reader = AlprReadOnlyReader(FakeSqlApiTransport(), max_rows=1)
+        with pytest.raises(AlprReaderDenied, match="row budget"):
+>           reader.fetch("ACCOUNT_VEHICLE", "CASE-001")  # CASE-001 has 2 rows
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_reader.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f83b0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+__________________ test_budget_counts_every_actual_http_call ___________________
+
+    def test_budget_counts_every_actual_http_call():
+        # One fetch = 1 submit + 2 result GETs = 3 HTTP calls against the budget.
+        reader, _ = make_reader(max_requests=6)
+>       reader.fetch("POLICY", "CASE-001")
+
+tests/test_alpr_reader.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f80e0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________ test_budget_denies_mid_fetch_when_http_calls_exhaust_it ____________
+
+    def test_budget_denies_mid_fetch_when_http_calls_exhaust_it():
+        reader, _ = make_reader(max_requests=2)  # submit+verify ok, data GET must be denied
+        with pytest.raises(AlprReaderDenied, match="request budget"):
+>           reader.fetch("POLICY", "CASE-001")
+
+tests/test_alpr_reader.py:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f8b90>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+______________ test_select_template_is_the_frozen_whitelist_shape ______________
+
+    def test_select_template_is_the_frozen_whitelist_shape():
+        reader, transport = make_reader()
+>       reader.fetch("ACCOUNT_VEHICLE", "CASE-006")
+
+tests/test_alpr_reader.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f9c70>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-006'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________ test_bootstrap_role_is_refused_but_bootstrap_user_is_accepted _________
+
+    def test_bootstrap_role_is_refused_but_bootstrap_user_is_accepted():
+        # Provisioning grants GAB_QUERY_READONLY to USER GAB_BOOTSTRAP: the user
+        # name is acceptable; what must NEVER be used is a bootstrap ROLE, and the
+        # active role is verified in-session by the reader.
+>       with pytest.raises(AlprLiveConfigError, match="role"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'role'
+E         Actual message: 'bootstrap identities are forbidden for the live reader'
+
+tests/test_alpr_live_gate.py:54: AssertionError
+_____________ test_account_url_must_be_exact_https_snowflake_host ______________
+
+    def test_account_url_must_be_exact_https_snowflake_host():
+        """JWT egress guard: the bearer token may only ever go to the exact
+        HTTPS *.snowflakecomputing.com host — no other scheme, userinfo, port,
+        path, query or fragment."""
+        for bad in (
+            "http://tcljaka-hr19243.snowflakecomputing.com",          # not https
+            "https://evil.example.com",                                # wrong domain
+            "https://tcljaka-hr19243.snowflakecomputing.com.evil.com", # suffix spoof
+            "https://user@tcljaka-hr19243.snowflakecomputing.com",     # userinfo
+            "https://tcljaka-hr19243.snowflakecomputing.com/steal",    # path
+            "https://tcljaka-hr19243.snowflakecomputing.com:8443",     # port
+            "https://tcljaka-hr19243.snowflakecomputing.com?x=1",      # query
+            "https://snowflakecomputing.com",                          # no account
+        ):
+>           with pytest.raises(AlprLiveConfigError, match="account_url"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE AlprLiveConfigError
+
+tests/test_alpr_live_gate.py:79: Failed
+______________________ test_live_transport_is_marked_live ______________________
+
+    def test_live_transport_is_marked_live():
+>       assert LiveSqlApiTransport(cfg()).is_live is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'LiveSqlApiTransport' object has no attribute 'is_live'
+
+tests/test_alpr_live_gate.py:84: AttributeError
+_________________ test_live_http_calls_never_follow_redirects __________________
+
+    def test_live_http_calls_never_follow_redirects():
+        import inspect
+        src = inspect.getsource(__import__("backend.alpr_live", fromlist=["x"]))
+>       assert "allow_redirects=False" in src, \
+            "requests must not follow redirects: a redirect could exfiltrate the JWT"
+E       AssertionError: requests must not follow redirects: a redirect could exfiltrate the JWT
+E       assert 'allow_redirects=False' in '"""Live wiring for the ALPR reader: explicit opt-in, fail closed, no bootstrap.\n\nThis module prepares (but does not...            "PAYMENTS", "REMEDIATION_HISTORY", "POLICY_VERSIONS",\n                     "EXPECTED_CASE_RESULTS")]\n)\n'
+
+tests/test_alpr_live_gate.py:90: AssertionError
+______________ test_account_vehicle_finds_single_corrected_owner _______________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc83224860>
+
+    def test_account_vehicle_finds_single_corrected_owner(reader):
+>       finding = AccountVehicleSpecialist(reader).investigate("CASE-001")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc832249b0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____________ test_account_vehicle_reports_missing_event_time_owner _____________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc833fa540>
+
+    def test_account_vehicle_reports_missing_event_time_owner(reader):
+>       finding = AccountVehicleSpecialist(reader).investigate("CASE-004")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833fa870>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-004'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_______________ test_account_vehicle_reports_conflicting_owners ________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc833f9610>
+
+    def test_account_vehicle_reports_conflicting_owners(reader):
+>       finding = AccountVehicleSpecialist(reader).investigate("CASE-005")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:49: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f9d60>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-005'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________ test_account_vehicle_post_event_transfer_uses_event_time_owner ________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc8326a420>
+
+    def test_account_vehicle_post_event_transfer_uses_event_time_owner(reader):
+>       finding = AccountVehicleSpecialist(reader).investigate("CASE-006")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc8326a4b0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-006'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________________ test_billing_reports_both_sides_amounts ____________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc833f8ce0>
+
+    def test_billing_reports_both_sides_amounts(reader):
+>       finding = BillingNoticeSpecialist(reader).investigate("CASE-001")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:75: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f8bc0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________________ test_billing_reports_wrong_side_payment ____________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc83226930>
+
+    def test_billing_reports_wrong_side_payment(reader):
+>       finding = BillingNoticeSpecialist(reader).investigate("CASE-006")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:75: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83225790>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-006'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+__________________ test_remediation_detects_completed_refund ___________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc83224170>
+
+    def test_remediation_detects_completed_refund(reader):
+>       finding = RemediationSpecialist(reader).investigate("CASE-002")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:110: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc832249e0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-002'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_________________ test_remediation_detects_completed_write_off _________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc833fa810>
+
+    def test_remediation_detects_completed_write_off(reader):
+>       finding = RemediationSpecialist(reader).investigate("CASE-003")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:110: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833f9070>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-003'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_____________________ test_remediation_reports_no_history ______________________
+
+reader = <backend.alpr_reader.AlprReadOnlyReader object at 0x7fbc83225430>
+
+    def test_remediation_reports_no_history(reader):
+>       finding = RemediationSpecialist(reader).investigate("CASE-001")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:110: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83226b40>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+______________ test_investigate_case_returns_advisory_report_only ______________
+
+transport = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83224530>
+
+    def test_investigate_case_returns_advisory_report_only(transport):
+>       report = investigate_case(AlprReadOnlyReader(transport), "CASE-002")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_specialists.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83224530>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-002'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_______________ test_specialists_never_emit_writes_or_touch_gold _______________
+
+transport = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83226540>
+
+    def test_specialists_never_emit_writes_or_touch_gold(transport):
+        for i in range(1, 7):
+>           investigate_case(AlprReadOnlyReader(transport), f"CASE-{i:03}")
+
+tests/test_alpr_specialists.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83226540>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________________ test_specialist_denied_propagates_fail_closed _________________
+
+    def test_specialist_denied_propagates_fail_closed():
+        bad = FakeSqlApiTransport(force_role="GAB_BOOTSTRAP_ROLE")
+        with pytest.raises(AlprReaderDenied):
+>           investigate_case(AlprReadOnlyReader(bad), "CASE-001")
+
+tests/test_alpr_specialists.py:131: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc84c51610>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_____________________ test_all_six_cases_pass_against_gold _____________________
+
+    def test_all_six_cases_pass_against_gold():
+>       results = run_eval(lambda case_id: report_for(case_id))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_eval.py:160: in run_eval
+    cases = {case_id: evaluate_case(case_id, report_fn(case_id)) for case_id in EXPECTED}
+                                             ^^^^^^^^^^^^^^^^^^
+tests/test_alpr_eval.py:38: in <lambda>
+    results = run_eval(lambda case_id: report_for(case_id))
+                                       ^^^^^^^^^^^^^^^^^^^
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d25a0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____________________ test_dimensions_are_scored_separately _____________________
+
+    def test_dimensions_are_scored_separately():
+>       result = evaluate_case("CASE-001", report_for("CASE-001"))
+                                           ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc833d33b0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_____________________ test_keyword_match_alone_cannot_pass _____________________
+
+    def test_keyword_match_alone_cannot_pass():
+        """A report whose finding string matches but whose facts are wrong must FAIL."""
+>       report = report_for("CASE-001")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc8324e3f0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+____________ test_bilateral_amounts_checked_as_decimals_not_strings ____________
+
+    def test_bilateral_amounts_checked_as_decimals_not_strings():
+>       report = report_for("CASE-001")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83297b90>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+___________ test_remediation_history_dimension_catches_missing_dedup ___________
+
+    def test_remediation_history_dimension_catches_missing_dedup():
+>       report = report_for("CASE-002")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc8324e930>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-002'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_______________ test_evidence_citation_requires_case_scoped_ids ________________
+
+    def test_evidence_citation_requires_case_scoped_ids():
+>       report = report_for("CASE-003")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc832972c0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-003'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+__________ test_unresolved_cases_require_manual_review_and_no_action ___________
+
+    def test_unresolved_cases_require_manual_review_and_no_action():
+        for case_id in ("CASE-004", "CASE-005"):
+>           result = evaluate_case(case_id, report_for(case_id))
+                                            ^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:90: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83297620>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-004'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+__________________ test_executed_actions_always_fail_the_eval __________________
+
+    def test_executed_actions_always_fail_the_eval():
+>       report = report_for("CASE-006")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc8326b6b0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-006'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+________________________ test_unknown_case_is_rejected _________________________
+
+    def test_unknown_case_is_rejected():
+        with pytest.raises(KeyError):
+>           evaluate_case("CASE-999", report_for("CASE-001"))
+                                      ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_eval.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_alpr_eval.py:25: in report_for
+    return investigate_case(AlprReadOnlyReader(FakeSqlApiTransport()), case_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83296810>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_______________________ test_offline_eval_runs_six_cases _______________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x7fbc83296db0>
+
+    def test_offline_eval_runs_six_cases(capsys):
+>       exit_code = main(["--mode", "offline-fixture", "--eval"])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_entrypoint.py:16: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_entrypoint.py:67: in main
+    results = run_eval(lambda case_id: investigate_case(reader_factory(), case_id))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_eval.py:160: in run_eval
+    cases = {case_id: evaluate_case(case_id, report_fn(case_id)) for case_id in EXPECTED}
+                                             ^^^^^^^^^^^^^^^^^^
+backend/alpr_entrypoint.py:67: in <lambda>
+    results = run_eval(lambda case_id: investigate_case(reader_factory(), case_id))
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc83297320>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-001'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+_______________________ test_offline_single_case_report ________________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x7fbc832953d0>
+
+    def test_offline_single_case_report(capsys):
+>       exit_code = main(["--mode", "offline-fixture", "--case", "CASE-006"])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_alpr_entrypoint.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/alpr_entrypoint.py:72: in main
+    report = investigate_case(reader_factory(), args.case)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:153: in investigate_case
+    ownership = AccountVehicleSpecialist(reader).investigate(case_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:48: in investigate
+    rows, result = self._rows(case_id)
+                   ^^^^^^^^^^^^^^^^^^^
+backend/alpr_specialists.py:38: in _rows
+    result = self._reader.fetch(self.view, case_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/alpr_reader.py:121: in fetch
+    handles = self._transport.submit(body).get("statementHandles") or []
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.alpr_fixture.FakeSqlApiTransport object at 0x7fbc831d1dc0>
+body = {'statement': 'USE ROLE GAB_QUERY_READONLY; USE SECONDARY ROLES NONE; SELECT CURRENT_ROLE() AS ROLE_NAME, CURRENT_SECO...READONLY', 'bindings': {'1': {'type': 'TEXT', 'value': 'CASE-006'}}, 'parameters': {'MULTI_STATEMENT_COUNT': '4'}, ...}
+
+    def submit(self, body):
+        self.calls += 1
+        self.submitted.append(body)
+        stmts = [s.strip() for s in body.get("statement", "").split(";") if s.strip()]
+        multi = int((body.get("parameters") or {}).get("MULTI_STATEMENT_COUNT", 1) or 1)
+        if body.get("bindings") and (multi > 1 or len(stmts) > 1):
+            # Official SQL API behaviour (sql-api/submitting-multiple-statements):
+            # bind variables are NOT supported in multi-statement requests.
+>           raise AssertionError("SQL API: bindings are not supported with "
+                                 "multi-statement requests")
+E           AssertionError: SQL API: bindings are not supported with multi-statement requests
+
+tests/alpr_fixture.py:178: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_alpr_reader.py::test_fetch_returns_case_rows_with_synthetic_label_and_ids
+FAILED tests/test_alpr_reader.py::test_policy_fetch_exposes_policy_version_and_approval_status
+FAILED tests/test_alpr_reader.py::test_session_pinning_happens_in_the_same_request_as_the_select
+FAILED tests/test_alpr_reader.py::test_case_id_is_validated_safe_literal_and_bindings_are_absent
+FAILED tests/test_alpr_reader.py::test_case_id_validation_is_strict_ascii - A...
+FAILED tests/test_alpr_reader.py::test_role_mismatch_is_rejected_before_reading_data
+FAILED tests/test_alpr_reader.py::test_active_secondary_roles_are_rejected - ...
+FAILED tests/test_alpr_reader.py::test_secondary_verification_rejects_missing_keys_or_unknown_structure
+FAILED tests/test_alpr_reader.py::test_secondary_verification_accepts_the_real_empty_shape
+FAILED tests/test_alpr_reader.py::test_multi_partition_results_fail_loud_never_drop_rows
+FAILED tests/test_alpr_reader.py::test_live_flag_follows_the_real_transport
+FAILED tests/test_alpr_reader.py::test_no_statement_ever_references_gold_or_base_schema
+FAILED tests/test_alpr_reader.py::test_row_budget_is_enforced - AssertionErro...
+FAILED tests/test_alpr_reader.py::test_budget_counts_every_actual_http_call
+FAILED tests/test_alpr_reader.py::test_budget_denies_mid_fetch_when_http_calls_exhaust_it
+FAILED tests/test_alpr_reader.py::test_select_template_is_the_frozen_whitelist_shape
+FAILED tests/test_alpr_live_gate.py::test_bootstrap_role_is_refused_but_bootstrap_user_is_accepted
+FAILED tests/test_alpr_live_gate.py::test_account_url_must_be_exact_https_snowflake_host
+FAILED tests/test_alpr_live_gate.py::test_live_transport_is_marked_live - Att...
+FAILED tests/test_alpr_live_gate.py::test_live_http_calls_never_follow_redirects
+FAILED tests/test_alpr_specialists.py::test_account_vehicle_finds_single_corrected_owner
+FAILED tests/test_alpr_specialists.py::test_account_vehicle_reports_missing_event_time_owner
+FAILED tests/test_alpr_specialists.py::test_account_vehicle_reports_conflicting_owners
+FAILED tests/test_alpr_specialists.py::test_account_vehicle_post_event_transfer_uses_event_time_owner
+FAILED tests/test_alpr_specialists.py::test_billing_reports_both_sides_amounts
+FAILED tests/test_alpr_specialists.py::test_billing_reports_wrong_side_payment
+FAILED tests/test_alpr_specialists.py::test_remediation_detects_completed_refund
+FAILED tests/test_alpr_specialists.py::test_remediation_detects_completed_write_off
+FAILED tests/test_alpr_specialists.py::test_remediation_reports_no_history - ...
+FAILED tests/test_alpr_specialists.py::test_investigate_case_returns_advisory_report_only
+FAILED tests/test_alpr_specialists.py::test_specialists_never_emit_writes_or_touch_gold
+FAILED tests/test_alpr_specialists.py::test_specialist_denied_propagates_fail_closed
+FAILED tests/test_alpr_eval.py::test_all_six_cases_pass_against_gold - Assert...
+FAILED tests/test_alpr_eval.py::test_dimensions_are_scored_separately - Asser...
+FAILED tests/test_alpr_eval.py::test_keyword_match_alone_cannot_pass - Assert...
+FAILED tests/test_alpr_eval.py::test_bilateral_amounts_checked_as_decimals_not_strings
+FAILED tests/test_alpr_eval.py::test_remediation_history_dimension_catches_missing_dedup
+FAILED tests/test_alpr_eval.py::test_evidence_citation_requires_case_scoped_ids
+FAILED tests/test_alpr_eval.py::test_unresolved_cases_require_manual_review_and_no_action
+FAILED tests/test_alpr_eval.py::test_executed_actions_always_fail_the_eval - ...
+FAILED tests/test_alpr_eval.py::test_unknown_case_is_rejected - AssertionErro...
+FAILED tests/test_alpr_entrypoint.py::test_offline_eval_runs_six_cases - Asse...
+FAILED tests/test_alpr_entrypoint.py::test_offline_single_case_report - Asser...
+43 failed, 19 passed in 0.87s
+RED_EXIT=1
