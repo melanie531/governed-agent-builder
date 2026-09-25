@@ -3,9 +3,9 @@
 Three specialists (Account/Vehicle, Billing/Notice, Remediation) plus a case
 orchestrator. Every data access goes through the injected
 AlprReadOnlyReader — the fail-closed, whitelist-only reader — so specialists
-cannot issue arbitrary SQL, cannot write, and cannot reach the gold table
-(EXPECTED_CASE_RESULTS lives outside the approved views by provisioning and
-outside the reader by construction).
+cannot issue arbitrary SQL, cannot write, and cannot reach the gold
+expected-results table (it lives outside the approved views by provisioning
+and outside the reader by construction).
 
 Specialists return findings, evidence references (case/event/notice/
 remediation/ownership/evidence IDs) and ADVISORY recommendations only.

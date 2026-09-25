@@ -5,7 +5,7 @@ Design contract (enforced here, pinned by tests/test_alpr_reader.py):
 - Fixed SQL whitelist. The only data statement this module can emit is
   ``SELECT * FROM GAB_DEMO_DB.ALPR_APPROVED.<view> WHERE CASE_ID = ? LIMIT n``
   over exactly the four approved secure views. There is no API to pass SQL.
-  The gold table (EXPECTED_CASE_RESULTS) and the ALPR_DEMO base schema are
+  The gold expected-results table and the ALPR_DEMO base schema are
   unreachable by construction.
 - Same-session role pinning. Snowflake's SQL API v2 treats each request as
   its own session: session state set by one request does NOT carry to the
