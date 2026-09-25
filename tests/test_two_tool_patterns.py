@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
-from backend.harness import ToolDenied, call_tool, run_case
+from backend import harness
+from backend.harness import ToolDenied, call_tool, list_tools, run_case
 from .conftest import login, create, enqueue, finish
 
 AGENT_TOOL, SNOWFLAKE = "agent-risk-analyst", "snowflake-approved-views"
@@ -51,7 +54,8 @@ def test_agent_as_tool_invokes_until_grant_is_revoked(app, client, payload):
     body = result.json()
     assert "Synthetic risk review" in body["output"]
     assert body["sources"] == ["agent:synthetic-risk-analyst@1"]
-    assert {"type": "tools_call", "calls": [{"tool": AGENT_TOOL, "source": "agent:synthetic-risk-analyst@1"}]} in body["trace"]
+    [call] = next(t for t in body["trace"] if t["type"] == "tools_call")["calls"]
+    assert call["tool"] == AGENT_TOOL and call["via"] == "mcp-tool-via-gateway" and call["source"] == "agent:synthetic-risk-analyst@1"
     set_grant(client, AGENT_TOOL, False)
     assert client.post(path, json={"version": 1, "input": "What is the renewal risk?"}).status_code == 403
 
@@ -110,4 +114,51 @@ def test_unpinned_agent_tool_is_denied_in_trace_not_executed():
                   "skills": [], "output_format": "text"}
     result = run_case(definition, "What is the risk?")
     assert result["sources"] == []
-    assert {"type": "tools_call", "calls": [{"tool": AGENT_TOOL, "denied": "AGENT_VERSION_NOT_PINNED"}]} in result["trace"]
+    assert {"type": "tools_call", "calls": [{"tool": AGENT_TOOL, "via": "mcp-tool-via-gateway", "denied": "AGENT_VERSION_NOT_PINNED"}]} in result["trace"]
+
+
+def test_specialist_is_a_platform_curated_mcp_tool_via_gateway_not_a2a(client):
+    set_grant(client, AGENT_TOOL, True)
+    tools = {t["id"]: t for t in client.get("/api/build-options?foundation_id=research").json()["choices"]["tools"]}
+    item = tools[AGENT_TOOL]
+    assert item["tool_type"] == "mcp-tool-via-gateway" and item["curation"] == "platform-curated"
+    assert "MCP tool via Tool Gateway" in item["protocol"] and "a2a" not in json.dumps(item).lower()
+    assert "Tool Gateway" in client.get(f"/api/catalog/{SNOWFLAKE}").json()["protocol"]
+    # The upper agent discovers the specialist exactly like any other MCP tool (tools/list).
+    listed = {t["name"]: t for t in list_tools({"tools": ["synthetic-search", AGENT_TOOL, SNOWFLAKE]})}
+    assert set(listed) == {AGENT_TOOL, SNOWFLAKE} and all(t["via"] == "mcp-tool-via-gateway" for t in listed.values())
+    assert listed[AGENT_TOOL]["inputSchema"] == {"type": "object", "properties": {"question": {"type": "string"}},
+                                                 "required": ["question"], "additionalProperties": False}
+    assert listed[SNOWFLAKE]["inputSchema"]["properties"]["query_id"]["enum"] == ["account_health_summary", "open_incident_counts"]
+    assert list_tools({"tools": []}) == []
+
+
+def test_builder_created_agent_is_directly_usable_without_becoming_a_specialist(app, client, payload):
+    login(client)
+    definition = create(client, payload)
+    assert finish(app, client, enqueue(client, definition))["stage"] == "PASS"
+    result = client.post(f"/api/agents/{definition['agent_id']}/invoke", json={"version": 1, "input": "What is the synthetic policy?"})
+    assert result.status_code == 200, result.text
+    # It is not a curated specialist and cannot be smuggled into another manifest as an MCP tool.
+    assert definition["agent_id"] not in harness.SPECIALIST_AGENTS
+    with pytest.raises(ToolDenied, match="TOOL_NOT_IN_MANIFEST"):
+        call_tool({"tools": [definition["agent_id"]], "component_versions": {definition["agent_id"]: "1"}}, definition["agent_id"], {"question": "risk?"})
+    other = dict(payload, name="Upper agent", tools=[*payload["tools"], definition["agent_id"]],
+                 component_versions={**payload["component_versions"], definition["agent_id"]: "1"})
+    assert client.post("/api/agents", json=other).status_code in (403, 404, 422)
+
+
+def test_specialist_inner_tools_run_under_its_own_manifest_and_identity():
+    caller = {"tools": [AGENT_TOOL], "component_versions": {AGENT_TOOL: "1"}}
+    result = call_tool(caller, AGENT_TOOL, {"question": "risk?"})
+    # The caller holds no Snowflake grant; the specialist's own manifest still governs its inner call.
+    assert result["inner_calls"] == [{"tool": SNOWFLAKE, "via": "mcp-tool-via-gateway", "identity": "synthetic-svc-risk-analyst",
+                                      "source": "snowflake:open_incident_counts"}]
+
+
+def test_caller_grants_are_not_inherited_into_specialist_internals(monkeypatch):
+    specialist = dict(harness.SPECIALIST_AGENTS[AGENT_TOOL], manifest={"tools": [], "component_versions": {}})
+    monkeypatch.setitem(harness.SPECIALIST_AGENTS, AGENT_TOOL, specialist)
+    # Even a caller that holds the inner tool cannot lend it to the specialist: fail closed.
+    with pytest.raises(ToolDenied, match="SPECIALIST_INNER_TOOL_DENIED"):
+        call_tool(MANIFEST, AGENT_TOOL, {"question": "risk?"})
