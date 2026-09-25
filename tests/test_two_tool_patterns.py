@@ -3,7 +3,7 @@ import json
 import pytest
 
 from backend import harness
-from backend.harness import ToolDenied, call_tool, list_tools, run_case
+from backend.harness import ToolDenied, call_tool, list_tools, run_case, tool_scope
 from .conftest import login, create, enqueue, finish
 
 AGENT_TOOL, SNOWFLAKE = "agent-risk-analyst", "snowflake-approved-views"
@@ -104,7 +104,7 @@ def test_snowflake_connector_rejects_generic_sql_and_unlisted_queries(arguments)
 
 
 def test_snowflake_whitelisted_query_returns_only_masked_synthetic_rows():
-    result = call_tool(MANIFEST, SNOWFLAKE, {"query_id": "account_health_summary"})
+    result = call_tool(MANIFEST, SNOWFLAKE, {"query_id": "account_health_summary"}, tool_scope(SNOWFLAKE))
     assert result["masked"] and result["view"].startswith("SYNTHETIC_DB.APPROVED_VIEWS.")
     assert all(row["contact_email"] == "***MASKED***" and row["account"].startswith("SYN-") for row in result["rows"])
 
@@ -150,7 +150,7 @@ def test_builder_created_agent_is_directly_usable_without_becoming_a_specialist(
 
 def test_specialist_inner_tools_run_under_its_own_manifest_and_identity():
     caller = {"tools": [AGENT_TOOL], "component_versions": {AGENT_TOOL: "1"}}
-    result = call_tool(caller, AGENT_TOOL, {"question": "risk?"})
+    result = call_tool(caller, AGENT_TOOL, {"question": "risk?"}, tool_scope(AGENT_TOOL))
     # The caller holds no Snowflake grant; the specialist's own manifest still governs its inner call.
     assert result["inner_calls"] == [{"tool": SNOWFLAKE, "via": "mcp-tool-via-gateway", "identity": "synthetic-svc-risk-analyst",
                                       "source": "snowflake:open_incident_counts"}]
@@ -161,4 +161,4 @@ def test_caller_grants_are_not_inherited_into_specialist_internals(monkeypatch):
     monkeypatch.setitem(harness.SPECIALIST_AGENTS, AGENT_TOOL, specialist)
     # Even a caller that holds the inner tool cannot lend it to the specialist: fail closed.
     with pytest.raises(ToolDenied, match="SPECIALIST_INNER_TOOL_DENIED"):
-        call_tool(MANIFEST, AGENT_TOOL, {"question": "risk?"})
+        call_tool(MANIFEST, AGENT_TOOL, {"question": "risk?"}, tool_scope(AGENT_TOOL))

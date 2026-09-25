@@ -23,9 +23,10 @@ SPECIALIST_AGENTS = {
     # Gateway. Builder-created Studio agents are directly usable and are not listed here.
     # Nested governance: the specialist's OWN manifest and service identity govern its inner
     # tools; the caller's grant only decides whether the caller may call this tool at all.
-    # Caller tool grants are never inherited or intersected into the specialist's internals.
+    # Caller tool grants are never inherited into the specialist's internals, but every call,
+    # inner calls included, stays confined to the CALLER's grant scope (see require_scope).
     "agent-risk-analyst": {"agent": "synthetic-risk-analyst", "version": "1", "curation": "platform-curated",
-        "service_identity": "synthetic-svc-risk-analyst",
+        "service_identity": "synthetic-svc-risk-analyst", "operation": "risk_review",
         "manifest": {"tools": ["snowflake-approved-views"], "component_versions": {"snowflake-approved-views": "1"}},
         "inner_calls": [("snowflake-approved-views", {"query_id": "open_incident_counts"})],
         "steps": [
@@ -52,8 +53,35 @@ TOOL_ROUTES = [
 ]
 
 
+READ_VIEW = "read_approved_view"
+
+
 class ToolDenied(ValueError):
     pass
+
+
+def tool_scope(tool_id: str):
+    """Every business operation and data view a tool can reach. None: the tool is unscoped.
+
+    A caller's grant scope is a server-held subset of this; it is never read from the definition.
+    """
+    if tool_id in SPECIALIST_AGENTS:
+        agent = SPECIALIST_AGENTS[tool_id]
+        views = {SNOWFLAKE_VIEWS[t]["queries"][a["query_id"]]["view"] for t, a in agent["inner_calls"]}
+        return {"operations": sorted({agent["operation"], READ_VIEW}), "data": sorted(views)}
+    if tool_id in SNOWFLAKE_VIEWS:
+        return {"operations": [READ_VIEW], "data": sorted(q["view"] for q in SNOWFLAKE_VIEWS[tool_id]["queries"].values())}
+    return None
+
+
+def require_scope(scope, operation: str, view: str | None = None):
+    """Server-side caller boundary, distinct from the specialist's own manifest and identity."""
+    if not isinstance(scope, dict):
+        raise ToolDenied("CALLER_SCOPE_REQUIRED")
+    if operation not in scope.get("operations", []):
+        raise ToolDenied("CALLER_OPERATION_OUT_OF_SCOPE")
+    if view is not None and view not in scope.get("data", []):
+        raise ToolDenied("CALLER_DATA_OUT_OF_SCOPE")
 
 
 def list_tools(definition: dict) -> list:
@@ -71,8 +99,9 @@ def list_tools(definition: dict) -> list:
     return tools
 
 
-def call_tool(definition: dict, tool_id: str, arguments: dict) -> dict:
-    """Local MCP tools/call via Gateway. Only manifest-selected, version-pinned tools run."""
+def call_tool(definition: dict, tool_id: str, arguments: dict, scope: dict | None = None) -> dict:
+    """Local MCP tools/call via Gateway. Only manifest-selected, version-pinned tools run, and
+    only within the caller's grant scope (approved operations + data), which inner calls inherit."""
     if tool_id not in definition["tools"] or tool_id not in {**SPECIALIST_AGENTS, **SNOWFLAKE_VIEWS}:
         raise ToolDenied("TOOL_NOT_IN_MANIFEST")
     if tool_id in SPECIALIST_AGENTS:
@@ -81,13 +110,15 @@ def call_tool(definition: dict, tool_id: str, arguments: dict) -> dict:
             raise ToolDenied("AGENT_VERSION_NOT_PINNED")
         if not isinstance(arguments, dict) or set(arguments) != {"question"} or not isinstance(arguments["question"], str):
             raise ToolDenied("AGENT_TOOL_ARGUMENTS_REJECTED")
+        require_scope(scope, agent["operation"])
         inner_calls = []
         for inner_tool, inner_arguments in agent["inner_calls"]:
-            # Governed by the specialist's own manifest, never the caller's.
+            # Tools come from the specialist's own manifest, never the caller's; operations and
+            # data stay within the caller's scope. Any denial fails the whole call closed.
             try:
-                inner = call_tool(agent["manifest"], inner_tool, dict(inner_arguments))
+                inner = call_tool(agent["manifest"], inner_tool, dict(inner_arguments), scope)
             except ToolDenied as exc:
-                raise ToolDenied("SPECIALIST_INNER_TOOL_DENIED") from exc
+                raise ToolDenied(str(exc) if str(exc).startswith("CALLER_") else "SPECIALIST_INNER_TOOL_DENIED") from exc
             inner_calls.append({"tool": inner_tool, "via": GATEWAY, "identity": agent["service_identity"], "source": f"snowflake:{inner['query_id']}"})
         return {"agent": agent["agent"], "agent_version": agent["version"], "via": GATEWAY, "steps": [dict(s) for s in agent["steps"]],
                 "inner_calls": inner_calls, "answer": "Synthetic risk review: elevated. " + agent["steps"][-1]["finding"]}
@@ -97,16 +128,17 @@ def call_tool(definition: dict, tool_id: str, arguments: dict) -> dict:
     if not isinstance(arguments, dict) or set(arguments) != {"query_id"} or arguments["query_id"] not in connector["queries"]:
         raise ToolDenied("SNOWFLAKE_QUERY_NOT_WHITELISTED")
     query = connector["queries"][arguments["query_id"]]
+    require_scope(scope, READ_VIEW, query["view"])
     return {"query_id": arguments["query_id"], "view": query["view"], "via": GATEWAY, "rows": [dict(r) for r in query["rows"]], "masked": True}
 
 
-def tool_evidence(definition: dict, question: str):
+def tool_evidence(definition: dict, question: str, scopes: dict):
     evidence, calls = [], []
     for tool_id, keywords, arguments in TOOL_ROUTES:
         if tool_id not in definition["tools"] or not any(k in question.lower() for k in keywords):
             continue
         try:
-            result = call_tool(definition, tool_id, arguments(question))
+            result = call_tool(definition, tool_id, arguments(question), scopes.get(tool_id))
         except ToolDenied as exc:
             calls.append({"tool": tool_id, "via": GATEWAY, "denied": str(exc)})
             continue
@@ -119,10 +151,10 @@ def tool_evidence(definition: dict, question: str):
     return evidence, calls
 
 
-def run_case(definition: dict, question: str) -> dict:
+def run_case(definition: dict, question: str, scopes: dict | None = None) -> dict:
     prompt = definition["prompt"].lower()
     matches = [d for d in DOCUMENTS if d["tool"] in definition["tools"] and any(k in question.lower() for k in d["keywords"])]
-    evidence, calls = tool_evidence(definition, question)
+    evidence, calls = tool_evidence(definition, question, scopes or {})
     matches += evidence
     sources = [d["id"] for d in matches]
     refused = not matches and "refuse unknown" in prompt and "do not refuse" not in prompt
@@ -139,8 +171,8 @@ def run_case(definition: dict, question: str) -> dict:
         output = text + (" " + " ".join(f"[{s}]" for s in citations) if citations else "")
     return {"output": output, "sources": sources, "citations": citations, "refused": refused, "runner": "fixture runner, no live LLM", "trace": [{"type": "fixture_lookup", "matched_sources": sources}, *([{"type": "tools_call", "calls": calls}] if calls else []), {"type": "format_output", "format": definition["output_format"]}]}
 
-def evaluate_case(definition: dict, case: dict) -> dict:
-    result = run_case(definition, case["input"])
+def evaluate_case(definition: dict, case: dict, scopes: dict | None = None) -> dict:
+    result = run_case(definition, case["input"], scopes)
     output = result["output"]
     checks = []
     for term in case["required_terms"]:
@@ -157,9 +189,9 @@ def evaluate_case(definition: dict, case: dict) -> dict:
     score = sum(c["passed"] for c in checks) / len(checks)
     return {"id": case["id"], "input": case["input"], **result, "checks": checks, "score": score, "passed": all(c["passed"] for c in checks)}
 
-def evaluate(definition: dict, policy: dict | None = None) -> dict:
+def evaluate(definition: dict, policy: dict | None = None, scopes: dict | None = None) -> dict:
     policy = policy or {"minimum_score": 1, "require_judge": False}
-    cases = [evaluate_case(definition, c) for c in definition["dataset"]]
+    cases = [evaluate_case(definition, c, scopes) for c in definition["dataset"]]
     score = sum(c["score"] for c in cases) / len(cases)
     missing = definition["rubric"]["profile"] == "llm-required" or policy["require_judge"]
     threshold = max(policy["minimum_score"], definition["rubric"]["minimum_score"])
