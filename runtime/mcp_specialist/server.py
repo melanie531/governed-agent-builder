@@ -82,12 +82,14 @@ def build_server(resolve_caller=unauthenticated):
     return server
 
 
-def create_app(resolve_caller=unauthenticated):
+LOOPBACK = TransportSecuritySettings(allowed_hosts=["127.0.0.1:*", "localhost:*"], allowed_origins=["http://127.0.0.1:*", "http://localhost:*"])
+
+
+def create_app(resolve_caller=unauthenticated, security_settings=LOOPBACK):
     if os.getenv("EXECUTION_MODE", "local") != "local":
         raise RuntimeError("AWS mode disabled: the MCP specialist server is LOCAL SIMULATION only. No simulation fallback.")
-    # Stateless Streamable HTTP, the AgentCore Runtime MCP shape. Loopback hosts only.
-    manager = StreamableHTTPSessionManager(app=build_server(resolve_caller), stateless=True, security_settings=TransportSecuritySettings(
-        allowed_hosts=["127.0.0.1:*", "localhost:*"], allowed_origins=["http://127.0.0.1:*", "http://localhost:*"]))
+    # Stateless Streamable HTTP, the AgentCore Runtime MCP shape. Loopback hosts only by default.
+    manager = StreamableHTTPSessionManager(app=build_server(resolve_caller), stateless=True, security_settings=security_settings)
 
     class MCPEndpoint:
         async def __call__(self, scope, receive, send):

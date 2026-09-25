@@ -1,0 +1,34 @@
+{
+ "account": "534409838809",
+ "region": "us-west-2",
+ "build_time_utc": "2026-09-25T13:36:09Z",
+ "image_uri": "534409838809.dkr.ecr.us-west-2.amazonaws.com/governed-agent/mcp-specialist:20260925T133609Z",
+ "image_digest": "sha256:6afe23a32c8be285fde963e5b11061071c535d7b367cf989aef70b3f7a9f598b",
+ "image_pushed_at": "2026-09-25T13:36:11.175000+00:00",
+ "runtime_role_arn": "arn:aws:iam::534409838809:role/governed-mcp-specialist-runtime",
+ "deployments": {
+  "full": {
+   "runtime_id": "governed_mcp_specialist-lStD9KFrE5",
+   "runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:534409838809:runtime/governed_mcp_specialist-lStD9KFrE5",
+   "runtime_version": "2",
+   "runtime_qualifier": "DEFAULT",
+   "runtime_last_updated_at": "2026-09-25T13:36:13.535653+00:00",
+   "target_name": "risk-analyst-specialist",
+   "target_id": "ORDN8EZHNS",
+   "target_endpoint": "https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-west-2%3A534409838809%3Aruntime%2Fgoverned_mcp_specialist-lStD9KFrE5/invocations?qualifier=DEFAULT"
+  },
+  "no-data": {
+   "runtime_id": "governed_mcp_specialist_nodata-OxYEMkCsmY",
+   "runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:534409838809:runtime/governed_mcp_specialist_nodata-OxYEMkCsmY",
+   "runtime_version": "1",
+   "runtime_qualifier": "DEFAULT",
+   "runtime_last_updated_at": "2026-09-25T13:36:19.474232+00:00",
+   "target_name": "risk-analyst-specialist-nodata",
+   "target_id": "MOVZ3MURHA",
+   "target_endpoint": "https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-west-2%3A534409838809%3Aruntime%2Fgoverned_mcp_specialist_nodata-OxYEMkCsmY/invocations?qualifier=DEFAULT"
+  }
+ },
+ "gateway_id": "governed-mcp-specialist-gw-3glptxtem4",
+ "gateway_url": "https://governed-mcp-specialist-gw-3glptxtem4.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp",
+ "gateway_role_arn": "arn:aws:iam::534409838809:role/governed-mcp-specialist-gateway"
+}
