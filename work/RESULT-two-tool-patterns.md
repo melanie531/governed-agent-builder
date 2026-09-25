@@ -143,3 +143,13 @@ Also needed:
   (plus `kms:Decrypt` on the key) scoped to `/governed-agent-builder/snowflake-smoke/*`;
 - explicit go-ahead to run `SNOWFLAKE_SMOKE=1 ... uv run --with snowflake-connector-python python
   scripts/snowflake_readonly_smoke.py --query <VIEW>` once per approved view.
+
+## Test-status record (honest, 哥哥 correction 2026-09-25)
+- Full suite run in isolated worktree `gab-v3-recover` (base+v3, WITHOUT frontend/node_modules):
+  **1750 passed / 1 failed / 4 skipped** at tree = stash `9c92390` applied on base `e443411`
+  (committed as `79d3f64`). The 1 failure = `test_react_renders_malicious_report_as_text`.
+- The failing test re-run ALONE in main clone WITH frontend/node_modules present (SHA `79d3f64`):
+  **1 passed**. => original failure is environment (missing frontend deps for esbuild/React SSR).
+- NOT claimed: "full suite all green in main clone." The full suite has NOT been re-run to
+  completion in a deps-present checkout at `79d3f64`. Status: original failing item passes with
+  deps present; full green pending a complete deps-present full run.
