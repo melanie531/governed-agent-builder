@@ -12,9 +12,84 @@ DOCUMENTS = [
     {"id": "synthetic:strategy", "keywords": ["strategy", "insights"], "text": "The synthetic strategy prioritizes retention before expansion.", "tool": "restricted-insights"},
 ]
 
+# Two governed tool-integration patterns behind a local stand-in for the Tool Gateway
+# MCP tools/call boundary. Authority is the saved manifest (tools + pinned versions),
+# re-checked against current grants by the platform before every run. Arguments never
+# carry identity: role, tenant_id or similar fields are rejected, not interpreted.
+SPECIALIST_AGENTS = {
+    # Agent-as-tool: a published specialist agent for multi-step business reasoning.
+    "agent-risk-analyst": {"agent": "synthetic-risk-analyst", "version": "1", "steps": [
+        {"step": "gather_signals", "finding": "Two open synthetic incidents and one delayed synthetic renewal."},
+        {"step": "weigh_signals", "finding": "Open incidents plus a delayed renewal meet the synthetic elevated-risk rule."},
+        {"step": "recommend", "finding": "Schedule an account review before the renewal date."}]},
+}
+SNOWFLAKE_VIEWS = {
+    # Builtin MCP Snowflake connector: whitelisted named queries over approved read-only
+    # views only. Rows are synthetic and already masked; there is no SQL argument.
+    "snowflake-approved-views": {"version": "1", "queries": {
+        "account_health_summary": {"view": "SYNTHETIC_DB.APPROVED_VIEWS.ACCOUNT_HEALTH_V", "rows": [
+            {"account": "SYN-ACCT-001", "health": "amber", "contact_email": "***MASKED***"},
+            {"account": "SYN-ACCT-002", "health": "green", "contact_email": "***MASKED***"}]},
+        "open_incident_counts": {"view": "SYNTHETIC_DB.APPROVED_VIEWS.OPEN_INCIDENTS_V", "rows": [
+            {"region": "SYN-REGION-A", "open_incidents": 2},
+            {"region": "SYN-REGION-B", "open_incidents": 0}]}}},
+}
+# Deterministic fixture routing, like DOCUMENTS keywords: (tool, keywords, arguments).
+TOOL_ROUTES = [
+    ("agent-risk-analyst", ["risk"], lambda question: {"question": question}),
+    ("snowflake-approved-views", ["account health"], lambda question: {"query_id": "account_health_summary"}),
+    ("snowflake-approved-views", ["incident"], lambda question: {"query_id": "open_incident_counts"}),
+]
+
+
+class ToolDenied(ValueError):
+    pass
+
+
+def call_tool(definition: dict, tool_id: str, arguments: dict) -> dict:
+    """Local MCP tools/call boundary. Only manifest-selected, version-pinned tools run."""
+    if tool_id not in definition["tools"] or tool_id not in {**SPECIALIST_AGENTS, **SNOWFLAKE_VIEWS}:
+        raise ToolDenied("TOOL_NOT_IN_MANIFEST")
+    if tool_id in SPECIALIST_AGENTS:
+        agent = SPECIALIST_AGENTS[tool_id]
+        if definition["component_versions"].get(tool_id) != agent["version"]:
+            raise ToolDenied("AGENT_VERSION_NOT_PINNED")
+        if not isinstance(arguments, dict) or set(arguments) != {"question"} or not isinstance(arguments["question"], str):
+            raise ToolDenied("AGENT_TOOL_ARGUMENTS_REJECTED")
+        return {"agent": agent["agent"], "agent_version": agent["version"], "steps": [dict(s) for s in agent["steps"]],
+                "answer": "Synthetic risk review: elevated. " + agent["steps"][-1]["finding"]}
+    connector = SNOWFLAKE_VIEWS[tool_id]
+    if definition["component_versions"].get(tool_id) != connector["version"]:
+        raise ToolDenied("CONNECTOR_VERSION_NOT_PINNED")
+    if not isinstance(arguments, dict) or set(arguments) != {"query_id"} or arguments["query_id"] not in connector["queries"]:
+        raise ToolDenied("SNOWFLAKE_QUERY_NOT_WHITELISTED")
+    query = connector["queries"][arguments["query_id"]]
+    return {"query_id": arguments["query_id"], "view": query["view"], "rows": [dict(r) for r in query["rows"]], "masked": True}
+
+
+def tool_evidence(definition: dict, question: str):
+    evidence, calls = [], []
+    for tool_id, keywords, arguments in TOOL_ROUTES:
+        if tool_id not in definition["tools"] or not any(k in question.lower() for k in keywords):
+            continue
+        try:
+            result = call_tool(definition, tool_id, arguments(question))
+        except ToolDenied as exc:
+            calls.append({"tool": tool_id, "denied": str(exc)})
+            continue
+        if "agent" in result:
+            evidence.append({"id": f"agent:{result['agent']}@{result['agent_version']}", "text": result["answer"]})
+        else:
+            evidence.append({"id": f"snowflake:{result['query_id']}", "text": f"Approved view {result['view']} returned {len(result['rows'])} masked synthetic rows."})
+        calls.append({"tool": tool_id, "source": evidence[-1]["id"]})
+    return evidence, calls
+
+
 def run_case(definition: dict, question: str) -> dict:
     prompt = definition["prompt"].lower()
     matches = [d for d in DOCUMENTS if d["tool"] in definition["tools"] and any(k in question.lower() for k in d["keywords"])]
+    evidence, calls = tool_evidence(definition, question)
+    matches += evidence
     sources = [d["id"] for d in matches]
     refused = not matches and "refuse unknown" in prompt and "do not refuse" not in prompt
     text = " ".join(d["text"] for d in matches) if matches else ("I cannot answer without evidence in the synthetic collection." if refused else "No matching synthetic evidence was found.")
@@ -28,7 +103,7 @@ def run_case(definition: dict, question: str) -> dict:
         output = json.dumps({"answer": text, "sources": citations, "refused": refused})
     else:
         output = text + (" " + " ".join(f"[{s}]" for s in citations) if citations else "")
-    return {"output": output, "sources": sources, "citations": citations, "refused": refused, "runner": "fixture runner, no live LLM", "trace": [{"type": "fixture_lookup", "matched_sources": sources}, {"type": "format_output", "format": definition["output_format"]}]}
+    return {"output": output, "sources": sources, "citations": citations, "refused": refused, "runner": "fixture runner, no live LLM", "trace": [{"type": "fixture_lookup", "matched_sources": sources}, *([{"type": "tools_call", "calls": calls}] if calls else []), {"type": "format_output", "format": definition["output_format"]}]}
 
 def evaluate_case(definition: dict, case: dict) -> dict:
     result = run_case(definition, case["input"])

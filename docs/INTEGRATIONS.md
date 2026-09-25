@@ -58,3 +58,28 @@ CloudWatch and existing Splunk are **not connected**. The UI trace is a local SQ
 ## Integration-test gate
 
 No live integration test is enabled in the test suite or GitHub workflow. Required preconditions: explicit operator approval for cloud resources/model spend, a configured approved AWS account/region and least-privilege workload identity, Okta production authentication, both verified Gateways, approved real model routes, quotas, runtime artifact and version/digest checks, isolated synthetic integration data, budget and teardown plan. Until all are ready, `EXECUTION_MODE=aws` fails closed. Never silently substitute the local fixture runner in real mode.
+
+## Tool-integration patterns: agent-as-tool and builtin MCP Snowflake
+
+Both are fixture catalog `tool` components (`agent-risk-analyst`, `snowflake-approved-views`)
+composed only by the Research foundation. They follow the same Catalog → Manifest →
+Governance path as other tools: not in initial grants, admin grant or approved request
+required, version pinned in `component_versions`, and grants re-checked on every job step and
+invoke, so revocation blocks later calls. `backend/harness.py` simulates the Tool Gateway MCP
+`tools/call` boundary locally (`call_tool`); nothing is deployed or connected.
+
+- **Agent-as-tool** — use when the question needs extra business reasoning or multi-step
+  orchestration. A published specialist agent (synthetic, pinned v1) returns its steps and
+  conclusion. Only a `question` argument is accepted; `role`, `tenant_id` or any other
+  model-supplied identity field is rejected, never interpreted.
+- **Builtin MCP Snowflake connector** — use for pure retrieval of pre-approved data. Only
+  whitelisted `query_id` values over approved read-only views run; there is no SQL argument
+  and no generic `execute_sql`. Rows are synthetic and masked.
+
+Before any live connection: a least-privilege read-only Snowflake service identity, a
+credential held only in an approved secret store, e.g. server-side placeholders
+`SNOWFLAKE_MCP_SECRET_ARN=<approved-secret-store-reference>` and
+`SNOWFLAKE_MCP_SERVICE_ROLE=<least-privilege-read-only-role>`, and a verified AgentCore
+Gateway target for the builtin connector. Credentials never belong in prompts, logs, browser
+bundles, git or command arguments. These variable names are documentation, not an
+implemented configuration contract. `EXECUTION_MODE=aws` still fails closed.
