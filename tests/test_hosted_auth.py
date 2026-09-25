@@ -109,12 +109,37 @@ def test_public_config_and_pkce(hosted):
 
 @pytest.mark.parametrize("overrides", [
     {"iss": "https://wrong.example.test"}, {"client_id": "otherclient"}, {"token_use": "id"},
-    {"exp": 1}, {"nbf": int(time.time()) + 3600}, {"scope": "email"}, {"sub": "wrong-subject"},
+    {"exp": 1}, lambda: {"nbf": int(time.time()) + 3600}, {"scope": "email"}, {"sub": "wrong-subject"},
 ])
 def test_wrong_token_contract_denied(hosted, overrides):
     app, c, key = hosted
+    # Resolve time-dependent claims at execution, never at test collection.
+    overrides = overrides() if callable(overrides) else overrides
     authenticate(app, c, key, **overrides)
     assert c.get("/api/me").status_code == 401
+
+
+def test_future_nbf_denied_after_delayed_collection(hosted, monkeypatch):
+    """Exercise the application after a simulated two-hour collection-to-run delay."""
+    from datetime import datetime, timezone
+
+    delayed_now = time.time() + 7200
+
+    class DelayedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(delayed_now, tz=tz or timezone.utc)
+
+    monkeypatch.setattr(time, "time", lambda: delayed_now)
+    monkeypatch.setattr(jwt.api_jwt, "datetime", DelayedClock)
+    app, client, key = hosted
+    # Positive control: the session and a currently valid signed token still work.
+    authenticate(app, client, key)
+    assert client.get("/api/me").status_code == 200
+    # Reuse the actual collected nbf case, not a separately constructed lookalike.
+    cases = next(mark.args[1] for mark in test_wrong_token_contract_denied.pytestmark
+                 if mark.name == "parametrize")
+    test_wrong_token_contract_denied(hosted, cases[4])
 
 
 def test_wrong_signature_denied(hosted):
