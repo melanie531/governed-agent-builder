@@ -196,9 +196,10 @@ def test_aws_execution_mode_fails_closed(monkeypatch):
 
 
 def test_served_tools_come_from_approved_catalog_mcp_server_targets(monkeypatch):
-    assert {k: v["type"] for k, v in mcp_server.served_tools().items()} == {AGENT_TOOL: "mcpServer"}
+    alpr = ("agent-alpr-account-vehicle", "agent-alpr-billing-notice", "agent-alpr-remediation")
+    assert {k: v["type"] for k, v in mcp_server.served_tools().items()} == {AGENT_TOOL: "mcpServer", **dict.fromkeys(alpr, "mcpServer")}
     from backend import catalog
-    revoked = [dict(c, approved=False) if c["id"] == AGENT_TOOL else c for c in catalog.COMPONENTS]
+    revoked = [dict(c, approved=False) if c["id"] in (AGENT_TOOL, *alpr) else c for c in catalog.COMPONENTS]
     monkeypatch.setattr(mcp_server, "COMPONENTS", revoked)
     assert mcp_server.served_tools() == {}
 

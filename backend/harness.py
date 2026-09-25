@@ -5,6 +5,7 @@ Prompt controls are intentionally limited and visible: 'uppercase', 'cite source
 not semantically interpreted. Expected answers are NEVER inputs to execution.
 """
 import json
+import re
 
 DOCUMENTS = [
     {"id": "synthetic:aurora", "keywords": ["aurora", "launch"], "text": "Aurora launches in October with a small pilot before wider release.", "tool": "synthetic-search"},
@@ -33,6 +34,18 @@ SPECIALIST_AGENTS = {
         {"step": "gather_signals", "finding": "Two open synthetic incidents and one delayed synthetic renewal."},
         {"step": "weigh_signals", "finding": "Open incidents plus a delayed renewal meet the synthetic elevated-risk rule."},
         {"step": "recommend", "finding": "Schedule an account review before the renewal date."}]},
+    # ALPR misread-plate investigation specialists: READ-ONLY reviews over governed Snowflake
+    # views (backend/alpr.py). The case id comes from the question and is passed to the connector
+    # as a validated bind value. Findings are recommendations; no refund, void or notice is issued.
+    **{tool_id: {"agent": agent, "version": "1", "curation": "platform-curated", "service_identity": f"synthetic-svc-{agent}",
+                 "operation": operation, "case_scoped": True,
+                 "manifest": {"tools": ["snowflake-alpr-views"], "component_versions": {"snowflake-alpr-views": "1"}},
+                 "inner_calls": [("snowflake-alpr-views", {"query_id": q}) for q in queries]}
+       for tool_id, agent, operation, queries in [
+           ("agent-alpr-account-vehicle", "alpr-account-vehicle", "alpr_ownership_review", ["ownership_at_event"]),
+           ("agent-alpr-billing-notice", "alpr-billing-notice", "alpr_billing_review", ["charges_notices_payments"]),
+           ("agent-alpr-remediation", "alpr-remediation", "alpr_remediation_review",
+            ["ownership_at_event", "charges_notices_payments", "remediation_status", "policy_at_event"])]},
 }
 SNOWFLAKE_VIEWS = {
     # Builtin MCP Snowflake connector: whitelisted named queries over approved read-only
@@ -44,13 +57,24 @@ SNOWFLAKE_VIEWS = {
         "open_incident_counts": {"view": "SYNTHETIC_DB.APPROVED_VIEWS.OPEN_INCIDENTS_V", "rows": [
             {"region": "SYN-REGION-A", "open_incidents": 2},
             {"region": "SYN-REGION-B", "open_incidents": 0}]}}},
+    # Case-scoped connector over the secure ALPR views (SYNTHETIC rows). Rows come from
+    # backend/alpr.py: a verbatim snapshot of the live views by default, or live Snowflake as the
+    # read-only role. Arguments are query_id plus a validated case_id; still no SQL argument.
+    "snowflake-alpr-views": {"version": "1", "case_scoped": True, "queries": {
+        q: {"view": f"GAB_DEMO_DB.ALPR_INVESTIGATION_APPROVED.{view}"} for q, view in [
+            ("ownership_at_event", "VW_OWNERSHIP_AT_EVENT"), ("charges_notices_payments", "VW_CHARGES_NOTICES_PAYMENTS"),
+            ("remediation_status", "VW_REMEDIATION_STATUS"), ("policy_at_event", "VW_POLICY_AT_EVENT")]}},
 }
 # Deterministic fixture routing, like DOCUMENTS keywords: (tool, keywords, arguments).
 TOOL_ROUTES = [
     ("agent-risk-analyst", ["risk"], lambda question: {"question": question}),
     ("snowflake-approved-views", ["account health"], lambda question: {"query_id": "account_health_summary"}),
     ("snowflake-approved-views", ["incident"], lambda question: {"query_id": "open_incident_counts"}),
+    ("agent-alpr-account-vehicle", ["owner", "plate"], lambda question: {"question": question}),
+    ("agent-alpr-billing-notice", ["billed", "notice"], lambda question: {"question": question}),
+    ("agent-alpr-remediation", ["alpr", "refund", "remediation"], lambda question: {"question": question}),
 ]
+ALPR_CASE_ID = r"^ALPR-C\d{3}$"
 
 
 READ_VIEW = "read_approved_view"
@@ -92,6 +116,8 @@ def list_tools(definition: dict) -> list:
             schema = {"question": {"type": "string"}}
         elif tool_id in SNOWFLAKE_VIEWS:
             schema = {"query_id": {"type": "string", "enum": sorted(SNOWFLAKE_VIEWS[tool_id]["queries"])}}
+            if SNOWFLAKE_VIEWS[tool_id].get("case_scoped"):
+                schema["case_id"] = {"type": "string", "pattern": ALPR_CASE_ID}
         else:
             continue
         tools.append({"name": tool_id, "via": GATEWAY, "inputSchema": {"type": "object", "properties": schema,
@@ -111,24 +137,54 @@ def call_tool(definition: dict, tool_id: str, arguments: dict, scope: dict | Non
         if not isinstance(arguments, dict) or set(arguments) != {"question"} or not isinstance(arguments["question"], str):
             raise ToolDenied("AGENT_TOOL_ARGUMENTS_REJECTED")
         require_scope(scope, agent["operation"])
-        inner_calls = []
+        case_id = None
+        if agent.get("case_scoped"):
+            case_id = re.search(r"\bALPR-C\d{3}\b", arguments["question"].upper())
+            if case_id is None:
+                raise ToolDenied("ALPR_CASE_ID_REQUIRED")
+            case_id = case_id.group(0)
+        inner_calls, found = [], {}
         for inner_tool, inner_arguments in agent["inner_calls"]:
+            if case_id:
+                inner_arguments = {**inner_arguments, "case_id": case_id}
             # Tools come from the specialist's own manifest, never the caller's; operations and
             # data stay within the caller's scope. Any denial fails the whole call closed.
             try:
                 inner = call_tool(agent["manifest"], inner_tool, dict(inner_arguments), scope)
             except ToolDenied as exc:
-                raise ToolDenied(str(exc) if str(exc).startswith("CALLER_") else "SPECIALIST_INNER_TOOL_DENIED") from exc
+                raise ToolDenied(str(exc) if str(exc).startswith(("CALLER_", "ALPR_")) else "SPECIALIST_INNER_TOOL_DENIED") from exc
             inner_calls.append({"tool": inner_tool, "via": GATEWAY, "identity": agent["service_identity"], "source": f"snowflake:{inner['query_id']}"})
+            found[inner["query_id"]] = inner["rows"]
+        if case_id:
+            from backend import alpr
+            findings = alpr.review(agent["operation"], case_id, found)
+            return {"agent": agent["agent"], "agent_version": agent["version"], "via": GATEWAY, "steps": findings.pop("steps"),
+                    "inner_calls": inner_calls, "answer": findings.pop("answer"), "findings": findings, "read_only": True, "actions_executed": []}
         return {"agent": agent["agent"], "agent_version": agent["version"], "via": GATEWAY, "steps": [dict(s) for s in agent["steps"]],
                 "inner_calls": inner_calls, "answer": "Synthetic risk review: elevated. " + agent["steps"][-1]["finding"]}
     connector = SNOWFLAKE_VIEWS[tool_id]
     if definition["component_versions"].get(tool_id) != connector["version"]:
         raise ToolDenied("CONNECTOR_VERSION_NOT_PINNED")
-    if not isinstance(arguments, dict) or set(arguments) != {"query_id"} or arguments["query_id"] not in connector["queries"]:
+    expected = {"query_id", "case_id"} if connector.get("case_scoped") else {"query_id"}
+    if not isinstance(arguments, dict) or set(arguments) != expected or arguments["query_id"] not in connector["queries"]:
         raise ToolDenied("SNOWFLAKE_QUERY_NOT_WHITELISTED")
     query = connector["queries"][arguments["query_id"]]
     require_scope(scope, READ_VIEW, query["view"])
+    if connector.get("case_scoped"):
+        if not isinstance(arguments["case_id"], str) or not re.match(ALPR_CASE_ID, arguments["case_id"]):
+            raise ToolDenied("SNOWFLAKE_QUERY_NOT_WHITELISTED")
+        try:
+            # Lazy: the exported single-file harness has no backend package and fails closed here.
+            from backend import alpr
+        except ImportError:
+            raise ToolDenied("ALPR_VIEW_UNAVAILABLE") from None
+        try:
+            rows = alpr.rows(arguments["query_id"], arguments["case_id"])
+        except alpr.ViewUnavailable as exc:
+            raise ToolDenied(str(exc)) from None
+        # Owner names are synthetic placeholders, not masked values.
+        return {"query_id": arguments["query_id"], "case_id": arguments["case_id"], "view": query["view"], "via": GATEWAY,
+                "rows": rows, "masked": False, "synthetic": True}
     return {"query_id": arguments["query_id"], "view": query["view"], "via": GATEWAY, "rows": [dict(r) for r in query["rows"]], "masked": True}
 
 
