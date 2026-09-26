@@ -1,6 +1,7 @@
 """Isolated managed-services CloudFormation. No VPC or policy exceptions."""
 import copy
 from infra.identity import template as identity_template
+from infra.resource_tags import apply_resource_tags
 
 
 def ref(name): return {"Ref": name}
@@ -22,7 +23,7 @@ def tls_policy(name, statements=None):
 
 
 def artifacts_template():
-    return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Private retained serverless release artifacts only", "Resources": {"Releases": bucket(), "ReleaseTLS": tls_policy("Releases")}, "Outputs": {"Bucket": {"Value": ref("Releases")}}}
+    return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Private retained serverless release artifacts only", "Resources": apply_resource_tags({"Releases": bucket(), "ReleaseTLS": tls_policy("Releases")}), "Outputs": {"Bucket": {"Value": ref("Releases")}}}
 
 
 def template(*, foundation_deployment=None, foundation_producer=None, journey=None):
@@ -42,7 +43,7 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
             "ContentTypeOptions": {"Override": True}, "FrameOptions": {"FrameOption": "DENY", "Override": True},
             "ReferrerPolicy": {"ReferrerPolicy": "no-referrer", "Override": True},
             "StrictTransportSecurity": {"AccessControlMaxAgeSec": 31536000, "IncludeSubdomains": True, "Override": True},
-            "ContentSecurityPolicy": {"ContentSecurityPolicy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'", "Override": True}}}}},
+            "ContentSecurityPolicy": {"ContentSecurityPolicy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'", "Override": True}}}}},
     }
     resources["Exports"]["Properties"]["LifecycleConfiguration"] = {"Rules": [{"Id": "ExpireEvidence", "Status": "Enabled", "ExpirationInDays": 7, "NoncurrentVersionExpiration": {"NoncurrentDays": 7}}]}
     for name in ("Jobs", "DeadLetters", "DispatchFailures"):
@@ -162,6 +163,7 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
     if journey is not None:
         from infra.journey import configure_app
         configure_app(resources, journey)
+    apply_resource_tags(resources)
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Isolated private S3 OAC + managed HTTPS API Cognito Lambda DynamoDB SQS; no VPC dependencies", "Parameters": {"ArtifactBucket": {"Type": "String"}, "ArtifactKey": {"Type": "String"}}, "Resources": resources, "Outputs": {"ApplicationOrigin": {"Value": sub("https://${Distribution.DomainName}")}, "ApiEndpoint": {"Value": attr("Api", "ApiEndpoint")}, "DistributionId": {"Value": ref("Distribution")}, "FrontendBucket": {"Value": ref("Web")}, "StateTable": {"Value": ref("State")}, "UserPoolId": {"Value": ref("Pool")}, "ClientId": {"Value": ref("Client")}, "CognitoDomain": {"Value": sub("https://${Domain}.auth.${AWS::Region}.amazoncognito.com")}, "WorkerFunction": {"Value": ref("Worker")}}}
 
 

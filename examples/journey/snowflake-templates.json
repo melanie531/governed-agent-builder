@@ -1,0 +1,72 @@
+[
+  {
+    "id": "snowflake-custom",
+    "name": "Snowflake · Build your own",
+    "description": "Start with general SQL and schema discovery. Put your business logic in the agent instructions and select optional Cortex capabilities as needed.",
+    "prompt": "Answer the user's questions using the selected Snowflake tools and data-access skill. Discover relevant accessible data before querying unfamiliar objects. Ground answers in returned results, cite source objects and filters, and explain missing information. Define any additional business rules and preferred output format here.",
+    "tools": ["snowflake-query_sql"],
+    "skills": ["concise", "citations", "snowflake-data-access"],
+    "sample_input": "What datasets can this connection access, and what could I ask about them?",
+    "sample_dataset": []
+  },
+  {
+    "id": "snowflake-analyst",
+    "name": "Sales example · Cortex Analyst",
+    "description": "Generate SQL from a governed sales semantic view, then execute it.",
+    "prompt": "Use sales_analyst first for every sales question. Cortex Analyst generates SQL; it does not execute it. Pass its returned SQL to sales_sql, then answer from actual rows in USD. Cite the semantic view and date range. Never substitute your own SQL when demonstrating Analyst.",
+    "tools": ["snowflake-sales_analyst", "snowflake-sales_sql"],
+    "skills": ["concise", "citations"],
+    "sample_input": "What was total sales revenue in September 2026 and how many transactions were there?",
+    "sample_dataset": [{"id": "september-metrics", "input": "What was total sales revenue in September 2026 and how many transactions were there?", "expected_response": "September 2026 total revenue was USD 17,400 across 9 transactions."}]
+  },
+  {
+    "id": "snowflake-search",
+    "name": "Sales example · Cortex Search",
+    "description": "Find policies and campaign notes, with document citations.",
+    "prompt": "Use sales_search for each question. Request BODY, DOCUMENT_ID and TITLE and at most 3 results. Answer only from retrieved evidence and cite document IDs. State when a policy or fact is absent.",
+    "tools": ["snowflake-sales_search"],
+    "skills": ["concise", "citations"],
+    "sample_input": "What is the return window for unopened monitors and notebooks? Cite the policy.",
+    "sample_dataset": [{"id": "return-policy", "input": "What is the return window for unopened monitors and notebooks? Cite the policy.", "expected_response": "POL-001 allows returns of unopened monitors within 30 days and notebooks within 14 days of delivery; proof of purchase is required.", "require_citation": true}]
+  },
+  {
+    "id": "snowflake-agent",
+    "name": "Sales example · Cortex Agent",
+    "description": "Let Snowflake orchestrate Analyst and Search for a combined question.",
+    "prompt": "Delegate each question to sales_agent. Snowflake performs the Analyst and Search orchestration. Summarize its final supported answer, preserving currency, date ranges and source citations. Distinguish numerical evidence from qualitative campaign context. Do not invent missing results.",
+    "tools": ["snowflake-sales_agent"],
+    "skills": ["concise", "citations"],
+    "sample_input": "What was ANZ revenue in September 2026, and what campaign context is documented? Cite the note.",
+    "sample_dataset": [{"id": "anz-agent", "input": "What was ANZ revenue in September 2026, and what campaign context is documented? Cite the note.", "expected_response": "ANZ revenue was USD 7,200. NOTE-ANZ-SEP describes an education notebook campaign and demand for notebook and dock bundles. The note does not establish causal revenue attribution.", "require_citation": true}]
+  },
+  {
+    "id": "snowflake-sql",
+    "name": "Sales example · SQL",
+    "description": "Run direct read-only SQL over the synthetic sales tables.",
+    "prompt": "Use sales_sql to query the synthetic SALES and PRODUCTS tables in GAB_SNOWFLAKE_DEMO_20260925.DEMO. Use fully qualified names, SELECT only, and PRODUCT_ID for joins. Revenue is already the line total in USD. Show the executed SQL and actual result.",
+    "tools": ["snowflake-sales_sql"],
+    "skills": ["concise", "citations"],
+    "sample_input": "Use SQL to show September 2026 revenue by region and the grand total.",
+    "sample_dataset": [{"id": "regional-sql", "input": "Use SQL to show September 2026 revenue by region and the grand total.", "expected_response": "ANZ USD 7,200, APAC USD 5,400, Europe USD 4,800; total USD 17,400."}]
+  },
+  {
+    "id": "snowflake-function",
+    "name": "Sales example · Custom function",
+    "description": "Calculate a discount scenario using a deterministic SQL function.",
+    "prompt": "Use discount_quote for every discount calculation. Explain its returned USD amounts and approval_required flag. This is a hypothetical scenario only; never claim that you created, approved or changed a quote.",
+    "tools": ["snowflake-discount_quote"],
+    "skills": ["concise", "citations"],
+    "sample_input": "Calculate a 12 percent discount on USD 10,000. Does it require approval?",
+    "sample_dataset": [{"id": "discount-function", "input": "Calculate a 12 percent discount on USD 10,000. Does it require approval?", "expected_response": "The discount is USD 1,200 and net amount USD 8,800. Sales Director approval is required under POL-002. This is a scenario, not an approved quote."}]
+  },
+  {
+    "id": "snowflake-lab",
+    "name": "Sales example · All capabilities",
+    "description": "Compare direct Cortex tools, custom functions and Snowflake orchestration.",
+    "prompt": "Use sales_analyst then sales_sql for numerical sales questions. Use sales_search with BODY, DOCUMENT_ID and TITLE and limit 3 for policies and regional notes. Use discount_quote for discount scenarios, using actual queried revenue when requested. Use sales_agent only when the user explicitly asks for Cortex Agent or Snowflake orchestration. For combined questions use the relevant direct tools, preserving their provenance. Cite document IDs and metric sources; never claim that a scenario is an approved transaction.",
+    "tools": ["snowflake-sales_analyst", "snowflake-sales_sql", "snowflake-sales_search", "snowflake-discount_quote", "snowflake-sales_agent"],
+    "skills": ["concise", "citations"],
+    "sample_input": "Find September 2026 ANZ revenue with Cortex Analyst, look up the discount policy, and calculate a hypothetical 12 percent discount on that revenue.",
+    "sample_dataset": [{"id": "combined-capabilities", "input": "Find September 2026 ANZ revenue with Cortex Analyst, look up the discount policy, and calculate a hypothetical 12 percent discount on that revenue.", "expected_response": "ANZ September revenue was USD 7,200. A 12 percent discount is USD 864, leaving USD 6,336. POL-002 requires Sales Director approval because 12 percent exceeds 10 percent; this is only a hypothetical calculation.", "require_citation": true}]
+  }
+]

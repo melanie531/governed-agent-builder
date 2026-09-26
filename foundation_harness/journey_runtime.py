@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from .config import canonical, digest
 from .journey_mcp import GatewayMCP
+from .journey_results import model_result
 from .journey_tools import model_schema, tool_arguments
 from .telemetry import ExecutionSpans
 
@@ -140,7 +141,7 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
                                      "gen_ai.tool.call.arguments": json.dumps(arguments)}) as span:
                     text = gateway.call(name, arguments)
                     # This exact bounded content is both given to the model and recorded.
-                    text = text[:16000]
+                    text = model_result(selected[name], text)
                     span.set_attribute("gen_ai.tool.call.result", text)
                 tool_calls.append({"name": name, "arguments": arguments})
                 evidence.append({"tool": name, "arguments": arguments, "result": text})
@@ -179,4 +180,4 @@ def aws_dependencies(manifest):
     session = boto3.Session(region_name=manifest["region"])
     return (session.client("bedrock-runtime", config=Config(connect_timeout=5, read_timeout=60,
                                                            retries={"total_max_attempts": 1})),
-            GatewayMCP(session, manifest["gateway_url"]))
+            GatewayMCP(session, manifest["gateway_url"], timeout=65))

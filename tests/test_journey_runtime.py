@@ -65,6 +65,64 @@ def test_selected_mcp_operation_runs_and_records_actual_call_and_trace(manifest)
     assert receipt["session_id"] == tool_span["attributes"]["session.id"]
 
 
+def test_cortex_agent_final_answer_survives_large_internal_tool_context(manifest):
+    manifest["tools"][0]["response_adapter"] = "snowflake-cortex-agent"
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    native = {"schema_version": "v2", "role": "assistant", "status": "completed", "content": [
+        {"type": "text", "text": "I will check the data."},
+        {"type": "thinking", "thinking": {"text": "Private intermediate reasoning"}},
+        {"type": "tool_use", "tool_use": {"name": "sales_analyst", "type": "cortex_analyst_text_to_sql"}},
+        {"type": "tool_result", "tool_result": {"name": "sales_analyst", "status": "success",
+         "content": [{"type": "json", "json": {"internal_context": "x" * 25000}}]}},
+        {"type": "text", "text": "ANZ revenue was USD 7,200. Campaign context is qualitative.",
+         "annotations": [{"type": "cortex_search_citation", "doc_id": "NOTE-ANZ-SEP",
+                          "doc_title": "ANZ September sales context", "text": "Synthetic campaign context."}]}
+    ]}
+    gateway.call = lambda *_: json.dumps(native)
+    result = execute(manifest, "ANZ revenue and context", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    supplied = model.requests[1]["messages"][2]["content"][0]["toolResult"]["content"][0]["text"]
+    value = json.loads(supplied)
+    assert "USD 7,200" in value["answer"]
+    assert value["citations"][0]["doc_id"] == "NOTE-ANZ-SEP"
+    assert value["tool_results"] == [{"name": "sales_analyst", "status": "success"}]
+    assert "Private intermediate reasoning" not in supplied and "internal_context" not in supplied
+    span = next(s for s in result["spans"] if s["attributes"].get("gen_ai.operation.name") == "execute_tool")
+    assert span["attributes"]["gen_ai.tool.call.result"] == supplied
+
+
+@pytest.mark.parametrize("response", [
+    {"schema_version": "v2", "role": "assistant", "status": "in_progress", "content": []},
+    {"schema_version": "v2", "role": "assistant", "status": "completed", "content": [
+        {"type": "text", "text": "I will check."},
+        {"type": "tool_use", "tool_use": {"name": "sales_analyst"}}]},
+    {"different": "provider response"},
+])
+def test_cortex_agent_adapter_rejects_missing_completed_answer(manifest, response):
+    manifest["tools"][0]["response_adapter"] = "snowflake-cortex-agent"
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    gateway.call = lambda *_: json.dumps(response)
+    with pytest.raises(ValueError, match="Cortex Agent"):
+        execute(manifest, "Question", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    assert len(model.requests) == 1
+
+
+def test_catalog_response_adapter_is_pinned_in_new_agent_manifest(tmp_path):
+    journey, _ = make_journey(Store(str(tmp_path / "adapter.sqlite")))
+    selected = definition(journey)
+    with journey.store.tx() as db:
+        row = db.select("components", where=[("id", "=", selected["tools"][0])]).fetchone()
+        tool = json.loads(row["body"])
+        tool["binding"]["response_adapter"] = "snowflake-cortex-agent"
+        tool["binding_digest"] = digest(tool["binding"])
+        db.insert("components", {"id": tool["id"], "body": json.dumps(tool)}, upsert=True)
+    saved = journey.save(PERSONAS["alex"], SaveAgent(definition=AgentDefinition(**selected),
+                         idempotency_key=uuid4().hex, deploy=False))
+    with journey.store.tx() as db:
+        version = journey.owned(db, PERSONAS["alex"], saved["agent_id"])[1]
+        pinned = get(db, "journey-manifest:" + version["digest"])
+    assert pinned["tools"][0]["response_adapter"] == "snowflake-cortex-agent"
+
+
 def test_model_cannot_call_an_operation_from_an_unselected_mcp_server(manifest):
     gateway = Gateway(manifest)
     with pytest.raises(ValueError, match="unselected tool"):

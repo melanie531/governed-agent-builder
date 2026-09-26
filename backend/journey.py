@@ -131,7 +131,9 @@ class Journey:
                            "inputSchema": resolved[cid]["binding"]["inputSchema"],
                            "schema_digest": resolved[cid]["binding"]["schema_digest"],
                            **({"argument_controls": resolved[cid]["binding"]["argument_controls"]}
-                              if resolved[cid]["binding"].get("argument_controls") else {})} for cid in definition["tools"]],
+                              if resolved[cid]["binding"].get("argument_controls") else {}),
+                           **({"response_adapter": resolved[cid]["binding"]["response_adapter"]}
+                              if resolved[cid]["binding"].get("response_adapter") else {})} for cid in definition["tools"]],
                 "region": self.settings["region"], "gateway_url": self.settings["gateway_url"],
                 "evidence_bucket": self.settings["bucket"], "evidence_prefix": "journey/evidence",
                 "log_group": self.settings["log_group"]}
@@ -430,7 +432,10 @@ class Journey:
                 binding = self.cloud.create(manifest, digest([definition["digest"], "deploy"]))
                 return {"phase": "WAIT_RUNTIME", "binding": binding}
             if phase == "WAIT_RUNTIME":
-                return {"phase": "SMOKE" if self.cloud.ready(state["binding"]) else "WAIT_RUNTIME"}
+                if not self.cloud.ready(state["binding"]):
+                    return {"phase": "WAIT_RUNTIME"}
+                self.cloud.provision_runtime_logs(state["binding"])
+                return {"phase": "SMOKE"}
             if phase == "SMOKE":
                 receipt = self.invocation(state, definition, state["binding"],
                                           "Reply with one short sentence confirming that you are ready to help.", "smoke", recovery)

@@ -71,10 +71,18 @@ class PlatformCloud:
         return value
 
     def registry(self):
+        if self.settings.get("mcp_onboarding"):
+            config = self.settings["mcp_onboarding"]
+            registry = self.client("agent-registry-control").get_registry(registryId=config["registry_id"])
+            if registry["registryArn"] != config["registry_arn"]:
+                raise HTTPException(409, "Registry identity changed")
+            return {key: registry[key] for key in ("registryArn", "name", "status", "approvalConfiguration") if key in registry}
         registry = self.client("bedrock-agentcore-control").get_registry(registryId=self.registry_id())
         return {key: registry[key] for key in ("registryArn", "name", "status", "approvalConfiguration") if key in registry}
 
     def register(self, item):
+        if item.get("registry", {}).get("descriptor_type") == "mcpServer":
+            raise HTTPException(409, "This MCP record is managed through MCP server onboarding")
         # CUSTOM model records carry typed metadata. MCP records point only at
         # this platform's previously verified Gateway bindings.
         descriptor = registry_descriptor(item)
@@ -91,6 +99,13 @@ class PlatformCloud:
                 "version": item["version"], "binding_digest": item["binding_digest"]}
 
     def record(self, binding):
+        if binding.get("descriptor_type") == "mcpServer":
+            config = self.settings.get("mcp_onboarding", {})
+            prefix = config.get("registry_arn", "") + "/record/"
+            if not config.get("registry_id") or not binding["arn"].startswith(prefix) or "/" in binding["arn"][len(prefix):]:
+                raise HTTPException(409, "Record is outside the configured AWS Agent Registry")
+            return self.client("agent-registry-control").get_registry_record(
+                registryId=config["registry_id"], recordId=binding["arn"][len(prefix):])
         prefix = self.registry_id() + "/record/"
         if not binding["arn"].startswith(prefix) or "/" in binding["arn"][len(prefix):]:
             raise HTTPException(409, "Record is outside the platform Registry")

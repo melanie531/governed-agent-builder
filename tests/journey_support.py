@@ -29,6 +29,9 @@ class OfflineCloud:
     def ready(self, binding):
         return self.ready_result
 
+    def provision_runtime_logs(self, binding):
+        pass
+
     def find_agent_runtimes(self, agent_id, workspace, plans):
         return [plan["binding"] for plan in plans if plan.get("binding")]
 

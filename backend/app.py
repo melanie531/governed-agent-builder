@@ -105,7 +105,7 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None, admin_cloud=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None, admin_cloud=None, mcp_servers=None, mcp_onboarding=None):
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
@@ -242,7 +242,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
                 # safely because fixture execution has no external side effects.
                 for job in db.select('jobs', columns=['id'], where=[('stage', "not_in", sorted(TERMINAL))]).fetchall():
                     from .foundation_runs import get as get_run
-                    if get_run(db, 'foundation-run:' + job['id']) or get_run(db, 'foundation-pending:' + job['id']) or get_run(db, 'journey-job:' + job['id']):
+                    if get_run(db, 'foundation-run:' + job['id']) or get_run(db, 'foundation-pending:' + job['id']) or get_run(db, 'journey-job:' + job['id']) or get_run(db, 'mcp-job:' + job['id']):
                         continue
                     db.update('jobs', {'stage': 'VALIDATING', 'updated': time.time()}, where=[('id', '=', job['id'])])
                     event(db, job["id"], "RECOVERED", {"message": "Resumed durable local job after process restart"})
@@ -403,6 +403,24 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         from .platform_cloud import PlatformCloud
         admin_cloud = PlatformCloud(journey.settings)
     app.include_router(platform_admin_router(store, who, admin_cloud))
+    from .mcp_servers import McpServers, router as mcp_router
+    if mcp_servers is None:
+        mcp_cloud = None
+        if hosted and journey is not None:
+            from .mcp_cloud import McpCloud
+            mcp_cloud = McpCloud(journey.settings)
+        mcp_servers = McpServers(store, journey.settings if journey else {}, mcp_cloud, hosted=hosted, auth=auth)
+    app.state.mcp_servers = mcp_servers
+    app.include_router(mcp_router(mcp_servers, who))
+    from .mcp_onboarding import McpOnboarding, router as onboarding_router
+    if mcp_onboarding is None:
+        onboarding_cloud = None
+        if hosted and journey is not None:
+            from .mcp_onboarding_cloud import OnboardingCloud
+            onboarding_cloud = OnboardingCloud(journey.settings)
+        mcp_onboarding = McpOnboarding(store, journey.settings if journey else {}, onboarding_cloud, hosted=hosted, auth=auth)
+    app.state.mcp_onboarding = mcp_onboarding
+    app.include_router(onboarding_router(mcp_onboarding, who))
 
     @app.get("/api/demo/personas")
     def personas():
@@ -992,8 +1010,16 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     def step_job(job_id):
         from .foundation_runs import get as get_run
         with store.tx() as db:
+            mcp_run = get_run(db, 'mcp-job:' + job_id)
+            onboarding_run = get_run(db, 'mcp-onboarding-job:' + job_id)
             journey_run = get_run(db, 'journey-job:' + job_id)
             live_run = get_run(db, 'foundation-run:' + job_id) or get_run(db, 'foundation-pending:' + job_id)
+        if onboarding_run:
+            mcp_onboarding.step(job_id)
+            return
+        if mcp_run:
+            mcp_servers.step(job_id)
+            return
         if journey_run:
             if journey is None:
                 raise RuntimeError("Journey worker is not configured")

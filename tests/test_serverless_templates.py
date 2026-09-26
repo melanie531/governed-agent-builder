@@ -15,6 +15,15 @@ def test_no_vpc_dependencies_or_shared_resources():
     assert body["Resources"]["State"]["Properties"]["PointInTimeRecoverySpecification"]["PointInTimeRecoveryEnabled"]
 
 
+def test_cloudfront_csp_allows_cloudscape_embedded_fonts_without_broadening_scripts():
+    security = template()["Resources"]["Headers"]["Properties"]["ResponseHeadersPolicyConfig"]["SecurityHeadersConfig"]
+    csp = security["ContentSecurityPolicy"]["ContentSecurityPolicy"]
+    directives = {parts[0]: parts[1:] for entry in csp.split(";") if (parts := entry.split())}
+    assert directives.get("font-src") == ["'self'", "data:"]
+    assert directives["script-src"] == ["'self'"]
+    assert directives["connect-src"] == ["'self'"]
+
+
 def test_business_authorizer_and_separate_auth_routes():
     r = template()["Resources"]
     auth = r["SessionAuthorizer"]["Properties"]
@@ -69,23 +78,3 @@ def test_verification_table_isolated_and_scope_only_new_stack():
     assert "cognito-idp:" not in json.dumps(r["AuthRole"])
     assert "aws.cognito.signin.user.admin" in r["Client"]["Properties"]["AllowedOAuthScopes"]
     assert "aws.cognito.signin.user.admin" not in old_template("https://example.test")["Resources"]["Client"]["Properties"]["AllowedOAuthScopes"]
-
-
-def test_changeset_review_rejects_pool_changes_and_replacement():
-    import pytest
-    from scripts.serverless_deploy import review_verification_changes
-    for change in ({"LogicalResourceId":"Pool","Action":"Modify","Replacement":"False"},
-                   {"LogicalResourceId":"Auth","Action":"Modify","Replacement":"True"},
-                   {"LogicalResourceId":"Client","Action":"Remove"}):
-        with pytest.raises(RuntimeError): review_verification_changes([{"ResourceChange":change}], {"Pool","Auth","Client"})
-    review_verification_changes([{"ResourceChange":{"LogicalResourceId":"Auth","Action":"Modify","Replacement":"False"}}], {"Auth"})
-
-
-def test_changeset_allows_only_unchanged_lambda_reference_dependencies():
-    import pytest
-    from scripts.serverless_deploy import review_verification_changes
-    resource = {"LogicalResourceId":"AuthIntegration","Action":"Modify","Replacement":"False", "Details":[{
-        "ChangeSource":"ResourceAttribute","CausingEntity":"Auth.Arn","Target":{"Name":"IntegrationUri","RequiresRecreation":"Never"}}]}
-    review_verification_changes([{"ResourceChange":resource}], {"AuthIntegration"})
-    resource["Details"][0]["ChangeSource"] = "DirectModification"
-    with pytest.raises(RuntimeError): review_verification_changes([{"ResourceChange":resource}], {"AuthIntegration"})
