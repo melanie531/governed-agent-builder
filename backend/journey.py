@@ -417,8 +417,13 @@ class Journey:
             if receipt is None:
                 return None
             return receipt
-        return self.cloud.invoke(binding, definition, text, request_id,
-                                 **({"history": state["history"]} if state.get("history") else {}))
+        extra = {"history": state["history"]} if state.get("history") else {}
+        from .journey_alpr import TOOLS
+        if set(definition["tools"]) & set(TOOLS):
+            from .journey_alpr_run import issue_run
+            extra["alpr_run_reference"] = self.transaction(lambda db: issue_run(
+                db, self, job_state(db, state["id"]), binding, text, request_id, state.get("history")))
+        return self.cloud.invoke(binding, definition, text, request_id, **extra)
 
     def perform(self, state, definition, deployment, recovery):
         phase, kind = state["phase"], state["kind"]

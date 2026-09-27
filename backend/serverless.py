@@ -240,7 +240,9 @@ def journey_alpr_exchange_handler(event, context):
     try:
         from .foundation_runs import get
         from .journey import Journey
-        from .journey_alpr import exchange, require
+        from .journey_alpr import require
+        from .journey_alpr_run import dispatch
+        from botocore.config import Config
         request = event.get("requestContext", {})
         require(bool(os.getenv("JOURNEY_ALPR_API_ID"))
                 and request.get("apiId") == os.environ["JOURNEY_ALPR_API_ID"]
@@ -255,9 +257,13 @@ def journey_alpr_exchange_handler(event, context):
         require(isinstance(raw, str) and len(raw) <= 8192 and not event.get("isBase64Encoded"),
                 "ALPR_EXCHANGE_SHAPE_DENIED")
         repository = store()
+        config = Config(retries={"total_max_attempts": 1}, connect_timeout=2, read_timeout=3)
+        control = boto3.client("bedrock-agentcore-control", region_name="us-west-2", config=config)
+        iam_client = boto3.client("iam", region_name="us-west-2", config=config)
         with repository.tx() as db:
             journey = Journey(repository, get(db, "journey-platform"), None, hosted=True, auth=auth())
-            result = exchange(db, journey, principal_arn=iam["userArn"], body=json.loads(raw))
+            result = dispatch(db, journey, principal_arn=iam["userArn"], body=json.loads(raw),
+                              control=control, iam=iam_client)
         return {"statusCode": 200, "headers": {"content-type": "application/json", "cache-control": "no-store"},
                 "body": json.dumps(result)}
     except Exception:

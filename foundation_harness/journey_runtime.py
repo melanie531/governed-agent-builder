@@ -182,10 +182,15 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
     return receipt
 
 
-def aws_dependencies(manifest):
+def aws_dependencies(manifest, *, alpr_run_reference=None, invocation=None):
     import boto3
     from botocore.config import Config
     session = boto3.Session(region_name=manifest["region"])
+    admission = None
+    if any(is_alpr_tool(tool["name"]) for tool in manifest["tools"]):
+        import os
+        from .alpr_exchange import RunExchange
+        admission = RunExchange(session, os.getenv("JOURNEY_ALPR_ENDPOINT"), alpr_run_reference, invocation)
     return (session.client("bedrock-runtime", config=Config(connect_timeout=5, read_timeout=60,
                                                            retries={"total_max_attempts": 1})),
-            GatewayMCP(session, manifest["gateway_url"]))
+            GatewayMCP(session, manifest["gateway_url"], alpr_admission=admission))

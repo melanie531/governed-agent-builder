@@ -25,8 +25,8 @@ def load_manifest():
 
 def invoke(payload, context):
     if (not isinstance(payload, dict) or not {"input", "request_id"} <= set(payload)
-            or set(payload) - {"input", "request_id", "history"}):
-        raise ValueError("Only input, request_id and conversation history may be supplied")
+            or set(payload) - {"input", "request_id", "history", "alpr_run_reference"}):
+        raise ValueError("Invalid invocation envelope")
     import boto3
     import re
     import time
@@ -37,7 +37,8 @@ def invoke(payload, context):
     session_id = getattr(context, "session_id", None)
     if not session_id:
         raise ValueError("AgentCore session is required")
-    model, gateway = aws_dependencies(manifest)
+    model, gateway = aws_dependencies(manifest, alpr_run_reference=payload.get("alpr_run_reference"),
+        invocation={"input": payload["input"], "request_id": request_id, "history": payload.get("history") or []})
     s3 = boto3.client("s3", region_name=manifest["region"])
     logs = boto3.client("logs", region_name=manifest["region"])
 

@@ -32,6 +32,10 @@ def missing_workload_verifier(*args):
 def current(db, journey, row):
     """No cached grant decisions: checks membership, version, lifecycle and scopes."""
     from .app import caller_scopes
+    if row.get("deployment_ref"):
+        from .journey_alpr_workload import load
+        record = load(db, row["deployment_ref"])
+        require(record["specialist"] == row["specialist"], "ALPR_DEPLOYMENT_BINDING_DENIED")
     binding = Binding(**row["binding"])
     require(math.isfinite(binding.expires_at) and binding.expires_at > time.time(), "ALPR_AUTHORITY_EXPIRED")
     state = job_state(db, binding.run_ref)
@@ -54,6 +58,8 @@ def current(db, journey, row):
             "ALPR_RUN_BINDING_DENIED")
     require(runtime.get("manifest", {}).get("digest") == binding.manifest_digest,
             "ALPR_MANIFEST_BINDING_DENIED")
+    if row.get("deployment_ref"):
+        require(runtime.get("alpr_deployment") == row["deployment_ref"], "ALPR_DEPLOYMENT_BINDING_DENIED")
     require(digest(manifest["foundation"]) == binding.foundation_digest, "ALPR_FOUNDATION_BINDING_DENIED")
     name = row["tool"]
     require(name in definition["tools"] and definition["component_versions"].get(name) == "1",
@@ -68,7 +74,8 @@ def current(db, journey, row):
     return row
 
 
-def issue(db, journey, *, binding, specialist, tool, arguments, verify_workload=missing_workload_verifier):
+def issue(db, journey, *, binding, specialist, tool, arguments, verify_workload=missing_workload_verifier,
+          deployment_ref=None):
     """Called inside the producer's existing transaction, after signed A admission.
 
     verify_workload is an explicit host integration port, not a bool/env override.
@@ -92,6 +99,8 @@ def issue(db, journey, *, binding, specialist, tool, arguments, verify_workload=
            "arguments_digest": digest(arguments), "scope": caller_scopes(db, actor, definition).get(tool),
            "agent_id": definition["agent_id"], "agent_version": definition["version"],
            "expires_at": min(binding.expires_at, time.time() + 60), "state": "ISSUED", "views": []}
+    if deployment_ref:
+        row["deployment_ref"] = deployment_ref
     current(db, journey, row)
     counter_key = "journey-alpr-issued:" + binding.run_ref + ":" + binding.runtime_session
     count = get(db, counter_key) or 0

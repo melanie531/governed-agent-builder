@@ -72,6 +72,14 @@ class JourneyCloud:
         return value
 
     def create(self, manifest, token):
+        from foundation_harness.alpr_exchange import is_alpr_tool
+        if any(is_alpr_tool(tool["name"]) for tool in manifest["tools"]):
+            # Host registers an exact deployment after AWS proof. ALPR never
+            # creates another Runtime with the shared Journey execution role.
+            binding = self.settings.get("alpr_deployments", {}).get(digest(manifest))
+            if not binding or not self.ready(binding):
+                raise ValueError("An exact registered ALPR deployment is required")
+            return binding
         location = self.write("journey/manifests/" + digest(manifest) + ".json", manifest)
         artifact = manifest["artifact"]
         response = self.control.create_agent_runtime(
@@ -114,12 +122,13 @@ class JourneyCloud:
                 and endpoint["liveVersion"] == binding["version"]
                 and endpoint.get("targetVersion", binding["version"]) == binding["version"])
 
-    def invoke(self, binding, definition, text, request_id, history=None):
+    def invoke(self, binding, definition, text, request_id, history=None, alpr_run_reference=None):
         if not self.ready(binding):
             raise ValueError("Runtime endpoint is not ready for the deployed version")
         response = self.data.invoke_agent_runtime(
             agentRuntimeArn=binding["arn"], qualifier="DEFAULT", runtimeSessionId="gab-" + request_id,
-            payload=canonical({"input": text, "request_id": request_id, **({"history": history} if history else {})}), contentType="application/json",
+            payload=canonical({"input": text, "request_id": request_id, **({"history": history} if history else {}),
+                               **({"alpr_run_reference": alpr_run_reference} if alpr_run_reference else {})}), contentType="application/json",
             accept="application/json")
         stream = response["response"]
         try:
