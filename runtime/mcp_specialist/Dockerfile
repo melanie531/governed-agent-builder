@@ -10,6 +10,7 @@ COPY backend ./backend
 COPY runtime ./runtime
 ARG IMAGE_BUILD=unknown
 ENV EXECUTION_MODE=local IMAGE_BUILD=${IMAGE_BUILD} PYTHONUNBUFFERED=1
+RUN chmod -R a+rX /app
 USER 10001
 EXPOSE 8000
 CMD ["python", "-m", "runtime.mcp_specialist.agentcore"]
