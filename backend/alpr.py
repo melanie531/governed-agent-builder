@@ -17,6 +17,8 @@ import decimal
 import json
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 SCHEMA = "GAB_DEMO_DB.ALPR_INVESTIGATION_APPROVED"
@@ -52,6 +54,17 @@ def normalize(value):
 
 
 _live = {}
+_query_ids = ContextVar("alpr_query_ids", default=())
+
+
+@contextmanager
+def query_evidence():
+    """Isolate one connector call, restoring its caller's evidence on every exit."""
+    token = _query_ids.set(())
+    try:
+        yield
+    finally:
+        _query_ids.reset(token)
 
 
 def _ssm_client():
@@ -118,16 +131,18 @@ def live_rows(query_id: str, case_id: str) -> list:
     cursor = live_connection().cursor()
     cursor.execute(f"SELECT * FROM {view} WHERE CASE_ID = %s ORDER BY {order} LIMIT {ROW_LIMIT}", (case_id,))
     # Real Snowflake query id (cursor.sfqid): joins the Studio run trace to Snowflake QUERY_HISTORY.
-    _live.setdefault("query_ids", []).append({
+    _query_ids.set((*_query_ids.get(), {
         "query_id": query_id, "case_id": case_id, "view": view,
-        "snowflake_query_id": getattr(cursor, "sfqid", None)})
+        "snowflake_query_id": getattr(cursor, "sfqid", None)}))
     columns = [c[0] for c in cursor.description]
     return [{k: normalize(v) for k, v in zip(columns, row)} for row in cursor.fetchall()]
 
 
 def consume_query_ids() -> list:
-    """Drain the Snowflake query ids recorded since the last call (evidence, not data)."""
-    return _live.pop("query_ids", [])
+    """Drain only this context's Snowflake query ids (evidence, not data)."""
+    query_ids = _query_ids.get()
+    _query_ids.set(())
+    return list(query_ids)
 
 
 def rows(query_id: str, case_id: str) -> list:

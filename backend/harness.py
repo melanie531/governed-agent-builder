@@ -180,14 +180,16 @@ def call_tool(definition: dict, tool_id: str, arguments: dict, scope: dict | Non
         except ImportError:
             raise ToolDenied("ALPR_VIEW_UNAVAILABLE") from None
         try:
-            rows = alpr.rows(arguments["query_id"], arguments["case_id"])
+            with alpr.query_evidence():
+                rows = alpr.rows(arguments["query_id"], arguments["case_id"])
+                query_ids = alpr.consume_query_ids()
         except alpr.ViewUnavailable as exc:
             raise ToolDenied(str(exc)) from None
         # Owner names are synthetic placeholders, not masked values.
         return {"query_id": arguments["query_id"], "case_id": arguments["case_id"], "view": query["view"], "via": GATEWAY,
                 "rows": rows, "masked": False, "synthetic": True,
                 # Real Snowflake query ids (cursor.sfqid) for this call; [] on the snapshot path.
-                "snowflake_query_ids": alpr.consume_query_ids()}
+                "snowflake_query_ids": query_ids}
     return {"query_id": arguments["query_id"], "view": query["view"], "via": GATEWAY, "rows": [dict(r) for r in query["rows"]], "masked": True}
 
 

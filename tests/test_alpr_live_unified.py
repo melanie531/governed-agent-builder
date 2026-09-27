@@ -14,11 +14,13 @@ from backend import alpr, harness
 @pytest.fixture(autouse=True)
 def reset(monkeypatch):
     alpr._live.clear()
+    alpr.consume_query_ids()
     for name in ("ALPR_VIEW_SOURCE", "ALPR_SNOWFLAKE_ACCOUNT", "ALPR_SNOWFLAKE_USER",
                  "ALPR_SNOWFLAKE_KEY_PATH", "ALPR_SNOWFLAKE_KEY_SSM_PARAM"):
         monkeypatch.delenv(name, raising=False)
     yield
     alpr._live.clear()
+    alpr.consume_query_ids()
 
 
 class FakeCursor:
