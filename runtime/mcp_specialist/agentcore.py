@@ -28,6 +28,8 @@ DEPLOYMENT_CALLER = {"definition": {"tools": [AGENT_TOOL], "component_versions":
 
 
 def deployment_caller(request):
+    if os.getenv("ALPR_VIEW_SOURCE") == "live" or os.getenv("EXECUTION_MODE", "local") != "local":
+        raise server.harness.ToolDenied("DEMO_AUTHORITY_FORBIDDEN_IN_LIVE")
     return {"definition": dict(DEPLOYMENT_CALLER["definition"]), "scopes": dict(DEPLOYMENT_CALLER["scopes"])}
 
 

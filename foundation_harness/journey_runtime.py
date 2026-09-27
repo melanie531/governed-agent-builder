@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from .config import canonical, digest
 from .journey_mcp import GatewayMCP
+from .alpr_exchange import is_alpr_tool
 from .journey_tools import model_schema, tool_arguments
 from .telemetry import ExecutionSpans
 
@@ -49,6 +50,10 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
     if (not isinstance(user_input, str) or not user_input.strip() or len(user_input) > 4000
             or not isinstance(session_id, str) or not 33 <= len(session_id) <= 256):
         raise ValueError("Invalid invocation input or session")
+    if any(is_alpr_tool(tool["name"]) for tool in manifest["tools"]):
+        # Native Runtime entry must not spend on a model or emit an answer when
+        # the authenticated caller exchange is absent, even if it uses no tools.
+        gateway.admit_alpr(manifest, session_id)
     trace_run = RunTrace(manifest, session_id)
     started = time.monotonic()
     history = history or []
@@ -139,6 +144,8 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
                                     {"gen_ai.tool.name": name, "gen_ai.tool.call.id": call["toolUseId"],
                                      "gen_ai.tool.call.arguments": json.dumps(arguments)}) as span:
                     text = gateway.call(name, arguments)
+                    if is_alpr_tool(name) and len(text) > 16000:
+                        raise ValueError("ALPR result exceeds the evidence limit; no partial evidence was published")
                     # This exact bounded content is both given to the model and recorded.
                     text = text[:16000]
                     span.set_attribute("gen_ai.tool.call.result", text)
@@ -167,6 +174,8 @@ def execute(manifest, user_input, session_id, *, model, gateway, publish=None, h
                "latency_ms": round((time.monotonic() - started) * 1000)}
     if len(canonical(receipt)) > 300000:
         raise ValueError("Execution evidence exceeds the response limit")
+    if any(is_alpr_tool(tool["name"]) for tool in manifest["tools"]):
+        gateway.finish_alpr()
     if publish:
         receipt["evidence"] = publish(receipt)
     trace_run.provider.shutdown()

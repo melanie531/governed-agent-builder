@@ -132,6 +132,26 @@ def specialist(target, runtime_arn):
     return saved
 
 
+def alpr_target_configuration(binding, runtime_arn):
+    """Render only: ALPR registration is blocked on authenticated listing/run proof.
+
+    A distinct target preserves the risk specialist and existing Gateway. This
+    helper does not mark a publication ready, call AWS or change release state.
+    """
+    from foundation_harness.alpr_exchange import CALLER_HEADER
+    account, region = binding["account"], binding["region"]
+    if (not re.fullmatch(r"\d{12}", account) or region != "us-west-2"
+            or not re.fullmatch(rf"arn:aws:bedrock-agentcore:{region}:{account}:runtime/[A-Za-z0-9_-]+", runtime_arn)):
+        raise ValueError("ALPR runtime must be in the reviewed platform account and region")
+    endpoint = (f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{urllib.parse.quote(runtime_arn, safe='')}"
+                "/invocations?qualifier=DEFAULT")
+    return {"name": "alpr-investigation-specialists",
+            "targetConfiguration": {"mcp": {"mcpServer": {"endpoint": endpoint}}},
+            "credentialProviderConfigurations": [{"credentialProviderType": "GATEWAY_IAM_ROLE",
+                "credentialProvider": {"iamCredentialProvider": {"service": "bedrock-agentcore", "region": region}}}],
+            "metadataConfiguration": {"allowedRequestHeaders": [CALLER_HEADER]}}
+
+
 def stack(target, credential, bucket, key, specialist=None):
     body = platform_template(credential and credential["provider_arn"], credential and credential["secret_arn"],
                              [specialist["runtime_arn"]] if specialist else ())

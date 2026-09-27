@@ -225,3 +225,40 @@ def diagnostic_capture_exchange_handler(event, context):
                 'body': json.dumps(result)}
     except Exception:
         return {'statusCode': 403, 'body': '{"code":"CAPTURE_ADMISSION_DENIED"}'}
+
+
+def journey_alpr_exchange_handler(event, context):
+    """Unregistered by default; requires its own exact AWS_IAM route/invoke grant.
+
+    The host must configure the existing HostedAuth env for Journey.authority,
+    plus API ID, STATE_TABLE and this explicit enable flag. No Snowflake/model
+    permissions belong on this admission-only handler.
+    """
+    if (os.getenv("JOURNEY_ALPR_EXCHANGE_ENABLED") != "1"
+            or event.get("routeKey") != "POST /internal/journey/alpr"):
+        return {"statusCode": 403, "body": '{"code":"ALPR_EXCHANGE_DISABLED"}'}
+    try:
+        from .foundation_runs import get
+        from .journey import Journey
+        from .journey_alpr import exchange, require
+        request = event.get("requestContext", {})
+        require(bool(os.getenv("JOURNEY_ALPR_API_ID"))
+                and request.get("apiId") == os.environ["JOURNEY_ALPR_API_ID"]
+                and request.get("stage") == "$default"
+                and request.get("http", {}).get("method") == "POST"
+                and event.get("rawPath") == "/internal/journey/alpr"
+                and event.get("version") == "2.0", "ALPR_EXCHANGE_NAMESPACE_DENIED")
+        iam = request.get("authorizer", {}).get("iam", {})
+        require(isinstance(iam, dict) and isinstance(iam.get("userArn"), str),
+                "ALPR_VERIFIED_IAM_PRINCIPAL_REQUIRED")
+        raw = event.get("body", "")
+        require(isinstance(raw, str) and len(raw) <= 8192 and not event.get("isBase64Encoded"),
+                "ALPR_EXCHANGE_SHAPE_DENIED")
+        repository = store()
+        with repository.tx() as db:
+            journey = Journey(repository, get(db, "journey-platform"), None, hosted=True, auth=auth())
+            result = exchange(db, journey, principal_arn=iam["userArn"], body=json.loads(raw))
+        return {"statusCode": 200, "headers": {"content-type": "application/json", "cache-control": "no-store"},
+                "body": json.dumps(result)}
+    except Exception:
+        return {"statusCode": 403, "body": '{"code":"ALPR_ADMISSION_DENIED"}'}

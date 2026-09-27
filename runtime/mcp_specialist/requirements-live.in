@@ -1,0 +1,6 @@
+# Regenerate requirements-live.lock on the networked host, Python 3.13 / ARM64.
+# The demo lock intentionally cannot build the live connector image.
+-r requirements.in
+boto3==1.43.92
+snowflake-connector-python==4.7.5
+httpx==0.28.1

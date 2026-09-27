@@ -17,6 +17,7 @@ import decimal
 import json
 import os
 import re
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -55,6 +56,25 @@ def normalize(value):
 
 _live = {}
 _query_ids = ContextVar("alpr_query_ids", default=())
+_live_access = ContextVar("alpr_live_access", default=None)
+
+
+@contextmanager
+def live_access(authorize, deadline):
+    """Live MCP call boundary. Auth is server-owned and rechecked for every view."""
+    token = _live_access.set((authorize, deadline))
+    try:
+        yield
+    finally:
+        _live_access.reset(token)
+
+
+def live_timeout(ceiling):
+    access = _live_access.get()
+    remaining = min(ceiling, access[1] - time.monotonic()) if access else ceiling
+    if remaining < 1:
+        raise ViewUnavailable("ALPR_CALL_DEADLINE_EXCEEDED")
+    return int(remaining)
 
 
 @contextmanager
@@ -69,6 +89,10 @@ def query_evidence():
 
 def _ssm_client():
     import boto3
+    if _live_access.get():
+        from botocore.config import Config
+        return boto3.client("ssm", region_name="us-west-2", config=Config(
+            connect_timeout=live_timeout(3), read_timeout=live_timeout(3), retries={"total_max_attempts": 1}))
     return boto3.client("ssm")
 
 
@@ -108,8 +132,8 @@ def live_connection():
     connection = snowflake.connector.connect(
         account=account, user=user,
         private_key=private_key_der(), role=ROLE, warehouse=WAREHOUSE,
-        login_timeout=LOGIN_TIMEOUT, network_timeout=NETWORK_TIMEOUT,
-        session_parameters={"STATEMENT_TIMEOUT_IN_SECONDS": STATEMENT_TIMEOUT})
+        login_timeout=live_timeout(LOGIN_TIMEOUT), network_timeout=live_timeout(NETWORK_TIMEOUT),
+        session_parameters={"STATEMENT_TIMEOUT_IN_SECONDS": live_timeout(STATEMENT_TIMEOUT)})
     _live["connection"] = isolate(connection)
     return connection
 
@@ -117,8 +141,9 @@ def live_connection():
 def isolate(connection):
     cursor = connection.cursor()
     # The user's DEFAULT_SECONDARY_ROLES would otherwise add every other granted role's privileges.
-    cursor.execute("USE SECONDARY ROLES NONE")
-    cursor.execute("SELECT CURRENT_ROLE(), CURRENT_SECONDARY_ROLES()")
+    bounds = {"timeout": live_timeout(STATEMENT_TIMEOUT)} if _live_access.get() else {}
+    cursor.execute("USE SECONDARY ROLES NONE", **bounds)
+    cursor.execute("SELECT CURRENT_ROLE(), CURRENT_SECONDARY_ROLES()", **bounds)
     role, secondary = cursor.fetchone()
     if role != ROLE or json.loads(secondary).get("roles"):
         connection.close()
@@ -129,7 +154,8 @@ def isolate(connection):
 def live_rows(query_id: str, case_id: str) -> list:
     view, order = VIEWS[query_id]
     cursor = live_connection().cursor()
-    cursor.execute(f"SELECT * FROM {view} WHERE CASE_ID = %s ORDER BY {order} LIMIT {ROW_LIMIT}", (case_id,))
+    bounds = {"timeout": live_timeout(STATEMENT_TIMEOUT)} if _live_access.get() else {}
+    cursor.execute(f"SELECT * FROM {view} WHERE CASE_ID = %s ORDER BY {order} LIMIT {ROW_LIMIT}", (case_id,), **bounds)
     # Real Snowflake query id (cursor.sfqid): joins the Studio run trace to Snowflake QUERY_HISTORY.
     _query_ids.set((*_query_ids.get(), {
         "query_id": query_id, "case_id": case_id, "view": view,
@@ -149,12 +175,21 @@ def rows(query_id: str, case_id: str) -> list:
     if query_id not in VIEWS or not isinstance(case_id, str) or not CASE_ID.match(case_id):
         raise ViewUnavailable("ALPR_QUERY_NOT_WHITELISTED")
     source = os.getenv("ALPR_VIEW_SOURCE", "snapshot")
+    access = _live_access.get()
+    if access:
+        if source != "live":
+            raise ViewUnavailable("ALPR_LIVE_CONFIG_REQUIRED")
+        live_timeout(STATEMENT_TIMEOUT)
+        access[0](VIEWS[query_id][0])
     if source == "snapshot":
         return [dict(r) for r in json.loads(SNAPSHOT.read_text())["rows"][query_id] if r["CASE_ID"] == case_id]
     if source != "live":
         raise ViewUnavailable("ALPR_VIEW_SOURCE_INVALID")
     try:
-        return live_rows(query_id, case_id)
+        result = live_rows(query_id, case_id)
+        if access:
+            live_timeout(STATEMENT_TIMEOUT)
+        return result
     except ViewUnavailable:
         raise
     except Exception as exc:
