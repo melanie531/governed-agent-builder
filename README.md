@@ -113,10 +113,23 @@ Cloudscape UI → Python Catalog API / Composer → SQLite immutable definition
                        ├─ Foundation Library (harness manifests)
                        ├─ Model Gateway catalog boundary (demo routes now)
                        └─ Tool / Skill Registry (local seed now)
+                              ▲ lists APPROVED records only (live catalog mode; discovery not connected)
+                       AI Registry (AgentCore Registry) — governance source of record
+                       for tool / skill / A2A metadata; never foundations or models
+                              ├─ discovery → catalog admission → access request → admin grant
+                              └─ approved tool records back Tool Gateway targets:
+                                 Runtime A (agent foundation) → Tool Gateway (MCP) → Runtime B (specialists)
 
 Deploy & Test → durable job → local worker → fixture output → checks → version gate
 Admin grant/revoke/policy → current authorization rechecked at every transition and run
 ```
+
+The AI Registry node is source-backed: `backend/live_catalog.py`
+(`RegistryCatalogProvider`) lists only APPROVED Registry records for
+tool / skill / A2A metadata, and `runtime/mcp_specialist/LIVE.md` documents the
+Runtime A → Tool Gateway → Runtime B invocation boundary. Runtime A calls Bedrock
+Converse directly; the Model Gateway remains a catalog governance boundary, not
+the model call path.
 
 ## Security boundaries and authorization
 
