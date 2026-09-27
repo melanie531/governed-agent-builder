@@ -40,7 +40,13 @@ def current(db, journey, row):
     actor, definition = journey.authority(db, state)
     manifest = get(db, "journey-manifest:" + definition["digest"])
     deployed = get(db, journey.deployment_key(definition))
-    runtime = (deployed or {}).get("binding") or (state.get("binding") if state["kind"] == "deploy" else None)
+    if state["kind"] == "deploy":
+        require(state["phase"] == "SMOKE", "ALPR_RUNTIME_NOT_DEPLOYED")
+        runtime = state.get("binding")
+    else:
+        require(state["kind"] in {"invoke", "evaluation"}
+                and (deployed or {}).get("status") == "DEPLOYED", "ALPR_RUNTIME_NOT_DEPLOYED")
+        runtime = deployed.get("binding")
     require(runtime and (actor["id"], actor["workspace"], definition["agent_id"], definition["version"],
                          digest(manifest), runtime["arn"], runtime["version"]) ==
             (binding.owner, binding.workspace, row["agent_id"], row["agent_version"],
@@ -48,6 +54,7 @@ def current(db, journey, row):
             "ALPR_RUN_BINDING_DENIED")
     require(runtime.get("manifest", {}).get("digest") == binding.manifest_digest,
             "ALPR_MANIFEST_BINDING_DENIED")
+    require(digest(manifest["foundation"]) == binding.foundation_digest, "ALPR_FOUNDATION_BINDING_DENIED")
     name = row["tool"]
     require(name in definition["tools"] and definition["component_versions"].get(name) == "1",
             "ALPR_SPECIALIST_VERSION_DENIED")

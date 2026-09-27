@@ -161,6 +161,16 @@ def test_no_successful_live_response_without_query_id(live, monkeypatch):
         runtime.call(REFERENCE, TOOL, ARGS)
 
 
+def test_no_data_scope_cannot_be_widened_by_question(live):
+    runtime, exchange, reads = live
+    original = exchange.request
+    exchange.request = lambda *a, **k: {**original(*a, **k),
+        "scope": {"operations": harness.tool_scope(TOOL)["operations"], "data": []}}
+    with pytest.raises(harness.ToolDenied, match="CALLER_DATA_OUT_OF_SCOPE"):
+        runtime.call(REFERENCE, TOOL, ARGS)
+    assert not reads
+
+
 def test_demo_entry_refuses_live_authority(monkeypatch):
     from runtime.mcp_specialist.agentcore import deployment_caller
     monkeypatch.setenv("ALPR_VIEW_SOURCE", "live")
@@ -181,6 +191,10 @@ def test_mcp_protocol_in_process_question_only_and_missing_context(live):
         assert "tools" in rpc("initialize", {
             "protocolVersion": "2025-03-26", "capabilities": {},
             "clientInfo": {"name": "offline", "version": "1"}})["result"]["capabilities"]
+        tools = rpc("tools/list", {})["result"]["tools"]
+        assert {tool["name"] for tool in tools} == set(alpr_live.TOOLS)
+        assert all(set(tool["inputSchema"]["properties"]) == {"question"}
+                   and tool["inputSchema"]["additionalProperties"] is False for tool in tools)
         denied = rpc("tools/call", {"name": TOOL, "arguments": ARGS})["result"]
         assert denied["isError"] and "ALPR_CALLER_REFERENCE_REQUIRED" in denied["content"][0]["text"]
         assert not reads

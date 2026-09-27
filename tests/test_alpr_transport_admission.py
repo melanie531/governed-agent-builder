@@ -74,6 +74,17 @@ def test_gateway_admission_rejects_misbound_server_response(change):
     assert not authority.calls
 
 
+def test_failed_readmission_cannot_reuse_previous_binding():
+    authority = Authority()
+    client = gateway(authority)
+    client.admit_alpr(MANIFEST, SESSION)
+    authority.binding = replace(authority.binding, workspace="other")
+    with pytest.raises(GatewayFailure):
+        client.admit_alpr(MANIFEST, SESSION)
+    with pytest.raises(GatewayFailure, match="RUN_EXCHANGE_NOT_CONNECTED"):
+        client.call(TOOL, ARGS)
+
+
 def test_only_server_issued_capability_is_passed_outside_arguments(monkeypatch):
     authority = Authority()
     client = gateway(authority)

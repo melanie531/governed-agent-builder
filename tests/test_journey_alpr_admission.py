@@ -171,3 +171,15 @@ def test_persistent_call_cap_bounds_issuance(setup):
     assert len({issue(setup) for _ in range(6)}) == 6
     with pytest.raises(Denied, match="CALL_BUDGET_EXCEEDED"):
         issue(setup)
+
+
+def test_deployment_withdrawal_revokes_pending_capability(setup):
+    ref = issue(setup)
+    journey, binding = setup
+    with journey.store.tx() as db:
+        state = get(db, "journey-job:" + binding.run_ref)
+        _, domain = journey.authority(db, state)
+        key = journey.deployment_key(domain)
+        put(db, key, {**get(db, key), "status": "STALE"})
+    with pytest.raises(Denied, match="RUNTIME_NOT_DEPLOYED"):
+        exchange(setup, ref, "redeem", tool=TOOL, arguments_digest=digest(ARGS))

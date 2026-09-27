@@ -29,6 +29,7 @@ class GatewayMCP:
 
     def admit_alpr(self, manifest, session_id):
         """Host-owned signed run exchange port; no payload/header identity adapter."""
+        self.alpr_binding = None
         if self.alpr_admission is None:
             raise GatewayFailure("ALPR_AUTHENTICATED_RUN_EXCHANGE_NOT_CONNECTED")
         binding = self.alpr_admission.resolve()
