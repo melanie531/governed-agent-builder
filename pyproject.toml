@@ -30,6 +30,7 @@ foundation-runtime = [
 dev = [
     "pytest>=8,<10",
     "httpx>=0.28,<1",
+    "mcp==1.30.0",
     "moto[dynamodb,s3,sqs]>=5,<6",
 ]
 
