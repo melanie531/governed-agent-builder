@@ -1,4 +1,4 @@
-"""Least-privilege regression: Business entity keys and exact logout routing."""
+"""Least-privilege regression: entity keys, exact logout routing and ALPR access."""
 import copy
 import subprocess
 from infra.serverless import template
@@ -11,7 +11,7 @@ def baseline():
     exec(compile(source,'baseline/serverless.py','exec'),namespace)
     return namespace['template']()
 
-def test_template_changes_only_business_leadingkeys_and_scoped_logout():
+def test_template_changes_only_business_leadingkeys_scoped_logout_and_alpr():
     old=baseline();new=template();expected=copy.deepcopy(old);changed=0
     for policy in expected['Resources']['BusinessRole']['Properties']['Policies']:
         for st in policy['PolicyDocument']['Statement']:
@@ -39,6 +39,18 @@ def test_template_changes_only_business_leadingkeys_and_scoped_logout():
             'SourceArn': {'Fn::Sub': 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/POST/api/auth/logout'},
         },
     }
+    # The live ALPR release adds only these two variables and this parameter
+    # read to the two case executors. Whole-template equality below also proves
+    # that Auth, Authorizer, Dispatcher and protected routes gained no access.
+    for name in ('Business', 'Worker'):
+        expected['Resources'][name]['Properties']['Environment']['Variables'].update({
+            'ALPR_VIEW_SOURCE': 'live',
+            'ALPR_SNOWFLAKE_SSM_PREFIX': '/governed-agent-builder/alpr',
+        })
+        expected['Resources'][name+'Role']['Properties']['Policies'][0]['PolicyDocument']['Statement'].append({
+            'Effect': 'Allow', 'Action': 'ssm:GetParameter',
+            'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/governed-agent-builder/alpr/*'},
+        })
     assert new==expected
 
 def test_other_roles_and_unapproved_partitions_remain_ungranted():
