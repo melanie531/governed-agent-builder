@@ -228,7 +228,7 @@ def diagnostic_capture_exchange_handler(event, context):
 
 
 def journey_alpr_exchange_handler(event, context):
-    """Unregistered by default; requires its own exact AWS_IAM route/invoke grant.
+    """Dedicated AWS_IAM route installed by the target-bound ALPR release command.
 
     The host must configure the existing HostedAuth env for Journey.authority,
     plus API ID, STATE_TABLE and this explicit enable flag. No Snowflake/model

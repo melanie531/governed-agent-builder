@@ -32,6 +32,7 @@ def aws_runtime():
         list_role_policies=lambda **kw: {'PolicyNames': ['scope']},
         get_role_policy=lambda **kw: {'PolicyDocument': {'Version': '2012-10-17', 'Statement': [
             {'Effect': 'Allow', 'Action': ['execute-api:Invoke'], 'Resource': 'arn:aws:execute-api:us-west-2:123456789012:api/$default/POST/internal/journey/alpr'}]}})
+    row['role_policies'] = {'scope': iam.get_role_policy()['PolicyDocument']}
     return row, control, iam, old, current
 
 
@@ -40,7 +41,7 @@ def test_exact_immutable_runtime_with_exclusive_role():
     verify_runtime(control, iam, row, CALLER)
 
 
-@pytest.mark.parametrize('drift', ['version', 'prior-role', 'trust', 'policy', 'endpoint', 'artifact', 'managed', 'iam-write'])
+@pytest.mark.parametrize('drift', ['version', 'prior-role', 'trust', 'policy', 'endpoint', 'artifact', 'managed', 'iam-write', 'role-scope'])
 def test_workload_drift_denied(drift):
     row, control, iam, old, current = aws_runtime()
     if drift == 'version': current['agentRuntimeVersion'] = '3'
@@ -51,4 +52,8 @@ def test_workload_drift_denied(drift):
     if drift == 'artifact': current['agentRuntimeArtifact'] = {'containerConfiguration': {'containerUri': 'mutable:latest'}}
     if drift == 'managed': iam.list_attached_role_policies = lambda **kw: {'AttachedPolicies': [{'PolicyArn': 'admin'}]}
     if drift == 'iam-write': iam.get_role_policy = lambda **kw: {'PolicyDocument': {'Statement': [{'Effect': 'Allow', 'Action': 'iam:PassRole', 'Resource': '*'}]}}
+    if drift == 'role-scope':
+        changed = deepcopy(row['role_policies']['scope'])
+        changed['Statement'][0]['Resource'] += '/different-route'
+        iam.get_role_policy = lambda **kw: {'PolicyDocument': changed}
     with pytest.raises(Denied): verify_runtime(control, iam, row, CALLER)

@@ -133,7 +133,7 @@ def specialist(target, runtime_arn):
 
 
 def alpr_target_configuration(binding, runtime_arn):
-    """Render only: ALPR registration is blocked on authenticated listing/run proof.
+    """Render the supported header channel for the dedicated ALPR target.
 
     A distinct target preserves the risk specialist and existing Gateway. This
     helper does not mark a publication ready, call AWS or change release state.

@@ -1,8 +1,7 @@
 """Server-owned, single-use ALPR call capabilities on the existing run repository.
 
-No public issuer/route: only a reviewed Runtime A workload exchange may call
-issue(). Its verifier must prove the exact workload/run binding; current Journey's
-shared role is insufficient. Redemption reuses Journey.authority and caller_scopes.
+The concrete IAM run exchange supplies exact workload proof. The legacy shared
+Journey role is insufficient. Redemption reuses current authority and scopes.
 """
 from dataclasses import asdict
 import math

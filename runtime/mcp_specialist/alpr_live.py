@@ -96,8 +96,8 @@ class LiveALPR:
         return {**result, "synthetic": True, "policy_notice": "Billing policies are DEMO ASSUMPTIONS."}
 
     def list(self, request):
-        # Gateway synchronization has no user run. A separately authenticated
-        # platform listing adapter is required; there is no static full caller.
+        # The exchange verifies B's exclusive IAM/Gateway ingress for platform
+        # listing. It never returns business invocation authority.
         return self.exchange.list_tools(request)
 
 

@@ -22,10 +22,16 @@ from scripts.deployment_target import DeploymentTarget, target_arguments
 from scripts.journey_platform import alpr_target_configuration
 
 
-def read_runtime(control, arn):
+def read_runtime(control, iam, arn):
     value = control.get_agent_runtime(agentRuntimeId=arn.rsplit('/', 1)[1])
     endpoint = control.get_agent_runtime_endpoint(agentRuntimeId=value['agentRuntimeId'], endpointName='DEFAULT')
+    role_name = value['roleArn'].rsplit('/', 1)[1]
+    policies = iam.list_role_policies(RoleName=role_name)
+    require(not policies.get('IsTruncated'), 'ALPR_ROLE_POLICY_ENUMERATION_DENIED')
+    role_policies = {name: iam.get_role_policy(RoleName=role_name, PolicyName=name)['PolicyDocument']
+                     for name in policies['PolicyNames']}
     return {'id': value['agentRuntimeId'], 'arn': value['agentRuntimeArn'], 'version': value['agentRuntimeVersion'],
+            'role_policies': role_policies,
             'configuration': workloads.configuration(value), 'endpoint_arn': endpoint['agentRuntimeEndpointArn']}
 
 
@@ -101,7 +107,7 @@ def main():
         require(re.fullmatch(rf'arn:aws:bedrock-agentcore:us-west-2:{args.expected_account}:runtime/[A-Za-z0-9_-]+', arn),
                 'ALPR_APPROVED_TARGET_REQUIRED')
     control, iam = target.session.client('bedrock-agentcore-control'), target.session.client('iam')
-    a, b = read_runtime(control, args.runtime_a), read_runtime(control, args.runtime_b)
+    a, b = read_runtime(control, iam, args.runtime_a), read_runtime(control, iam, args.runtime_b)
     output = target.state['app']['outputs']
     backend_role = target.session.client('lambda').get_function_configuration(FunctionName=output['WorkerFunction'])['Role']
     gateway = control.get_gateway(gatewayIdentifier=target.state['journeyGateway']['id'])

@@ -1,6 +1,6 @@
-"""SigV4 specialist redemption using the existing bounded workload transport.
+"""SigV4 ALPR admission using the existing bounded workload transport.
 
-This separate route is intentionally not registered by current infrastructure.
+The dedicated route is installed by the host's additive release command.
 An opaque capability never goes in a question, trace attribute, or error.
 """
 import re

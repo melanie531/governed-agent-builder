@@ -95,8 +95,10 @@ def verify_runtime(control, iam, row, caller, *, purpose='a'):
     require(not attached.get('AttachedPolicies') and not attached.get('IsTruncated'), 'ALPR_MANAGED_ROLE_POLICY_DENIED')
     policies = iam.list_role_policies(RoleName=name)
     require(policies.get('PolicyNames') and not policies.get('IsTruncated'), 'ALPR_ROLE_POLICY_REQUIRED')
+    actual_policies = {}
     for name_policy in policies['PolicyNames']:
         policy = iam.get_role_policy(RoleName=name, PolicyName=name_policy)['PolicyDocument']
+        actual_policies[name_policy] = policy
         for statement in policy['Statement']:
             actions = statement.get('Action', [])
             actions = [actions] if isinstance(actions, str) else actions
@@ -119,6 +121,7 @@ def verify_runtime(control, iam, row, caller, *, purpose='a'):
                     require(resource in [f'arn:aws:ssm:us-west-2:{arn.split(":")[4]}:parameter/governed-agent-builder/alpr/{key}'
                                          for key in ('account', 'user', 'private-key')], 'ALPR_SSM_SCOPE_DENIED')
             require(resources, 'ALPR_ROLE_RESOURCE_SCOPE_DENIED')
+    require(actual_policies == row.get('role_policies'), 'ALPR_ROLE_POLICY_CHANGED')
 
 
 def load(db, reference):

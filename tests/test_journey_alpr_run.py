@@ -32,7 +32,6 @@ def admitted(setup):
                 'protocolConfiguration': {'serverProtocol': 'HTTP'}}}
     record = {**rows, 'backend_role': backend, 'gateway_role': gateway,
               'manifest_digest': bound.manifest_digest, 'specialist': workloads.specialist_binding(rows['b'])}
-    reference = digest(record)
     by_id = {row['id']: row for row in rows.values()}
     by_role = {row['configuration']['roleArn'].rsplit('/', 1)[1]: row for row in rows.values()}
     def runtime(**kw):
@@ -51,6 +50,9 @@ def admitted(setup):
         list_role_policies=lambda **kw: {'PolicyNames': ['scope']}, get_role_policy=lambda **kw: {
             'PolicyDocument': {'Statement': [{'Effect': 'Allow', 'Action': 'execute-api:Invoke',
                                              'Resource': 'arn:aws:execute-api:us-west-2:123456789012:api/$default/POST/internal/journey/alpr'}]}})
+    for row in rows.values():
+        row['role_policies'] = {'scope': iam.get_role_policy()['PolicyDocument']}
+    reference = digest(record)
     with journey.store.tx() as db:
         state = job_state(db, bound.run_ref)
         _, definition = journey.authority(db, state)
