@@ -21,6 +21,10 @@ from infra.journey_alpr import configure
 from scripts.deployment_target import DeploymentTarget, target_arguments
 from scripts.journey_platform import alpr_target_configuration
 
+# Operator-approved (profile, region) release targets. Fail closed on anything else;
+# account binding and STS equality are enforced separately by DeploymentTarget.
+APPROVED_TARGETS = {('nvidia', 'us-west-2')}
+
 
 def read_runtime(control, iam, arn):
     value = control.get_agent_runtime(agentRuntimeId=arn.rsplit('/', 1)[1])
@@ -101,7 +105,7 @@ def main():
     parser.add_argument('--release-key', required=True, help='Content-addressed Lambda ZIP key in the existing artifact bucket')
     parser.add_argument('--release-version', required=True, help='Immutable S3 object version of the new source release')
     args = parser.parse_args()
-    require(args.profile == 'platform-dev-takeover' and args.region == 'us-west-2', 'ALPR_APPROVED_TARGET_REQUIRED')
+    require((args.profile, args.region) in APPROVED_TARGETS, 'ALPR_APPROVED_TARGET_REQUIRED')
     target = DeploymentTarget(args.expected_account, args.profile, args.region, args.state)
     for arn in (args.runtime_a, args.runtime_b):
         require(re.fullmatch(rf'arn:aws:bedrock-agentcore:us-west-2:{args.expected_account}:runtime/[A-Za-z0-9_-]+', arn),

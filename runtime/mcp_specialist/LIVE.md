@@ -85,11 +85,12 @@ its versioned `JOURNEY_MANIFEST` and `JOURNEY_ALPR_ENDPOINT`. Its entry is the e
 Journey Foundation ZIP. B needs the live image and the configuration below. Any
 bootstrap version must use a different role from the final deployment version.
 
-Use the existing target-bound state and profile `platform-dev-takeover`:
+Use the existing target-bound state and the operator-approved profile in
+`scripts.journey_alpr_release.APPROVED_TARGETS` (currently `nvidia`, us-west-2):
 
 ```sh
 .venv/bin/python -m scripts.journey_alpr_release prepare \
-  --expected-account ACCOUNT --profile platform-dev-takeover --region us-west-2 \
+  --expected-account ACCOUNT --profile nvidia --region us-west-2 \
   --state EXISTING_TARGET_STATE --runtime-a EXACT_A_ARN --runtime-b EXACT_B_ARN \
   --release-key releases/SHA256/lambda.zip --release-version S3_VERSION \
   --output /tmp/alpr-release-review

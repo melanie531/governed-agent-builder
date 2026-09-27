@@ -48,3 +48,19 @@ def test_registration_binds_manifest_and_never_overwrites_role(admitted):
 @pytest.mark.parametrize('account,region', [('999999999999', 'us-west-2'), ('123456789012', 'us-east-1')])
 def test_infra_rejects_wrong_target(admitted, account, region):
     with pytest.raises(ValueError): prepare_template(template(), {'account': account, 'region': region}, admitted.record)
+
+
+@pytest.mark.parametrize('profile,region', [
+    ('platform-dev-takeover', 'us-west-2'), ('default', 'us-west-2'), ('nvidia', 'us-east-1')])
+def test_main_rejects_unapproved_profile_or_region_before_any_session(monkeypatch, profile, region):
+    import scripts.journey_alpr_release as release
+    monkeypatch.setattr(release, 'DeploymentTarget',
+                        lambda *a, **k: pytest.fail('AWS session must not be created for an unapproved target'))
+    monkeypatch.setattr('sys.argv', ['journey_alpr_release', 'prepare',
+                        '--expected-account', '123456789012', '--profile', profile, '--region', region,
+                        '--state', '/tmp/none.json', '--runtime-a', 'a', '--runtime-b', 'b',
+                        '--output', '/tmp/none-out', '--release-key', 'releases/' + '0' * 64 + '/lambda.zip',
+                        '--release-version', 'v1'])
+    with pytest.raises(Denied, match='ALPR_APPROVED_TARGET_REQUIRED'):
+        release.main()
+    assert ('nvidia', 'us-west-2') in release.APPROVED_TARGETS
