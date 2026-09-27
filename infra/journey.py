@@ -138,12 +138,12 @@ def configure_app(resources, settings):
         "PolicyName": "JourneyDeployment", "PolicyDocument": {"Version": "2012-10-17", "Statement": worker_statements}})
     registry = settings.get("registry_arn")
     if settings.get("admin_enabled") or registry:
-        expected = f"arn:aws:bedrock-agentcore:{region}:{account}:registry/"
+        expected = f"arn:aws:agent-registry:{region}:{account}:registry/"
         if registry and (not registry.startswith(expected) or "/" in registry[len(expected):]):
             raise ValueError("Registry must belong to this platform account and region")
-        registry_permissions = [statement(["bedrock-agentcore:GetRegistry", "bedrock-agentcore:CreateRegistryRecord",
-            "bedrock-agentcore:GetRegistryRecord", "bedrock-agentcore:SubmitRegistryRecordForApproval",
-            "bedrock-agentcore:UpdateRegistryRecordStatus"], [registry, registry + "/record/*"])] if registry else []
+        registry_permissions = [statement(["agent-registry:GetRegistry", "agent-registry:CreateRegistryRecord",
+            "agent-registry:GetRegistryRecord", "agent-registry:SubmitRegistryRecordForApproval",
+            "agent-registry:UpdateRegistryRecordStatus"], [registry, registry + "/record/*"])] if registry else []
         resources["BusinessRole"]["Properties"]["Policies"].append({
             "PolicyName": "PlatformAdministration", "PolicyDocument": {"Version": "2012-10-17", "Statement": [
                 *registry_permissions,
