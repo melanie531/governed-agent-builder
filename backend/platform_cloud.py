@@ -65,13 +65,13 @@ class PlatformCloud:
 
     def registry_id(self):
         value = self.settings.get("registry_arn")
-        prefix = f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:registry/"
+        prefix = f"arn:aws:agent-registry:{self.settings['region']}:{self.settings['account']}:registry/"
         if not value or not value.startswith(prefix) or "/" in value[len(prefix):]:
             raise HTTPException(503, "The platform Registry is not configured")
         return value
 
     def registry(self):
-        registry = self.client("bedrock-agentcore-control").get_registry(registryId=self.registry_id())
+        registry = self.client("agent-registry-control").get_registry(registryId=self.registry_id())
         return {key: registry[key] for key in ("registryArn", "name", "status", "approvalConfiguration") if key in registry}
 
     def register(self, item):
@@ -82,10 +82,10 @@ class PlatformCloud:
             raise HTTPException(409, "MCP server is outside the platform Gateway")
         # A validated platform descriptor is CUSTOM, never misrepresented as a
         # native MCP server.json or Agent Skill format.
-        response = self.client("bedrock-agentcore-control").create_registry_record(
+        response = self.client("agent-registry-control").create_registry_record(
             registryId=self.registry_id(), name=item["id"], description=item["description"][:4096],
-            descriptorType="CUSTOM", recordVersion=item["version"],
-            descriptors={"custom": {"inlineContent": json.dumps(descriptor)}},
+            recordType="CUSTOM", recordVersion=item["version"],
+            descriptors={"custom": {"data": json.dumps(descriptor)}},
             clientToken=digest([self.registry_id(), item["id"], item["version"], item["binding_digest"]]))
         return {"arn": response["recordArn"], "status": response["status"],
                 "version": item["version"], "binding_digest": item["binding_digest"]}
@@ -94,17 +94,17 @@ class PlatformCloud:
         prefix = self.registry_id() + "/record/"
         if not binding["arn"].startswith(prefix) or "/" in binding["arn"][len(prefix):]:
             raise HTTPException(409, "Record is outside the platform Registry")
-        return self.client("bedrock-agentcore-control").get_registry_record(
+        return self.client("agent-registry-control").get_registry_record(
             registryId=self.registry_id(), recordId=binding["arn"])
 
     def submit(self, binding):
         self.record(binding)
-        return self.client("bedrock-agentcore-control").submit_registry_record_for_approval(
+        return self.client("agent-registry-control").submit_registry_record_for_approval(
             registryId=self.registry_id(), recordId=binding["arn"])["status"]
 
     def decide(self, binding, approve, reason):
         self.record(binding)
-        return self.client("bedrock-agentcore-control").update_registry_record_status(
+        return self.client("agent-registry-control").update_registry_record_status(
             registryId=self.registry_id(), recordId=binding["arn"],
             status="APPROVED" if approve else "REJECTED", statusReason=reason)["status"]
 

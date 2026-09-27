@@ -101,7 +101,7 @@ def router(store, who, cloud=None):
         if record.get("recordArn") != registered["arn"] or record.get("recordVersion") != registered["version"]:
             raise HTTPException(409, "Registry record identity or version changed; register a reviewed version")
         try:
-            descriptor = json.loads(record["descriptors"]["custom"]["inlineContent"])
+            descriptor = json.loads(record["descriptors"]["custom"]["data"])
         except (KeyError, ValueError, TypeError):
             raise HTTPException(409, "Registry descriptor does not match the Catalog") from None
         expected = registry_descriptor({**item, "version": binding(item)["version"]})

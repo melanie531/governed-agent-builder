@@ -75,7 +75,54 @@ def test_partial_cloudwatch_result_is_not_presented_as_complete():
 
 def test_registry_rejects_cross_account_before_sdk_call():
     adapter, client = cloud()
-    adapter.settings["registry_arn"] = "arn:aws:bedrock-agentcore:us-west-2:999999999999:registry/abcdefghijkl"
+    adapter.settings["registry_arn"] = "arn:aws:agent-registry:us-west-2:999999999999:registry/abcdefghijkl"
     with pytest.raises(HTTPException):
         adapter.registry()
     client.get_registry.assert_not_called()
+
+
+def test_registry_rejects_legacy_service_arn_prefix():
+    adapter, client = cloud()
+    adapter.settings["registry_arn"] = "arn:aws:bedrock-agentcore:us-west-2:123456789012:registry/abcdefghijkl"
+    with pytest.raises(HTTPException):
+        adapter.registry()
+    client.get_registry.assert_not_called()
+
+
+def test_registry_record_registration_uses_supported_agent_registry_shape():
+    adapter, client = cloud()
+    arn = "arn:aws:agent-registry:us-west-2:123456789012:registry/abcdefghijkl"
+    adapter.settings["registry_arn"] = arn
+    client.get_registry.return_value = {"registryArn": arn, "name": "governed-agent-builder",
+                                        "status": "READY", "approvalConfiguration": {"autoApprovalRules": []}}
+    assert adapter.registry()["approvalConfiguration"] == {"autoApprovalRules": []}
+    client.get_registry.assert_called_once_with(registryId=arn)
+    client.create_registry_record.return_value = {"recordArn": arn + "/record/abcdef123456", "status": "CREATING"}
+    item = {"id": "bedrock-claude", "kind": "model", "version": "1", "description": "synthetic",
+            "binding_digest": "d" * 64, "binding": {"model_id": "synthetic.model"}}
+    receipt = adapter.register(item)
+    assert receipt["arn"] == arn + "/record/abcdef123456" and receipt["version"] == "1"
+    request = client.create_registry_record.call_args.kwargs
+    assert request["recordType"] == "CUSTOM" and "descriptorType" not in request
+    assert set(request["descriptors"]) == {"custom"} and set(request["descriptors"]["custom"]) == {"data"}
+    import json as jsonlib
+    assert jsonlib.loads(request["descriptors"]["custom"]["data"])["capability_id"] == "bedrock-claude"
+    assert request["registryId"] == arn and request["recordVersion"] == "1" and len(request["clientToken"]) >= 33
+
+
+def test_registry_record_lifecycle_stays_inside_platform_registry():
+    adapter, client = cloud()
+    arn = "arn:aws:agent-registry:us-west-2:123456789012:registry/abcdefghijkl"
+    adapter.settings["registry_arn"] = arn
+    record_arn = arn + "/record/abcdef123456"
+    client.get_registry_record.return_value = {"recordArn": record_arn, "status": "DRAFT"}
+    client.submit_registry_record_for_approval.return_value = {"status": "PENDING_APPROVAL"}
+    client.update_registry_record_status.return_value = {"status": "REJECTED"}
+    binding = {"arn": record_arn}
+    assert adapter.submit(binding) == "PENDING_APPROVAL"
+    client.submit_registry_record_for_approval.assert_called_once_with(registryId=arn, recordId=record_arn)
+    assert adapter.decide(binding, False, "synthetic rejection") == "REJECTED"
+    client.update_registry_record_status.assert_called_once_with(
+        registryId=arn, recordId=record_arn, status="REJECTED", statusReason="synthetic rejection")
+    with pytest.raises(HTTPException):
+        adapter.record({"arn": "arn:aws:agent-registry:us-west-2:123456789012:registry/otherregistry/record/abcdef123456"})

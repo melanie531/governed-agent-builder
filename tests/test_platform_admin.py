@@ -25,9 +25,9 @@ class Native:
         return [{"id": "synthetic.model", "name": "Synthetic model", "provider": "Synthetic", "type": "Foundation model"}]
 
     def register(self, item):
-        arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:registry/abcdefghijkl/record/" + digest(item["id"])[:12]
+        arn = "arn:aws:agent-registry:us-west-2:123456789012:registry/abcdefghijkl/record/" + digest(item["id"])[:12]
         self.rows[arn] = {"recordArn": arn, "recordVersion": item["version"], "status": "DRAFT",
-                         "descriptors": {"custom": {"inlineContent": json.dumps(registry_descriptor(item))}}}
+                         "descriptors": {"custom": {"data": json.dumps(registry_descriptor(item))}}}
         self.calls.append("register")
         return {"arn": arn, "status": "CREATING", "version": item["version"], "binding_digest": item["binding_digest"]}
 
@@ -57,7 +57,7 @@ class Native:
         return {"status": "UNAVAILABLE", "reason": "Synthetic fixture: project allocation is not active."}
 
     def registry(self):
-        return {"name": "Synthetic Registry", "status": "READY", "approvalConfiguration": {"autoApproval": False}}
+        return {"name": "Synthetic Registry", "status": "READY", "approvalConfiguration": {"autoApprovalRules": []}}
 
 
 @pytest.fixture
@@ -127,7 +127,7 @@ def test_registry_descriptor_drift_blocks_approval(platform, field, value):
     if field == "recordVersion":
         next(iter(native.rows.values()))[field] = value
     else:
-        descriptor["inlineContent"] = json.dumps({**json.loads(descriptor["inlineContent"]), field: value})
+        descriptor["data"] = json.dumps({**json.loads(descriptor["data"]), field: value})
     assert client.post(base + "/submit", json=revision).status_code == 409
 
 
