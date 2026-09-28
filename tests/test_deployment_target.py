@@ -109,6 +109,20 @@ def test_matching_stacks_are_accepted(tmp_path):
     DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory)
 
 
+def test_completed_rollback_requires_the_exact_reconciled_stack(tmp_path):
+    stacks = {s: stack(s) for s in ("artifacts", "app")}
+    stacks["app"]["StackStatus"] = "UPDATE_ROLLBACK_COMPLETE"
+    path = tmp_path / "fresh.json"
+    bound_file(path, stacks)
+    with pytest.raises(RuntimeError):
+        DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory)
+    DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory,
+                     reconciled_rollback_stack_id=stacks["app"]["StackId"])
+    with pytest.raises(RuntimeError):
+        DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory,
+                         reconciled_rollback_stack_id=stacks["artifacts"]["StackId"])
+
+
 def test_imports_and_legacy_entrypoints_never_construct_sdk(monkeypatch):
     def forbidden(*a, **kw): raise AssertionError("Unexpected SDK construction")
     monkeypatch.setattr(boto3, "Session", forbidden)
@@ -127,7 +141,7 @@ def test_cli_requires_all_target_inputs():
     assert args.profile == "default"  # allowed only when operator explicitly selects it
 
 
-@pytest.mark.parametrize('action', ['preflight', 'artifacts', 'deploy', 'publish', 'status', 'verification-deploy'])
+@pytest.mark.parametrize('action', ['preflight', 'artifacts', 'deploy', 'publish', 'status'])
 def test_every_action_checks_target_before_service_use(monkeypatch, action):
     from scripts import serverless_deploy as deploy
     def reject(): raise RuntimeError('synthetic target mismatch')
@@ -138,3 +152,46 @@ def test_every_action_checks_target_before_service_use(monkeypatch, action):
     monkeypatch.setattr(deploy, 'CF', NoAWS())
     with pytest.raises(RuntimeError, match='synthetic target mismatch'):
         deploy.main(action)
+
+
+def test_redeployment_preflight_preserves_enabled_journey_and_mcp(monkeypatch, tmp_path):
+    from backend.store import Store
+    from infra.serverless import template
+    from scripts import serverless_deploy as release
+    from tests.journey_support import seed
+    from tests.test_mcp_onboarding_infra import settings as mcp_settings
+
+    settings = seed(Store(str(tmp_path / "state.sqlite")))
+    settings.update(mcp_settings(), evaluator_id="Builtin.Correctness",
+                    evaluator_arn="arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness")
+    expected = template(journey=settings)
+    validated = []
+    state = {"journeyPlatform": settings, "app": {"stackId": "bound-stack"}}
+    monkeypatch.setattr(release, "TARGET", SimpleNamespace(
+        state=state, check_stacks=lambda: None, save=lambda *args: None))
+    monkeypatch.setattr(release, "CF", SimpleNamespace(
+        get_template=lambda **kwargs: {"TemplateBody": expected},
+        validate_template=lambda **kwargs: validated.append(json.loads(kwargs["TemplateBody"]))))
+
+    release.preflight()
+
+    assert validated[-1] == expected
+    assert "agent-registry:CreateRegistryRecord" in json.dumps(validated[-1])
+    assert validated[-1]["Resources"]["Worker"]["Properties"]["Environment"]["Variables"]["JOURNEY_ENABLED"] == "1"
+
+
+def test_incomplete_deployment_state_cannot_remove_live_configuration(monkeypatch):
+    from infra.serverless import template
+    from scripts import serverless_deploy as release
+
+    live = template()
+    live["Resources"]["Business"]["Properties"]["Environment"]["Variables"]["JOURNEY_ENABLED"] = "1"
+    def no_write(*args, **kwargs):
+        raise AssertionError("Configuration loss must fail before validation or state writes")
+    monkeypatch.setattr(release, "TARGET", SimpleNamespace(
+        state={"app": {"stackId": "bound-stack"}}, check_stacks=lambda: None, save=no_write))
+    monkeypatch.setattr(release, "CF", SimpleNamespace(
+        get_template=lambda **kwargs: {"TemplateBody": live}, validate_template=no_write))
+
+    with pytest.raises(RuntimeError, match="Live application template differs"):
+        release.preflight()

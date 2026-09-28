@@ -11,7 +11,7 @@ def baseline():
     exec(compile(source,'baseline/serverless.py','exec'),namespace)
     return namespace['template']()
 
-def test_template_changes_only_business_leadingkeys_and_scoped_logout():
+def test_template_changes_only_business_leadingkeys_logout_tags_and_bundled_fonts():
     old=baseline();new=template();expected=copy.deepcopy(old);changed=0
     for policy in expected['Resources']['BusinessRole']['Properties']['Policies']:
         for st in policy['PolicyDocument']['Statement']:
@@ -39,6 +39,21 @@ def test_template_changes_only_business_leadingkeys_and_scoped_logout():
             'SourceArn': {'Fn::Sub': 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/POST/api/auth/logout'},
         },
     }
+    csp = expected['Resources']['Headers']['Properties']['ResponseHeadersPolicyConfig']['SecurityHeadersConfig']['ContentSecurityPolicy']
+    csp['ContentSecurityPolicy'] = csp['ContentSecurityPolicy'].replace(
+        "img-src 'self' data:;", "img-src 'self' data:; font-src 'self' data:;")
+    # Retention tagging is the only additional deployment-wide change. Its
+    # supported types and required values have independent contract coverage.
+    for name, resource in new['Resources'].items():
+        field = 'UserPoolTags' if resource['Type'] == 'AWS::Cognito::UserPool' else 'Tags'
+        actual = resource['Properties'].get(field)
+        previous = expected['Resources'][name]['Properties'].get(field)
+        if actual != previous:
+            if isinstance(actual, dict):
+                assert actual == {**(previous or {}), 'auto-delete': 'no'}
+            else:
+                assert actual == [*(previous or []), {'Key': 'auto-delete', 'Value': 'no'}]
+            expected['Resources'][name]['Properties'][field] = actual
     assert new==expected
 
 def test_other_roles_and_unapproved_partitions_remain_ungranted():

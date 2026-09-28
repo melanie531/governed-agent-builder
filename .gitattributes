@@ -1,6 +1,0 @@
-# Portable source releases omit historical deployment/account metadata.
-# All application source, tests, IaC, manifests and dependency locks remain.
-docs/CLOUD-PLAN.md export-ignore
-docs/HOSTED.md export-ignore
-docs/SERVERLESS-HOSTING.md export-ignore
-docs/first-login-verification.md export-ignore

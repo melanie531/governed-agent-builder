@@ -87,7 +87,8 @@ class JourneyCloud:
             environmentVariables={"JOURNEY_MANIFEST": json.dumps(location, separators=(",", ":"))},
             clientToken=token,
             tags={"project": "governed-agent-builder", "journey": "create-agent",
-                  "agent": manifest["agent_id"], "workspace": manifest["workspace"]})
+                  "agent": manifest["agent_id"], "workspace": manifest["workspace"],
+                  "auto-delete": "no"})
         binding = {"id": response["agentRuntimeId"], "arn": response["agentRuntimeArn"],
                    "version": response["agentRuntimeVersion"], "manifest": location}
         if not binding["arn"].startswith(f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:runtime/gab_journey_"):
@@ -113,6 +114,10 @@ class JourneyCloud:
         return (endpoint["status"] == "READY" and endpoint["agentRuntimeArn"] == binding["arn"]
                 and endpoint["liveVersion"] == binding["version"]
                 and endpoint.get("targetVersion", binding["version"]) == binding["version"])
+
+    def provision_runtime_logs(self, binding):
+        from .journey_runtime_logs import provision
+        return provision(self, binding)
 
     def invoke(self, binding, definition, text, request_id, history=None):
         if not self.ready(binding):

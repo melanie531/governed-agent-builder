@@ -1,6 +1,6 @@
 # Create Agent journey
 
-The `feat/create-agent-journey` branch adds a Catalog-driven business builder with
+The application provides a Catalog-driven business builder with
 Research and Knowledge Q&A templates. The feature is enabled by the platform's
 `JOURNEY_ENABLED=1` deployment configuration.
 
@@ -109,41 +109,10 @@ can be reviewed and confirmed again; it is never reported as successful deletion
 
 ## Target-bound deployment
 
-Use the already bound target state. Every AWS command checks STS account, region,
-stack ownership, and existing output identities. Never rely on the default profile.
-
-```sh
-.venv/bin/python scripts/serverless_package.py
-.venv/bin/python scripts/journey_platform.py prepare \
-  --expected-account 820242898417 --profile account-820 --region us-west-2 \
-  --state artifacts/account-820242898417-us-west-2/release-state.json
-.venv/bin/python scripts/journey_platform.py activate \
-  --expected-account 820242898417 --profile account-820 --region us-west-2 \
-  --state artifacts/account-820242898417-us-west-2/release-state.json
-npm --prefix frontend run build
-.venv/bin/python scripts/journey_platform.py publish-ui \
-  --expected-account 820242898417 --profile account-820 --region us-west-2 \
-  --state artifacts/account-820242898417-us-west-2/release-state.json
-```
-
-Initial preparation requires `TAVILY_API_KEY` in the operator process environment.
-It is sent directly to AgentCore Identity; no value is written into Catalog data,
-Lambda environment variables, manifests, source, or logs. Preparation creates only
-project-owned resources, verifies actual Gateway tool calls, checks model
-execution, and publishes ready Catalog records. Existing external Gateways are
-not modified.
-
-Use the journey deployment commands for this feature; the original serverless
-deployment command produces the legacy default template without enabling it.
-
-If large ZIP uploads time out on the operator network, run
-`scripts/journey_delta_upload.py` with the same target arguments and
-`--base-key releases/<previous-lambda-sha256>/lambda.zip`, then resume `prepare`.
-This requires a prior release with identical locked dependencies. A temporary
-Lambda reuses only matching compressed entries and verifies that both complete
-ZIPs exactly match the local SHA-256 digests. Its IAM permissions cover only the
-specified input/output objects. The helper stack and source patch are removed
-after use.
+Follow the [deployment guide](deployment.md) for the current application, initial
+bootstrap, scoped permission changes and rollback. Routine deployment preserves
+the saved journey/MCP configuration. Initial preparation and catalog publication
+are separate from application code releases.
 
 ## Verification
 
@@ -170,7 +139,7 @@ exact subject to this app and workspace for 24 hours. It does not change a user'
 password or email verification.
 
 ```sh
-GAB_RELEASE_STATE="$PWD/artifacts/account-820242898417-us-west-2/release-state.json" \
+GAB_RELEASE_STATE="$PWD/artifacts/account-250708454815-us-east-1/release-state.json" \
   node frontend/journey-e2e/live.mjs
 ```
 

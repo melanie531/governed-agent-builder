@@ -124,7 +124,7 @@ def worker_handler(event, context):
                 with app.state.store.tx() as db:
                     latest = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
                     from .foundation_runs import get
-                    live = get(db, 'foundation-run:' + job_id) or get(db, 'foundation-pending:' + job_id) or get(db, 'journey-job:' + job_id)
+                    live = get(db, 'foundation-run:' + job_id) or get(db, 'foundation-pending:' + job_id) or get(db, 'journey-job:' + job_id) or get(db, 'mcp-job:' + job_id) or get(db, 'mcp-onboarding-job:' + job_id)
                 if live:
                     if latest['stage'] not in TERMINAL:
                         if (live.get('kind') == 'delete'

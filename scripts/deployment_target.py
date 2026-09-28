@@ -18,13 +18,14 @@ def target_arguments(parser):
 
 
 class DeploymentTarget:
-    def __init__(self, expected_account, profile, region, state, session_factory=None):
+    def __init__(self, expected_account, profile, region, state, session_factory=None, *, reconciled_rollback_stack_id=None):
         if not re.fullmatch(r"[0-9]{12}", expected_account) or not profile.strip() or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d", region):
             raise RuntimeError("Explicit expected account, approved profile and region required")
         self.path = Path(state).expanduser().resolve()
         if self.path.name in {"serverless-deployment.json", "governed-agent-builder-cloud-state.json"}:
             raise RuntimeError("Legacy state path prohibited; use a fresh target-specific path")
         self.binding = {"account": expected_account, "profile": profile, "region": region}
+        self.reconciled_rollback_stack_id = reconciled_rollback_stack_id
         self.state = json.loads(self.path.read_text()) if self.path.exists() else {"target": self.binding}
         if self.state.get("target") != self.binding:
             raise RuntimeError("State target mismatch or unbound legacy state")
@@ -51,7 +52,9 @@ class DeploymentTarget:
             outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
             if not saved or saved.get("stackId") != stack["StackId"] or saved.get("outputs") != outputs:
                 raise RuntimeError("Live stack/state identity mismatch; no adoption or old artifacts allowed")
-            if stack["StackStatus"] not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
+            reconciled = (stack["StackStatus"] == "UPDATE_ROLLBACK_COMPLETE"
+                          and stack["StackId"] == self.reconciled_rollback_stack_id)
+            if stack["StackStatus"] not in ("CREATE_COMPLETE", "UPDATE_COMPLETE") and not reconciled:
                 raise RuntimeError("Target stack not stable; operator reconciliation required")
         if "app" in self.state and "artifacts" not in self.state:
             raise RuntimeError("App requires target-bound artifacts stack")

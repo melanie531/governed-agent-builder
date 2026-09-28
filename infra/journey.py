@@ -1,5 +1,6 @@
 """Project-owned Foundation Runtime, evidence storage and Gateway workload roles."""
 from infra.serverless import attr, bucket, ref, sub, tls_policy
+from infra.resource_tags import apply_resource_tags
 
 
 def statement(actions, resource):
@@ -15,7 +16,7 @@ def role(service, statements, source):
         "Policies": [{"PolicyName": "JourneyScope", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
 
 
-def template(provider_arn, secret_arn):
+def template(provider_arn, secret_arn, *, mcp_settings=None):
     resources = {"Evidence": bucket(), "EvidenceTLS": tls_policy("Evidence"),
                  "Traces": {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain",
                             "Properties": {"LogGroupName": "/governed-agent-builder/journey/traces", "RetentionInDays": 14}},
@@ -64,6 +65,10 @@ def template(provider_arn, secret_arn):
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"),
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/gab-journey-tools-*")]),
     ], sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/gab-journey-tools-*"))
+    if mcp_settings:
+        from infra.mcp_onboarding import configure_gateway
+        configure_gateway(resources, mcp_settings)
+    apply_resource_tags(resources)
     return {"AWSTemplateFormatVersion": "2010-09-09", "Description": "Governed Agent Builder self-service Foundation and Gateway scope",
             "Parameters": {"ArtifactBucket": {"Type": "String"}, "ArtifactKey": {"Type": "String"}},
             "Resources": resources, "Outputs": {
@@ -105,6 +110,8 @@ def configure_app(resources, settings):
         statement(["s3:DeleteObject", "s3:DeleteObjectVersion"], [
             bucket_arn + "/journey/manifests/*", bucket_arn + "/journey/evidence/*", bucket_arn + "/journey/evaluations/*"]),
         {**statement(["logs:DescribeLogGroups"], "*"), "Condition": {"StringEquals": {"aws:RequestedRegion": region}}},
+        statement(["logs:CreateLogGroup", "logs:TagResource", "logs:ListTagsForResource", "logs:PutRetentionPolicy"],
+                  f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/gab_journey_*"),
         statement(["logs:DeleteLogGroup"], f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/gab_journey_*:*"),
         statement(["logs:DeleteLogStream"], f"arn:aws:logs:{region}:{account}:log-group:{settings['log_group']}:log-stream:agent-*"),
         # CreateAgentRuntime authorizes DEFAULT endpoint creation and tagging
@@ -130,6 +137,12 @@ def configure_app(resources, settings):
     worker_statements[2]["Condition"] = {"StringEquals": {"iam:PassedToService": "bedrock-agentcore.amazonaws.com"}}
     resources["WorkerRole"]["Properties"]["Policies"].append({
         "PolicyName": "JourneyDeployment", "PolicyDocument": {"Version": "2012-10-17", "Statement": worker_statements}})
+    if settings.get("mcp_creation"):
+        from infra.mcp_servers import configure_app as configure_mcp
+        configure_mcp(resources, settings)
+    if settings.get("mcp_onboarding"):
+        from infra.mcp_onboarding import configure_app as configure_onboarding
+        configure_onboarding(resources, settings)
     registry = settings.get("registry_arn")
     if settings.get("admin_enabled") or registry:
         expected = f"arn:aws:bedrock-agentcore:{region}:{account}:registry/"

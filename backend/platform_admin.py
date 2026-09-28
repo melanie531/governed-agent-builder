@@ -100,6 +100,18 @@ def router(store, who, cloud=None):
         registered = binding(item)
         if record.get("recordArn") != registered["arn"] or record.get("recordVersion") != registered["version"]:
             raise HTTPException(409, "Registry record identity or version changed; register a reviewed version")
+        if registered.get("descriptor_type") == "mcpServer":
+            try:
+                descriptor = record["descriptors"]["mcpServer"]
+                tools = json.loads(descriptor["additionalData"]["tools"]["data"])["tools"]
+                server = json.loads(descriptor["data"])
+                from foundation_harness.config import digest
+                if (record["recordType"] != "MCP" or digest(tools) != registered["discovery_digest"]
+                        or server["remotes"] != [{"type": "streamable-http", "url": registered["endpoint"]}]):
+                    raise ValueError()
+            except (KeyError, ValueError, TypeError):
+                raise HTTPException(409, "Native MCP record changed; review the connection again") from None
+            return
         try:
             descriptor = json.loads(record["descriptors"]["custom"]["inlineContent"])
         except (KeyError, ValueError, TypeError):

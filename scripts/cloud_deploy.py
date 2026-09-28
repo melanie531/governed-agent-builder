@@ -4,7 +4,7 @@ def main(*args, **kwargs):
     raise RuntimeError(
         "Legacy cloud entry point disabled. Use scripts/serverless_deploy.py with "
         "--expected-account, --profile, --region and a fresh --state path; "
-        "see docs/TARGET-ACCOUNT-HANDOFF.md. Do not reuse legacy state/resources."
+        "see docs/deployment.md. Do not reuse legacy state/resources."
     )
 
 

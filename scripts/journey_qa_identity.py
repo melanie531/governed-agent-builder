@@ -33,7 +33,9 @@ def main():
     password = secrets.token_urlsafe(40) + "aA7!"
     for name, value in (("username", username), ("password", password)):
         ssm.put_parameter(Name=prefix + "/" + name, Value=value, Type="SecureString",
-                          Description="Temporary authorized Create Agent journey test", Overwrite=False)
+                          Description="Temporary authorized Create Agent journey test", Overwrite=False,
+                          Tags=[{"Key": "auto-delete", "Value": "no"},
+                                {"Key": "project", "Value": "governed-agent-builder"}])
     created = cognito.admin_create_user(UserPoolId=outputs["UserPoolId"], Username=username,
         TemporaryPassword=password, MessageAction="SUPPRESS", UserAttributes=[{"Name": "email", "Value": username}])
     subject = next(item["Value"] for item in created["User"]["Attributes"] if item["Name"] == "sub")
