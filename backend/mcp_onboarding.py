@@ -15,7 +15,6 @@ from foundation_harness.config import digest
 from .foundation_runs import get, put
 from .journey_schema import Strict
 from .live_catalog import grant_scope
-from .mcp_servers import McpServers
 
 STOPPED = {"REVIEW", "READY", "FAILED", "NEEDS_RECONCILIATION", "DELETED"}
 STAGES = ["connect", "discover", "register", "review", "submit", "approve", "publish"]
@@ -163,8 +162,36 @@ def discovered_tools(state, descriptors):
     return sorted(result, key=lambda t: t["name"])
 
 
-class McpOnboarding(McpServers):
-    """Shares repository, authorization and audit conventions with MCP provisioning."""
+class McpOnboarding:
+    """Provider-neutral onboarding, authorization and durable publication."""
+
+    def __init__(self, store, settings, cloud, *, hosted=False, auth=None):
+        self.store, self.settings, self.cloud = store, settings, cloud
+        self.hosted, self.auth = hosted, auth
+
+    def tx(self, operation):
+        for attempt in range(6):
+            try:
+                with self.store.tx() as db:
+                    return operation(db)
+            except HTTPException as exc:
+                if exc.status_code != 409 or exc.detail != "Concurrent governance update; reload and retry" or attempt == 5:
+                    raise
+                time.sleep(.025 * (attempt + 1))
+
+    @staticmethod
+    def admin(actor):
+        if actor["role"] != "admin":
+            raise HTTPException(403, "Platform admin required")
+
+    @staticmethod
+    def audit(db, actor, action, sid, detail):
+        db.insert("audit", {"actor": actor, "action": action, "resource": sid,
+                           "detail": json.dumps(detail), "created": time.time()})
+
+    def detail(self, actor, server_id):
+        self.admin(actor)
+        return self.tx(lambda db: self.public(self.load(db, server_id)))
 
     def config(self, db):
         value = get(db, "mcp-onboarding") or {}
@@ -542,6 +569,14 @@ def router(service, who):
     from .mcp_credentials import ProviderRetry
     from . import mcp_management
     routes = APIRouter(prefix="/api/admin/mcp")
+    # Existing registrations remain visible and manageable. No remote-object
+    # creation, profile configuration or provisioning retry endpoint is exposed.
+    @routes.get("/servers")
+    def legacy_servers(request: Request):
+        return mcp_management.legacy_list(service, who(request, True))
+    @routes.get("/servers/{sid}")
+    def legacy_server(sid: str, request: Request):
+        return mcp_management.legacy_detail(service, who(request, True), sid)
     def credentials():
         if not getattr(service, "credentials", None):
             from .mcp_credentials import Credentials

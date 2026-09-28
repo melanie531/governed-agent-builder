@@ -5,6 +5,11 @@ any supported authenticated HTTPS Streamable HTTP MCP endpoint. It registers an
 already running server; it does not generate or host MCP server source code.
 For Snowflake object creation, use the [Snowflake SQL/PAT runbook](snowflake-managed-mcp.md).
 
+A fresh deployment has no saved authentication or MCP registrations. You supply
+the server URL and credentials; the platform does not install a provider example
+or connect to the repository author's accounts. Models are published separately
+through model administration. See [first installation](deployment.md#first-installation).
+
 ## Register a server
 
 1. Choose **Create MCP connection** and enter its name, description and endpoint.

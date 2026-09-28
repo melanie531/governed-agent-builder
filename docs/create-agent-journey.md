@@ -139,7 +139,7 @@ exact subject to this app and workspace for 24 hours. It does not change a user'
 password or email verification.
 
 ```sh
-GAB_RELEASE_STATE="$PWD/artifacts/account-250708454815-us-east-1/release-state.json" \
+GAB_RELEASE_STATE="$PWD/artifacts/YOUR_TARGET/release-state.json" \
   node frontend/journey-e2e/live.mjs
 ```
 

@@ -35,19 +35,19 @@ def test_registry_create_can_apply_required_tags_only_within_bound_registry():
 
 
 def test_existing_gateway_permissions_are_reused_without_duplicate_inline_policies():
-    from infra.mcp_servers import configure_app as configure_creation
     resources = template()["Resources"]
     value = settings()
-    value["mcp_creation"] = {
-        "provisioning_secret_arns": value["mcp_onboarding"]["secret_arns"],
-        "reader_secret_arns": value["mcp_onboarding"]["secret_arns"],
-        "credential_provider_arns": [
-            CONFIG["connections"][0]["configuration"]["credentialProvider"]["apiKeyCredentialProvider"]["providerArn"]]}
-    configure_creation(resources, value)
+    gateway = f"arn:aws:bedrock-agentcore:{value['region']}:{value['account']}:gateway/{value['gateway_id']}"
+    resources["WorkerRole"]["Properties"]["Policies"].append({
+        "PolicyName": "ExistingGatewayAccess", "PolicyDocument": {"Version": "2012-10-17", "Statement": [
+            {"Effect": "Allow", "Action": ["bedrock-agentcore:InvokeGateway"], "Resource": gateway},
+            {"Effect": "Allow", "Action": ["bedrock-agentcore:GetGateway"], "Resource": [gateway, gateway + "/target/*"]},
+        ]}})
     configure_app(resources, value)
     policy = next(p for p in resources["WorkerRole"]["Properties"]["Policies"] if p["PolicyName"] == "McpOnboarding")
     actions = [a for s in policy["PolicyDocument"]["Statement"] for a in s["Action"]]
-    assert actions and all(a.startswith("agent-registry:") or a == "bedrock-agentcore:DeleteGatewayTarget" for a in actions)
+    assert "bedrock-agentcore:InvokeGateway" not in actions and "bedrock-agentcore:GetGateway" not in actions
+    assert "bedrock-agentcore:CreateGatewayTarget" in actions and "agent-registry:CreateRegistryRecord" in actions
 
 
 def test_foreign_registry_or_secret_rejected_before_deployment():

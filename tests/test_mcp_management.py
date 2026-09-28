@@ -136,14 +136,13 @@ def test_management_requires_admin_exact_confirmation_and_valid_origin(setup):
 
 
 def test_legacy_registration_is_adopted_without_creating_or_dropping_remote_objects(setup):
-    from tests.test_mcp_servers import PROFILE
     client, store, service, cloud = setup
     deletion_cloud(cloud)
     state = ready(setup)
     with store.tx() as db:
         legacy = service.load(db, state["id"])
-        legacy.update(profile_id="snowflake")
-        profile = {**PROFILE, "credential_provider_arn":
+        legacy.update(profile_id="existing-provider")
+        profile = {"id": "existing-provider", "credential_provider_arn":
                    CONFIG["connections"][0]["configuration"]["credentialProvider"]["apiKeyCredentialProvider"]["providerArn"]}
         put(db, "mcp-platform", {"enabled": True, "profiles": [profile]})
         put(db, "mcp-server:" + state["id"], legacy)

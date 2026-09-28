@@ -4,22 +4,33 @@ The repository generates CloudFormation from `infra/` and packages a locked Linu
 ARM64/Python 3.13 Lambda ZIP. The frontend is a Vite build uploaded to the private
 web bucket behind CloudFront. Credentials and deployment state are not in Git.
 
-## Existing application
+## Choose your deployment target
 
-| Binding | Current value |
-| --- | --- |
-| Application | https://d11jko88tox2zk.cloudfront.net |
-| AWS account / region | `250708454815` / `us-east-1` |
-| Explicit SDK profile | `default` |
-| Application stack | `governed-agent-builder-serverless-app` |
-| Agent integration stack | `governed-agent-builder-journey` |
-| Target state | `artifacts/account-250708454815-us-east-1/release-state.json` |
+A fresh installation creates the authenticated console, agent runtime infrastructure,
+an empty IAM-authenticated AgentCore Gateway and an empty AWS Agent Registry. It
+creates no MCP targets, provider credentials, Snowflake objects, or provider-specific
+catalog entries. The initial templates contain no selected tools or example data.
+Publish models and onboard your own MCP endpoints after signing in.
 
-Reuse that state for this application. It binds exact stack IDs, outputs, release
-artifacts, Gateway, Registry and the enabled `journeyPlatform` configuration.
-Do not create a second application or copy another account's state to bypass a
-binding check. Keep a protected backup of the state and release receipts; a clone
-alone does not contain live deployment identity.
+Set these values for **your** installation; account IDs below are placeholders:
+
+```sh
+GAB_ACCOUNT=YOUR_12_DIGIT_AWS_ACCOUNT_ID
+GAB_PROFILE=YOUR_AWS_PROFILE
+GAB_REGION=YOUR_AWS_REGION
+GAB_STATE="artifacts/account-${GAB_ACCOUNT}-${GAB_REGION}/release-state.json"
+GAB_TARGET=(--expected-account "$GAB_ACCOUNT" --profile "$GAB_PROFILE"
+  --region "$GAB_REGION" --state "$GAB_STATE")
+GAB_RELEASE="mcp-${GAB_ACCOUNT}-${GAB_REGION}-initial"
+mkdir -p "artifacts/$GAB_RELEASE"
+```
+
+For an existing installation, reuse its protected state. It binds exact stack IDs,
+outputs, release artifacts, Gateway, Registry and enabled `journeyPlatform`
+configuration. Never copy another account's state to bypass a binding check.
+Keep a protected backup of state and receipts; a clone does not contain live
+installation identity. Fixed stack names support one installation per account/region.
+Read the application URL from `app.outputs.ApplicationOrigin` in your state.
 
 ## Build and verify
 
@@ -28,8 +39,8 @@ From the repository root:
 ```sh
 uv sync --locked --extra foundation-runtime
 npm --prefix frontend ci
-.venv/bin/python -m pytest -q
 npm --prefix frontend run build
+.venv/bin/python -m pytest -q
 npm --prefix frontend run test:e2e -- mcp-onboarding.spec.ts mcp-servers.spec.ts
 git diff --check
 ```
@@ -40,14 +51,15 @@ For an agent-runtime/UI change, also run the affected journey browser suite:
 npm --prefix frontend run test:e2e -- --config playwright.journey.config.ts
 ```
 
-Package the application. On the existing QA-enabled deployment, retain its
-operator-approved enrollment file so updating code does not remove its test
-access. A normal deployment without temporary QA enrollments omits this option.
+Package the application:
 
 ```sh
-.venv/bin/python -m scripts.serverless_package \
-  --qa-enrollments artifacts/account-250708454815-us-east-1/journey-qa-enrollments.json
+.venv/bin/python -m scripts.serverless_package
 ```
+
+If your existing installation has explicitly approved temporary QA enrollments,
+retain its target-specific file with `--qa-enrollments <protected-file>`. Do not
+reuse QA identities from another account.
 
 The builder exports the frozen dependency lock, installs Linux ARM64 wheels and
 copies only the required application/runtime files. It excludes docs, tests,
@@ -60,14 +72,13 @@ These commands are for the existing approved application. Shell arrays below wor
 in bash and zsh:
 
 ```sh
-GAB_TARGET=(--expected-account 250708454815 --profile default --region us-east-1
-  --state artifacts/account-250708454815-us-east-1/release-state.json)
-GAB_RELEASE=repository-cleanup-20260926
+# Reuse the target variables above and choose a new receipt name for this release.
+GAB_RELEASE="mcp-${GAB_ACCOUNT}-${GAB_REGION}-YOUR_RELEASE_NAME"
 mkdir -p "artifacts/$GAB_RELEASE"
 
 .venv/bin/python -m scripts.serverless_deploy preflight "${GAB_TARGET[@]}"
 .venv/bin/python -m scripts.mcp_onboarding_audit --existing \
-  --state artifacts/account-250708454815-us-east-1/release-state.json \
+  --state "$GAB_STATE" \
   --output "artifacts/$GAB_RELEASE/security-before.json"
 
 .venv/bin/python -m scripts.serverless_deploy deploy "${GAB_TARGET[@]}"
@@ -75,7 +86,7 @@ mkdir -p "artifacts/$GAB_RELEASE"
 .venv/bin/python -m scripts.serverless_deploy status "${GAB_TARGET[@]}"
 
 .venv/bin/python -m scripts.mcp_onboarding_audit --existing \
-  --state artifacts/account-250708454815-us-east-1/release-state.json \
+  --state "$GAB_STATE" \
   --output "artifacts/$GAB_RELEASE/security-after.json"
 ```
 
@@ -110,8 +121,9 @@ change-set release rather than weakening routine preflight:
   --evidence-name "$GAB_RELEASE" "${GAB_TARGET[@]}"
 ```
 
-This release only permits its named MCP policies and application Lambda code
-updates, plus unchanged Lambda-ARN references in API integrations. It rejects
+This release only permits its named MCP policies, removal of the retired
+`McpCreation` worker policy, and application Lambda code updates, plus unchanged
+Lambda-ARN references in API integrations. It rejects
 resource replacements and changes to the pool, endpoints, unrelated IAM or data
 resources. It measures actual total inline IAM policy size before execution,
 validates required `auto-delete=no` tags, and records write intents before native
@@ -122,83 +134,86 @@ The `registry`/`configure` actions and `mcp_credentials_deploy` stages are initi
 configuration operations, not routine redeployment. Existing targets already have
 these settings; rerunning bootstrap can conflict with saved configuration.
 
-## First installation in a different account
+## First installation
 
-This is a separate deployment requiring that account's approved profile/region.
-Use a new, initially absent target-state path and substitute all four target
-arguments. Fixed stack names permit one canonical installation per account/region.
-Never pass the current account's state to a new target.
+Use an initially absent state path for the target you selected above. Build,
+test and package first. Then run the following commands from the repository root:
 
-1. Build/package as above, omitting temporary QA enrollments unless deliberately
-   configured for the new target.
-2. Run `scripts.serverless_deploy preflight`, `artifacts`, `deploy`, and `publish`
-   with the new target arguments. This creates the authenticated base console.
-   The base template alone does not enable the live AgentCore journey.
-3. For the Snowflake-backed starter, create the Snowflake objects and role-scoped
-   PAT using [the Snowflake runbook](snowflake-managed-mcp.md). Provision its private
-   Secrets Manager container with `infra.snowflake.credential_template()` through
-   CloudFormation, carrying `auto-delete=no`. Set its value through the masked
-   Secrets Manager editor to a JSON object with key `pat`. Do not put a PAT in
-   CloudFormation parameters, source or shell arguments.
-4. Prepare a **nonsecret** JSON file containing only the following fields, using a
-   model/inference profile available in that target's Bedrock region:
+```sh
+.venv/bin/python -m scripts.serverless_deploy preflight "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.serverless_deploy artifacts "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.serverless_deploy deploy "${GAB_TARGET[@]}"
 
-   ```json
-   {
-     "endpoint": "https://ACCOUNT.snowflakecomputing.com/api/v2/databases/DATABASE/schemas/SCHEMA/mcp-servers/SALES_MCP",
-     "secret_arn": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:governed-agent-builder-serverless/snowflake-pat-SUFFIX",
-     "model": {
-       "id": "bedrock-model",
-       "name": "Approved model",
-       "model_id": "AVAILABLE_BEDROCK_MODEL_OR_INFERENCE_PROFILE_ID",
-       "provider": "MODEL_PROVIDER",
-       "supports_temperature": true
-     }
-   }
-   ```
+# Runtime artifact, private evidence storage, scoped roles, empty Gateway,
+# and generic instruction templates. No model or external service is invoked.
+.venv/bin/python -m scripts.journey_platform prepare "${GAB_TARGET[@]}"
 
-5. Run `scripts.snowflake_platform validate`, then `prepare`, with
-   `--config <nonsecret-json-path>` and the new target arguments. Preparation
-   creates the versioned Runtime artifact, scoped integration stack, EXTERNAL PAT
-   provider and IAM-authenticated Gateway, discovers Snowflake tools, probes the
-   selected Bedrock model, and publishes the starter catalog. It records native
-   write intents and stops for explicit reconciliation on uncertainty.
-6. Run `scripts.mcp_onboarding_deploy registry`, then `configure`, to create the
-   **new AWS Agent Registry** and bind generic onboarding to the existing Gateway.
-   These commands use the starter's saved reader provider. Now run
-   `scripts.journey_platform activate` with the same target arguments to enable
-   the saved journey and onboarding configuration together, including its Cognito
-   role-switcher group. This is an initial activation, not the routine update
-   command for an existing platform.
-7. Run
-   `scripts.mcp_credentials_deploy prepare`, `scripts.mcp_onboarding_deploy deploy
-   --evidence-name mcp-generic-ui`, `scripts.mcp_credentials_deploy gateway`,
-   `scripts.mcp_credentials_deploy enable`, and finally
-   `scripts.mcp_onboarding_deploy publish --evidence-name mcp-generic-ui`.
-   Pass the same four target arguments to every command. The permission deployment
-   must precede enabling credential creation. These stages reuse the app/Gateway;
-   they do not create a preview application.
-8. Invite the approved administrator/business users through the new Cognito pool,
-   assign the appropriate Studio groups, and complete sign-in/email verification
-   in the browser. Run the authenticated acceptance checks below.
+# New AWS Agent Registry and an empty onboarding configuration.
+.venv/bin/python -m scripts.mcp_onboarding_deploy registry \
+  --evidence-name "$GAB_RELEASE" "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.mcp_onboarding_deploy configure \
+  --evidence-name "$GAB_RELEASE" "${GAB_TARGET[@]}"
 
-The provider-specific bootstrap exists to reproduce the original starter catalog.
-Once the platform is configured, onboarding additional providers uses the generic
-UI and does not require Snowflake profiles. There is no one-command cross-account
-migration or automatic adoption of existing stacks. A lost state file or failed
-initial stack must be reconciled against retained receipts and actual resources.
+# Permit Gateway to use only credentials subsequently created in this deployment.
+# This grants a namespace; it creates no secret or provider.
+.venv/bin/python -m scripts.mcp_credentials_deploy gateway \
+  --evidence-name "$GAB_RELEASE" "${GAB_TARGET[@]}"
+
+# Initial activation includes model administration, generic MCP onboarding and
+# credential setup permissions. Routine updates use serverless_deploy instead.
+.venv/bin/python -m scripts.journey_platform activate "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.serverless_deploy publish "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.serverless_deploy status "${GAB_TARGET[@]}"
+.venv/bin/python -m scripts.mcp_onboarding_audit --existing \
+  --state "$GAB_STATE" --output "artifacts/$GAB_RELEASE/security-after.json"
+```
+
+Retain the same state and evidence name when reconciling an interrupted stage.
+Native writes retain request intents; uncertain acceptance requires GET-based
+reconciliation. Never delete a receipt to retry. `prepare` preserves an already
+configured platform and does not republish its catalog or connections. Routine
+code deployment does not run provider bootstrap scripts.
+
+Invite your administrator through the new Cognito pool and assign `studio-admin`.
+Assign business users their approved `studio-research` or `studio-operations`
+group. Complete sign-in and email verification through the deployed application.
+In model administration, discover, test and publish a Bedrock model available in
+your account/region before deploying an agent. No third-party MCP account is
+required to install or use the platform.
+
+Open **MCP servers** to save your own authentication, register an endpoint, review
+its tools and publish it through Registry. Follow the [generic onboarding guide](generic-mcp-onboarding.md).
+To connect Snowflake, deliberately follow the separate [Snowflake SQL/PAT guide](snowflake-managed-mcp.md)
+using your own Snowflake account. Platform installation does not run that guide.
+
+Snowflake objects and PATs are managed manually in Snowflake. The platform has no
+Snowflake provisioning script, creation profile or preselected Snowflake catalog.
+Previously registered connections remain visible and protected by saved-agent
+dependencies; removing the old provisioning code does not delete their remote
+objects, credentials or saved agent versions. Unfinished legacy provisioning jobs
+stop with an unknown outcome and retain their native receipts for operator
+inspection. New connections use the generic onboarding flow above.
+
+For an existing installation that still has `McpCreation` permissions, deploy this
+cleanup through the reviewed **MCP permission changes** procedure. Routine
+code-only preflight intentionally rejects that infrastructure difference. The
+permission release removes the creator policy while preserving existing
+Cognito groups and generic credential/Gateway access. Keep the saved deployment
+state, including legacy metadata, until an explicit state migration is reviewed.
 
 ## Authenticated acceptance
 
 1. Open the deployed CloudFront URL and sign in through Cognito. Confirm the
    expected workspace and that anonymous `/api/me` is rejected.
-2. Open **MCP servers**. Confirm the generic connection form, saved credentials,
-   existing registrations and protected dependencies. Open the correct AWS Agent
-   Registry console/account/region and inspect the published MCP record.
-3. Open a working agent and run a bounded query such as `SELECT 1 AS
-   MCP_CONNECTION_OK`. Verify the actual Gateway tool trace and reload to confirm
-   conversation persistence. For runtime changes also test a new version/deployment
-   and its selected tools; for evaluation changes verify native evaluation evidence.
+2. Open **MCP servers**. On a fresh installation, confirm zero saved credentials
+   and registrations and that **Create MCP connection** and **Add authentication
+   connection** are available. Registry and Gateway must contain no MCP records or
+   targets until an administrator onboards one. On an existing installation,
+   verify its registrations and protected dependencies are preserved.
+3. Publish an available model and run a prompt-only agent. After deliberately
+   onboarding your own endpoint, verify an actual selected tool call through
+   Gateway, its Registry record and conversation persistence after reload.
+   Installing the platform alone does not establish connectivity to any provider.
 4. Inspect browser requests, console/page errors and failed jobs. Wait for all
    touched CloudFormation, Lambda, Runtime and CloudFront operations to succeed.
 5. Run the security/tag audit and retain sanitized evidence. Current audit tooling

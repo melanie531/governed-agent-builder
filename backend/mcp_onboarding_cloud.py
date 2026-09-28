@@ -2,11 +2,13 @@
 import json
 
 import boto3
+from botocore.config import Config
 
 from foundation_harness.config import digest
 from foundation_harness.journey_mcp import GatewayMCP
-from .mcp_cloud import NO_RETRIES
 from .mcp_onboarding import configuration, endpoint_origin
+
+NO_RETRIES = Config(retries={"total_max_attempts": 1}, connect_timeout=5, read_timeout=30)
 
 
 class OnboardingCloud:

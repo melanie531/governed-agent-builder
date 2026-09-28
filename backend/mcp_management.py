@@ -19,6 +19,37 @@ class DeleteConnection(Strict):
     idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+def legacy_public(state):
+    """Read frozen registrations without enabling their retired provisioning path."""
+    fields = ("id", "job_id", "name", "description", "phase", "endpoint", "gateway_target_id",
+              "catalog_id", "tool_ids", "workspaces", "created", "updated", "error")
+    result = {k: state[k] for k in fields if k in state}
+    if state["phase"] not in ("READY", "FAILED", "NEEDS_RECONCILIATION"):
+        result.update(phase="NEEDS_RECONCILIATION",
+                      error="Remote server provisioning has been retired. Inspect the recorded remote operation "
+                            "before onboarding its existing endpoint.")
+    return result
+
+
+def legacy_list(service, actor):
+    service.admin(actor)
+    return service.tx(lambda db: {"items": sorted(
+        [legacy_public(state) for row in db.select("settings")
+         if row["key"].startswith("mcp-server:")
+         if not (state := json.loads(row["body"])).get("management_adopted")],
+        key=lambda state: state["created"], reverse=True)})
+
+
+def legacy_detail(service, actor, sid):
+    service.admin(actor)
+    def read(db):
+        state = get(db, "mcp-server:" + sid)
+        if not state:
+            raise HTTPException(404, "MCP server not found")
+        return legacy_public(state)
+    return service.tx(read)
+
+
 def component_ids(db, state):
     return sorted({r["id"] for row in db.select("components") if (
         (r := json.loads(row["body"]))["id"] == state["catalog_id"]
@@ -59,7 +90,11 @@ def load(service, db, source, sid):
     if source == "servers":
         if state.get("management_adopted"):
             return service.load(db, sid)
-        profile = service.profile(db, state["profile_id"])
+        # Only the saved reader-provider reference is needed to manage an old
+        # registration. Do not validate or execute its former creation profile.
+        profiles = get(db, "mcp-platform") or {}
+        profile = next((p for p in profiles.get("profiles", [])
+                        if p["id"] == state["profile_id"]), None) if profiles.get("enabled") else None
         if not profile:
             raise HTTPException(409, "The original connection profile is unavailable")
         config = service.config(db)
