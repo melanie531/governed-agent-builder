@@ -40,6 +40,29 @@ def test_subsequent_release_updates_only_owned_onboarding_and_credential_policie
         review_existing_ui_change(previous, proposed)
 
 
+def test_cleanup_can_remove_only_the_retired_worker_creation_policy():
+    previous, proposed = fixture()
+    previous["Resources"]["WorkerRole"]["Properties"]["Policies"].append({
+        "PolicyName": "McpCreation", "PolicyDocument": {"Statement": [
+            {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": "retired-creator-secret"}]}})
+    original = copy.deepcopy(previous)
+    review_existing_ui_change(previous, proposed)
+    assert previous == original
+    # The cleanup exception must not permit unrelated policy removal.
+    proposed["Resources"]["WorkerRole"]["Properties"]["Policies"] = [
+        p for p in proposed["Resources"]["WorkerRole"]["Properties"]["Policies"] if p["PolicyName"] != "Existing"]
+    with pytest.raises(ValueError):
+        review_existing_ui_change(previous, proposed)
+
+
+def test_retired_creation_permissions_cannot_be_reintroduced():
+    previous, proposed = fixture()
+    proposed["Resources"]["WorkerRole"]["Properties"]["Policies"].append({"PolicyName": "McpCreation"})
+    previous["Resources"]["WorkerRole"]["Properties"]["Policies"].append({"PolicyName": "McpCreation"})
+    with pytest.raises(ValueError):
+        review_existing_ui_change(previous, proposed)
+
+
 def test_lambda_uri_dependency_is_allowed_but_unrelated_uri_change_is_not():
     change = {"ResourceChange": {"LogicalResourceId": "AuthIntegration", "Action": "Modify", "Replacement": "False",
         "Details": [{"ChangeSource": "ResourceAttribute", "CausingEntity": "Auth.Arn",

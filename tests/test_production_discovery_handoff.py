@@ -1,6 +1,7 @@
 """Production-cache contract tests. Official documents and real API snapshot; no inference."""
-from datetime import date
+from datetime import date, datetime, timezone
 from backend import model_discovery as md
+from backend import model_recency
 
 
 def test_vendor_does_not_invent_runtime_or_external_endpoint():
@@ -30,6 +31,12 @@ def test_real_snapshot_cache_through_production_factory_and_http(tmp_path, monke
     assert 'discovery_sources' not in existing
     assert cfg['registries']==existing['registries']
     monkeypatch.setattr(md,'utc_today',lambda:date(2026,9,13))
+    # Both the discovery feed and the exact-model recency join use this snapshot date.
+    class SnapshotClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 13, tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr(model_recency, 'datetime', SnapshotClock)
     session=Mock(region_name='us-west-2')
     session.client.return_value.get_caller_identity.return_value={'Account':'998877665544'}
     provider=configured_catalog(cfg,session=session)
@@ -46,4 +53,3 @@ def test_real_snapshot_cache_through_production_factory_and_http(tmp_path, monke
             assert by_id[mid]['usable'] is False
         assert len(rows)==12
         assert all(date(2026,3,13)<=date.fromisoformat(x['release_date'])<=date(2026,9,13) for x in rows)
-

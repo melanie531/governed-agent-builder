@@ -101,6 +101,53 @@ def test_read_only_transaction_detects_revocation_race(cloud):
     with pytest.raises(HTTPException): a.commit()
 
 
+@pytest.mark.parametrize("conflicts", [1, 5, 6])
+def test_journey_cold_start_rereads_configuration_after_real_revision_conflict(cloud, monkeypatch, conflicts):
+    from backend.foundation_runs import put
+    from tests.journey_support import seed
+    store = cloud[0].state.store
+    settings = seed(store)
+    monkeypatch.setenv("JOURNEY_ENABLED", "1")
+    original = DynamoUnit.commit
+    attempts = []
+
+    def racing(unit):
+        attempts.append(unit)
+        if len(attempts) <= conflicts:
+            other = DynamoUnit(store.table)
+            put(other, "journey-platform", {**settings, "initialization_revision": len(attempts)})
+            original(other)
+        original(unit)
+
+    monkeypatch.setattr(DynamoUnit, "commit", racing)
+    if conflicts == 6:
+        with pytest.raises(HTTPException, match="Concurrent governance"):
+            create_app(repository=store, worker_enabled=False, public_url=ORIGIN)
+    else:
+        restarted = create_app(repository=store, worker_enabled=False, public_url=ORIGIN)
+        assert restarted.state.journey.settings["initialization_revision"] == conflicts
+    assert len(attempts) == min(conflicts + 1, 6)
+
+
+@pytest.mark.parametrize("status,detail", [(409, "Different conflict"), (503, "Storage unavailable")])
+def test_journey_cold_start_does_not_retry_other_failures(cloud, monkeypatch, status, detail):
+    from tests.journey_support import seed
+    store = cloud[0].state.store
+    seed(store)
+    monkeypatch.setenv("JOURNEY_ENABLED", "1")
+    attempts = []
+
+    def fail(unit):
+        attempts.append(unit)
+        raise HTTPException(status, detail)
+
+    monkeypatch.setattr(DynamoUnit, "commit", fail)
+    with pytest.raises(HTTPException) as error:
+        create_app(repository=store, worker_enabled=False, public_url=ORIGIN)
+    assert (error.value.status_code, error.value.detail) == (status, detail)
+    assert len(attempts) == 1
+
+
 @pytest.mark.parametrize("change", ["logout", "revoke", "version", "policy"])
 def test_worker_and_invoke_reauthorization(cloud, payload, change):
     app, client, _ = cloud

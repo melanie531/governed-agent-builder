@@ -105,7 +105,7 @@ def get_version(db, agent_id, version):
     return json.loads(row["body"])
 
 
-def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None, admin_cloud=None, mcp_servers=None, mcp_onboarding=None):
+def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=None, repository=None, catalog_provider=None, foundation_jobs=None, journey=None, admin_cloud=None, mcp_onboarding=None):
     catalog_mode = os.getenv("CATALOG_MODE", "fixture")
     if catalog_mode not in ("fixture", "live"):
         raise RuntimeError("CATALOG_MODE must be fixture or live")
@@ -210,8 +210,19 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
     if journey is None and os.getenv("JOURNEY_ENABLED") == "1":
         from .journey import Journey
         from .journey_cloud import JourneyCloud
-        with store.tx() as db:
-            settings = get_foundation_record(db, "journey-platform")
+        # Cold starts can overlap a sign-in or governance update. Retry only this
+        # read after a rejected revision fence; never replay a request or a write.
+        for attempt in range(6):
+            try:
+                with store.tx() as db:
+                    settings = get_foundation_record(db, "journey-platform")
+                break
+            except HTTPException as exc:
+                if (exc.status_code != 409
+                        or exc.detail != "Concurrent governance update; reload and retry"
+                        or attempt == 5):
+                    raise
+                time.sleep(0.025 * (attempt + 1))
         if not settings:
             raise RuntimeError("Publish the Journey platform configuration before enabling it")
         journey = Journey(store, settings, JourneyCloud(settings), hosted=hosted, auth=auth)
@@ -403,15 +414,6 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         from .platform_cloud import PlatformCloud
         admin_cloud = PlatformCloud(journey.settings)
     app.include_router(platform_admin_router(store, who, admin_cloud))
-    from .mcp_servers import McpServers, router as mcp_router
-    if mcp_servers is None:
-        mcp_cloud = None
-        if hosted and journey is not None:
-            from .mcp_cloud import McpCloud
-            mcp_cloud = McpCloud(journey.settings)
-        mcp_servers = McpServers(store, journey.settings if journey else {}, mcp_cloud, hosted=hosted, auth=auth)
-    app.state.mcp_servers = mcp_servers
-    app.include_router(mcp_router(mcp_servers, who))
     from .mcp_onboarding import McpOnboarding, router as onboarding_router
     if mcp_onboarding is None:
         onboarding_cloud = None
@@ -1018,7 +1020,18 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             mcp_onboarding.step(job_id)
             return
         if mcp_run:
-            mcp_servers.step(job_id)
+            # Old queue deliveries must never enter the generic agent pipeline
+            # or resume remote provisioning. Preserve native intents and saved
+            # connection/agent history; unknown acceptance requires inspection.
+            with store.tx() as db:
+                job = db.select("jobs", where=[("id", "=", job_id)]).fetchone()
+                if job and job["stage"] not in TERMINAL:
+                    result = {"code": "REMOTE_MCP_PROVISIONING_RETIRED",
+                              "message": "Remote provisioning is retired. Inspect the retained native operation "
+                                         "and onboard the existing endpoint through MCP connections."}
+                    db.update("jobs", {"stage": "UNKNOWN", "updated": time.time(), "result": json.dumps(result)},
+                              where=[("id", "=", job_id)])
+                    event(db, job_id, "UNKNOWN", result)
             return
         if journey_run:
             if journey is None:

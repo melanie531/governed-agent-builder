@@ -10,7 +10,7 @@ from foundation_harness.config import digest
 from infra.mcp_onboarding import configure_gateway
 from infra.resource_tags import validate_resource_tags
 from scripts.deployment_target import target_arguments
-from scripts.mcp_onboarding_deploy import Release
+from scripts.mcp_onboarding_deploy import Release, evidence_name
 
 PREFIX = "governed-agent-builder-serverless"
 
@@ -38,6 +38,8 @@ def gateway(release):
     (release.evidence / "gateway-template-before.json").write_text(json.dumps(previous, indent=2))
     (release.evidence / "gateway-template-proposed.json").write_text(json.dumps(proposed, indent=2))
     if previous == proposed:
+        release.receipt["gateway_verified"] = True
+        release.save()
         print("Gateway credential permissions already deployed", flush=True)
         return
     cf.validate_template(TemplateBody=json.dumps(proposed))
@@ -87,10 +89,15 @@ def enable(release):
     print("Generic credential setup enabled", flush=True)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["prepare", "gateway", "enable"])
     target_arguments(parser)
-    args = parser.parse_args()
-    args.evidence_name = "mcp-generic-ui"
+    parser.add_argument("--evidence-name", default="mcp-generic-ui", type=evidence_name,
+                        help="Use the same target-specific receipt directory for every MCP stage")
+    args = parser.parse_args(argv)
     globals()[args.action](Release(args))
+
+
+if __name__ == "__main__":
+    main()

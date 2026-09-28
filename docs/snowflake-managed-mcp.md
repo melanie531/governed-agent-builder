@@ -6,9 +6,11 @@ Gateway** and published in **AWS Agent Registry**. Authentication uses a
 role-restricted Snowflake **programmatic access token (PAT)**. No Okta integration
 is required. No token value, password or credential is included in this guide.
 
-The SQL below consolidates the setup used for the original `SALES_MCP` example.
-It is documentation to run deliberately in Snowflake; deploying this repository
-does not execute it or create additional sample data.
+This is an optional manual integration. The platform deploys with no Snowflake
+connection, credential or tools. Use **your own** account and PAT below; all host
+and object names are placeholders or neutral examples. The SQL documents a
+`SALES_MCP` setup to run deliberately in Snowflake. Platform deployment does not
+execute it. Existing-data exploration needs no new sample tables.
 
 ## Choose the capability you need
 
@@ -32,16 +34,16 @@ Snowflake recommends a dedicated Cortex-Agent-only endpoint for a governed busin
 assistant: direct SQL bypasses its semantic/orchestration restrictions. The
 all-capabilities example deliberately permits both paths under the same reader role.
 
-## Account and existing example names
+## Choose your account and object names
 
 | Setting | Value used in this example |
 | --- | --- |
-| Snowflake host | `tcljaka-hr19243.snowflakecomputing.com` |
-| Database / schema | `GAB_SNOWFLAKE_DEMO_20260925.DEMO` |
-| Warehouse | `GAB_SNOWFLAKE_DEMO_20260925_WH` |
-| Reader role | `GAB_SNOWFLAKE_DEMO_20260925_READ` |
-| Runtime service user | `GAB_SNOWFLAKE_DEMO_20260925_SVC` |
-| Full MCP object | `GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_MCP` |
+| Snowflake host | `YOUR_ORG-YOUR_ACCOUNT.snowflakecomputing.com` |
+| Database / schema | `STUDIO_MCP_EXAMPLE.DEMO` |
+| Warehouse | `STUDIO_MCP_EXAMPLE_WH` |
+| Reader role | `STUDIO_MCP_EXAMPLE_READ` |
+| Runtime service user | `STUDIO_MCP_EXAMPLE_SVC` |
+| Full MCP object | `STUDIO_MCP_EXAMPLE.DEMO.SALES_MCP` |
 
 Use an administrator session with permission to create these objects, grant their
 privileges, and manage the service user. `ACCOUNTADMIN` is shown for reproducible
@@ -56,7 +58,7 @@ SELECT CURRENT_ACCOUNT(), CURRENT_ACCOUNT_NAME(), CURRENT_REGION(),
 SHOW MCP SERVERS IN ACCOUNT;
 ```
 
-If you already use the demo objects, skip their creation and verify the grants.
+If you already have suitable objects, skip their creation and verify the grants.
 For another installation, replace the names consistently in the SQL, tool
 specifications and endpoint. New sample data is optional.
 
@@ -66,15 +68,15 @@ Skip creation when using an approved existing database/schema/warehouse, and use
 those names in subsequent statements.
 
 ```sql
-CREATE DATABASE IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925
+CREATE DATABASE IF NOT EXISTS STUDIO_MCP_EXAMPLE
   COMMENT = 'Governed Agent Builder isolated synthetic Snowflake MCP demonstration';
-CREATE SCHEMA IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO;
-CREATE WAREHOUSE IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925_WH
+CREATE SCHEMA IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO;
+CREATE WAREHOUSE IF NOT EXISTS STUDIO_MCP_EXAMPLE_WH
   WAREHOUSE_SIZE = XSMALL AUTO_SUSPEND = 60 AUTO_RESUME = TRUE
   INITIALLY_SUSPENDED = TRUE
   COMMENT = 'Governed Agent Builder synthetic MCP demonstration';
-USE WAREHOUSE GAB_SNOWFLAKE_DEMO_20260925_WH;
-USE SCHEMA GAB_SNOWFLAKE_DEMO_20260925.DEMO;
+USE WAREHOUSE STUDIO_MCP_EXAMPLE_WH;
+USE SCHEMA STUDIO_MCP_EXAMPLE.DEMO;
 ```
 
 ## 2. Optional original sales tables and sample rows
@@ -138,18 +140,18 @@ Do not grant the runtime role CREATE, INSERT, UPDATE, DELETE, ownership or broad
 future-table access just to enable discovery.
 
 ```sql
-CREATE ROLE IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON DATABASE GAB_SNOWFLAKE_DEMO_20260925 TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON SCHEMA GAB_SNOWFLAKE_DEMO_20260925.DEMO TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON WAREHOUSE GAB_SNOWFLAKE_DEMO_20260925_WH TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT SELECT ON TABLE PRODUCTS TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT SELECT ON TABLE SALES TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+CREATE ROLE IF NOT EXISTS STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON DATABASE STUDIO_MCP_EXAMPLE TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON SCHEMA STUDIO_MCP_EXAMPLE.DEMO TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON WAREHOUSE STUDIO_MCP_EXAMPLE_WH TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT SELECT ON TABLE PRODUCTS TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT SELECT ON TABLE SALES TO ROLE STUDIO_MCP_EXAMPLE_READ;
 
-CREATE USER IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925_SVC TYPE = SERVICE
-  DEFAULT_ROLE = GAB_SNOWFLAKE_DEMO_20260925_READ
-  DEFAULT_WAREHOUSE = GAB_SNOWFLAKE_DEMO_20260925_WH
+CREATE USER IF NOT EXISTS STUDIO_MCP_EXAMPLE_SVC TYPE = SERVICE
+  DEFAULT_ROLE = STUDIO_MCP_EXAMPLE_READ
+  DEFAULT_WAREHOUSE = STUDIO_MCP_EXAMPLE_WH
   COMMENT = 'Governed Agent Builder MCP service identity; synthetic data only';
-GRANT ROLE GAB_SNOWFLAKE_DEMO_20260925_READ TO USER GAB_SNOWFLAKE_DEMO_20260925_SVC;
+GRANT ROLE STUDIO_MCP_EXAMPLE_READ TO USER STUDIO_MCP_EXAMPLE_SVC;
 
 -- Gateway has managed egress. This policy applies only to the new service user.
 -- Existing network policies, if present, remain enforced; account policies are
@@ -158,8 +160,8 @@ CREATE AUTHENTICATION POLICY IF NOT EXISTS MCP_PAT_POLICY
   AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
   PAT_POLICY = (NETWORK_POLICY_EVALUATION = ENFORCED_NOT_REQUIRED
                 DEFAULT_EXPIRY_IN_DAYS = 30 MAX_EXPIRY_IN_DAYS = 30);
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_SVC
-  SET AUTHENTICATION POLICY GAB_SNOWFLAKE_DEMO_20260925.DEMO.MCP_PAT_POLICY;
+ALTER USER STUDIO_MCP_EXAMPLE_SVC
+  SET AUTHENTICATION POLICY STUDIO_MCP_EXAMPLE.DEMO.MCP_PAT_POLICY;
 ```
 
 `ENFORCED_NOT_REQUIRED` permits PATs without requiring a network policy. Any
@@ -176,12 +178,12 @@ needed. Add access explicitly, for example:
 
 ```sql
 -- Substitute your approved existing objects; do not execute placeholders verbatim.
-GRANT USAGE ON DATABASE <DATA_DB> TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON SCHEMA <DATA_DB>.<DATA_SCHEMA> TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+GRANT USAGE ON DATABASE <DATA_DB> TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON SCHEMA <DATA_DB>.<DATA_SCHEMA> TO ROLE STUDIO_MCP_EXAMPLE_READ;
 GRANT SELECT ON TABLE <DATA_DB>.<DATA_SCHEMA>.<TABLE_NAME>
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+  TO ROLE STUDIO_MCP_EXAMPLE_READ;
 GRANT SELECT ON VIEW <DATA_DB>.<DATA_SCHEMA>.<VIEW_NAME>
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+  TO ROLE STUDIO_MCP_EXAMPLE_READ;
 ```
 
 The earlier discovery example also queried the **existing shared sample database**.
@@ -191,7 +193,7 @@ one table, and is optional; it creates no data:
 
 ```sql
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE_SAMPLE_DATA
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+  TO ROLE STUDIO_MCP_EXAMPLE_READ;
 ```
 
 ## 4A. Minimal discovery server — no Cortex or new tables required
@@ -200,7 +202,7 @@ Run this instead of section 4B when you only need data discovery and SQL. Its
 endpoint is independent of the existing sales/capability connections.
 
 ```sql
-CREATE MCP SERVER IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOVERY_MCP
+CREATE MCP SERVER IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.DISCOVERY_MCP
 FROM SPECIFICATION $$
 tools:
   - name: "query_sql"
@@ -210,17 +212,17 @@ tools:
     config:
       read_only: true
       query_timeout: 30
-      warehouse: "GAB_SNOWFLAKE_DEMO_20260925_WH"
+      warehouse: "STUDIO_MCP_EXAMPLE_WH"
 $$;
-GRANT USAGE ON MCP SERVER GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOVERY_MCP
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-DESCRIBE MCP SERVER GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOVERY_MCP;
+GRANT USAGE ON MCP SERVER STUDIO_MCP_EXAMPLE.DEMO.DISCOVERY_MCP
+  TO ROLE STUDIO_MCP_EXAMPLE_READ;
+DESCRIBE MCP SERVER STUDIO_MCP_EXAMPLE.DEMO.DISCOVERY_MCP;
 ```
 
 Endpoint:
 
 ```text
-https://tcljaka-hr19243.snowflakecomputing.com/api/v2/databases/GAB_SNOWFLAKE_DEMO_20260925/schemas/DEMO/mcp-servers/DISCOVERY_MCP
+https://YOUR_ORG-YOUR_ACCOUNT.snowflakecomputing.com/api/v2/databases/STUDIO_MCP_EXAMPLE/schemas/DEMO/mcp-servers/DISCOVERY_MCP
 ```
 
 Continue with section 5. One SQL tool is sufficient for this workflow; the tool is
@@ -239,12 +241,12 @@ indexed by the Search service owner; do not index documents outside the intended
 readers' access boundary.
 
 ```sql
-CREATE TABLE IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENTS (
+CREATE TABLE IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENTS (
   DOCUMENT_ID VARCHAR PRIMARY KEY, TITLE VARCHAR, CATEGORY VARCHAR,
   REGION VARCHAR, BODY VARCHAR
 );
 
-MERGE INTO GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENTS t USING (
+MERGE INTO STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENTS t USING (
   SELECT column1 DOCUMENT_ID, column2 TITLE, column3 CATEGORY, column4 REGION, column5 BODY
   FROM VALUES
     ('POL-001', 'Demo return policy', 'policy', 'Global',
@@ -263,10 +265,10 @@ MERGE INTO GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENTS t USING (
 WHEN NOT MATCHED THEN INSERT VALUES
   (s.DOCUMENT_ID, s.TITLE, s.CATEGORY, s.REGION, s.BODY);
 
-CREATE SEMANTIC VIEW IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_SEMANTIC_VIEW
+CREATE SEMANTIC VIEW IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.SALES_SEMANTIC_VIEW
   TABLES (
-    s AS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES PRIMARY KEY (SALE_ID),
-    p AS GAB_SNOWFLAKE_DEMO_20260925.DEMO.PRODUCTS PRIMARY KEY (PRODUCT_ID)
+    s AS STUDIO_MCP_EXAMPLE.DEMO.SALES PRIMARY KEY (SALE_ID),
+    p AS STUDIO_MCP_EXAMPLE.DEMO.PRODUCTS PRIMARY KEY (PRODUCT_ID)
   )
   RELATIONSHIPS (sale_product AS s(PRODUCT_ID) REFERENCES p(PRODUCT_ID))
   FACTS (
@@ -292,18 +294,18 @@ CREATE SEMANTIC VIEW IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_SEMANT
   AI_VERIFIED_QUERIES (
     september_total AS (
       QUESTION 'What was total sales revenue in September 2026 and how many transactions were there?'
-      SQL 'SELECT SUM(REVENUE) AS TOTAL_REVENUE_USD, COUNT(*) AS TRANSACTION_COUNT FROM GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES WHERE SALE_DATE >= ''2026-09-01'' AND SALE_DATE < ''2026-10-01'''
+      SQL 'SELECT SUM(REVENUE) AS TOTAL_REVENUE_USD, COUNT(*) AS TRANSACTION_COUNT FROM STUDIO_MCP_EXAMPLE.DEMO.SALES WHERE SALE_DATE >= ''2026-09-01'' AND SALE_DATE < ''2026-10-01'''
     )
   );
 
-CREATE CORTEX SEARCH SERVICE IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENT_SEARCH
+CREATE CORTEX SEARCH SERVICE IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENT_SEARCH
   ON BODY ATTRIBUTES DOCUMENT_ID, TITLE, CATEGORY, REGION
-  WAREHOUSE = GAB_SNOWFLAKE_DEMO_20260925_WH
+  WAREHOUSE = STUDIO_MCP_EXAMPLE_WH
   TARGET_LAG = '1 day'
   AS SELECT DOCUMENT_ID, TITLE, CATEGORY, REGION, BODY
-     FROM GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENTS;
+     FROM STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENTS;
 
-CREATE FUNCTION IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOUNT_QUOTE(
+CREATE FUNCTION IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.DISCOUNT_QUOTE(
   GROSS_AMOUNT NUMBER(12,2), DISCOUNT_PERCENT NUMBER(5,2)
 ) RETURNS OBJECT LANGUAGE SQL IMMUTABLE
 AS $$
@@ -320,7 +322,7 @@ AS $$
   END
 $$;
 
-CREATE AGENT IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_CORTEX_AGENT
+CREATE AGENT IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.SALES_CORTEX_AGENT
   COMMENT = 'Governed Agent Builder synthetic Analyst and Search orchestration'
   FROM SPECIFICATION $$
 models:
@@ -345,23 +347,23 @@ tools:
       description: "Search synthetic policies and regional campaign notes."
 tool_resources:
   sales_analyst:
-    semantic_view: GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_SEMANTIC_VIEW
+    semantic_view: STUDIO_MCP_EXAMPLE.DEMO.SALES_SEMANTIC_VIEW
     execution_environment:
       type: warehouse
-      warehouse: GAB_SNOWFLAKE_DEMO_20260925_WH
+      warehouse: STUDIO_MCP_EXAMPLE_WH
       query_timeout: 30
   sales_documents:
-    search_service: GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENT_SEARCH
+    search_service: STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENT_SEARCH
     max_results: 3
     title_column: TITLE
     id_column: DOCUMENT_ID
 $$;
 
-GRANT SELECT ON SEMANTIC VIEW GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_SEMANTIC_VIEW TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON CORTEX SEARCH SERVICE GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENT_SEARCH TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON FUNCTION GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOUNT_QUOTE(NUMBER, NUMBER) TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT USAGE ON AGENT GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_CORTEX_AGENT TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-GRANT DATABASE ROLE SNOWFLAKE.CORTEX_AGENT_USER TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+GRANT SELECT ON SEMANTIC VIEW STUDIO_MCP_EXAMPLE.DEMO.SALES_SEMANTIC_VIEW TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON CORTEX SEARCH SERVICE STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENT_SEARCH TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON FUNCTION STUDIO_MCP_EXAMPLE.DEMO.DISCOUNT_QUOTE(NUMBER, NUMBER) TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT USAGE ON AGENT STUDIO_MCP_EXAMPLE.DEMO.SALES_CORTEX_AGENT TO ROLE STUDIO_MCP_EXAMPLE_READ;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_AGENT_USER TO ROLE STUDIO_MCP_EXAMPLE_READ;
 ```
 
 `CORTEX_AGENT_USER` enables Cortex Agent use; grant the underlying resources too.
@@ -370,7 +372,7 @@ specific Cortex Analyst database role for direct Analyst calls as well:
 
 ```sql
 GRANT DATABASE ROLE SNOWFLAKE.CORTEX_ANALYST_USER
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+  TO ROLE STUDIO_MCP_EXAMPLE_READ;
 ```
 
 Create the full managed server. `sales_sql` is retained alongside `query_sql`
@@ -379,7 +381,7 @@ omit the alias. Cortex Analyst generates SQL; the agent must execute the returne
 SQL before treating it as a query result.
 
 ```sql
-CREATE MCP SERVER IF NOT EXISTS GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_MCP FROM SPECIFICATION $$
+CREATE MCP SERVER IF NOT EXISTS STUDIO_MCP_EXAMPLE.DEMO.SALES_MCP FROM SPECIFICATION $$
 tools:
   - name: "query_sql"
     title: "Query Snowflake data"
@@ -388,38 +390,38 @@ tools:
     config:
       read_only: true
       query_timeout: 30
-      warehouse: "GAB_SNOWFLAKE_DEMO_20260925_WH"
+      warehouse: "STUDIO_MCP_EXAMPLE_WH"
   - name: "sales_sql"
     title: "Read synthetic sales data"
     type: "SYSTEM_EXECUTE_SQL"
-    description: "Run SELECT queries over synthetic sales data in GAB_SNOWFLAKE_DEMO_20260925.DEMO. SALES has SALE_ID, SALE_DATE, REGION, PRODUCT_ID, QUANTITY, REVENUE. PRODUCTS has PRODUCT_ID, PRODUCT_NAME, CATEGORY, UNIT_PRICE. Join using PRODUCT_ID. Revenue is in USD. Dates cover August and September 2026. Always use fully qualified table names."
+    description: "Run SELECT queries over synthetic sales data in STUDIO_MCP_EXAMPLE.DEMO. SALES has SALE_ID, SALE_DATE, REGION, PRODUCT_ID, QUANTITY, REVENUE. PRODUCTS has PRODUCT_ID, PRODUCT_NAME, CATEGORY, UNIT_PRICE. Join using PRODUCT_ID. Revenue is in USD. Dates cover August and September 2026. Always use fully qualified table names."
     config:
       read_only: true
       query_timeout: 30
-      warehouse: "GAB_SNOWFLAKE_DEMO_20260925_WH"
+      warehouse: "STUDIO_MCP_EXAMPLE_WH"
   - name: "sales_analyst"
     title: "Cortex Analyst: sales metrics"
     type: "CORTEX_ANALYST_MESSAGE"
-    identifier: "GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_SEMANTIC_VIEW"
+    identifier: "STUDIO_MCP_EXAMPLE.DEMO.SALES_SEMANTIC_VIEW"
     description: "Ask a natural-language sales question. Cortex Analyst uses governed metrics, product relationships and a verified query to GENERATE SQL. Then call sales_sql to execute that returned SQL before reporting numerical results."
   - name: "sales_search"
     title: "Cortex Search: policies and notes"
     type: "CORTEX_SEARCH_SERVICE_QUERY"
-    identifier: "GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_DOCUMENT_SEARCH"
+    identifier: "STUDIO_MCP_EXAMPLE.DEMO.SALES_DOCUMENT_SEARCH"
     description: "Search synthetic sales policies and regional campaign notes. Return BODY, DOCUMENT_ID and TITLE, with at most 3 results. Cite DOCUMENT_ID in answers. Use this for return, discount, shipping and campaign questions."
   - name: "sales_agent"
     title: "Cortex Agent: Snowflake orchestration"
     type: "CORTEX_AGENT_RUN"
-    identifier: "GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_CORTEX_AGENT"
+    identifier: "STUDIO_MCP_EXAMPLE.DEMO.SALES_CORTEX_AGENT"
     description: "Delegate a complete business question to a Snowflake Cortex Agent, which orchestrates Cortex Analyst and Cortex Search internally. Use when the user explicitly requests Snowflake orchestration or Cortex Agent. Return its supported final answer and citations."
   - name: "discount_quote"
     title: "Custom function: discount scenario"
     type: "GENERIC"
-    identifier: "GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOUNT_QUOTE"
+    identifier: "STUDIO_MCP_EXAMPLE.DEMO.DISCOUNT_QUOTE"
     description: "Calculate a hypothetical discount in USD with a deterministic Snowflake SQL function. Returns net amount and whether POL-002 requires approval. Never creates a quote, approves anything or changes data."
     config:
       type: "function"
-      warehouse: "GAB_SNOWFLAKE_DEMO_20260925_WH"
+      warehouse: "STUDIO_MCP_EXAMPLE_WH"
       query_timeout: 30
       input_schema:
         type: object
@@ -434,13 +436,13 @@ tools:
         required: [gross_amount, discount_percent]
 $$;
 
-GRANT USAGE ON MCP SERVER GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_MCP TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
+GRANT USAGE ON MCP SERVER STUDIO_MCP_EXAMPLE.DEMO.SALES_MCP TO ROLE STUDIO_MCP_EXAMPLE_READ;
 ```
 
 Endpoint:
 
 ```text
-https://tcljaka-hr19243.snowflakecomputing.com/api/v2/databases/GAB_SNOWFLAKE_DEMO_20260925/schemas/DEMO/mcp-servers/SALES_MCP
+https://YOUR_ORG-YOUR_ACCOUNT.snowflakecomputing.com/api/v2/databases/STUDIO_MCP_EXAMPLE/schemas/DEMO/mcp-servers/SALES_MCP
 ```
 
 To change an existing specification, first inspect `DESCRIBE MCP SERVER` and
@@ -454,13 +456,13 @@ prevent changes made directly in Snowflake.
 ## 5. Verify ownership and effective privileges
 
 ```sql
-SHOW GRANTS TO ROLE GAB_SNOWFLAKE_DEMO_20260925_READ;
-SHOW GRANTS TO USER GAB_SNOWFLAKE_DEMO_20260925_SVC;
-SHOW GRANTS ON MCP SERVER GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_MCP;
-DESCRIBE USER GAB_SNOWFLAKE_DEMO_20260925_SVC;
-DESCRIBE AUTHENTICATION POLICY GAB_SNOWFLAKE_DEMO_20260925.DEMO.MCP_PAT_POLICY;
-DESCRIBE MCP SERVER GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES_MCP;
-SHOW CORTEX SEARCH SERVICES IN SCHEMA GAB_SNOWFLAKE_DEMO_20260925.DEMO;
+SHOW GRANTS TO ROLE STUDIO_MCP_EXAMPLE_READ;
+SHOW GRANTS TO USER STUDIO_MCP_EXAMPLE_SVC;
+SHOW GRANTS ON MCP SERVER STUDIO_MCP_EXAMPLE.DEMO.SALES_MCP;
+DESCRIBE USER STUDIO_MCP_EXAMPLE_SVC;
+DESCRIBE AUTHENTICATION POLICY STUDIO_MCP_EXAMPLE.DEMO.MCP_PAT_POLICY;
+DESCRIBE MCP SERVER STUDIO_MCP_EXAMPLE.DEMO.SALES_MCP;
+SHOW CORTEX SEARCH SERVICES IN SCHEMA STUDIO_MCP_EXAMPLE.DEMO;
 ```
 
 For the minimal setup, inspect `DISCOVERY_MCP` instead and skip the Search check.
@@ -473,15 +475,16 @@ objects; verify through the PAT/Gateway connection in section 8.
 A PAT is a bearer secret associated with a **Snowflake user and role**, not with an
 MCP server, a table, an AWS account or the Studio browser login. One role-restricted
 PAT can access several MCP servers if that role has the corresponding grants.
-The original reader token belongs to `GAB_SNOWFLAKE_DEMO_20260925_SVC`, so it does
-not appear in the signed-in administrator's personal token list.
+A token created for `STUDIO_MCP_EXAMPLE_SVC` belongs to that service user, so it
+does not appear in the signed-in administrator's personal token list. Deploying
+Studio does not create a Snowflake PAT for you.
 
 In Snowsight, open **Governance & security → Users & roles**, select the service
 user, then **Programmatic access tokens**. SQL gives the same metadata:
 
 ```sql
 USE ROLE ACCOUNTADMIN;
-SHOW USER PROGRAMMATIC ACCESS TOKENS FOR USER GAB_SNOWFLAKE_DEMO_20260925_SVC;
+SHOW USER PROGRAMMATIC ACCESS TOKENS FOR USER STUDIO_MCP_EXAMPLE_SVC;
 ```
 
 Create a new named token only when needed. The command returns `token_secret`
@@ -491,9 +494,9 @@ If that one-time output is lost, create a new token and remove the unused one.
 `SHOW` can list token names and expiry, but cannot recover the secret.
 
 ```sql
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_SVC
-  ADD PROGRAMMATIC ACCESS TOKEN STUDIO_MCP_PAT_20260926
-  ROLE_RESTRICTION = 'GAB_SNOWFLAKE_DEMO_20260925_READ'
+ALTER USER STUDIO_MCP_EXAMPLE_SVC
+  ADD PROGRAMMATIC ACCESS TOKEN STUDIO_MCP_PAT
+  ROLE_RESTRICTION = 'STUDIO_MCP_EXAMPLE_READ'
   DAYS_TO_EXPIRY = 30
   COMMENT = 'Agent Studio through AgentCore Gateway; reader role only';
 ```
@@ -505,7 +508,7 @@ operator role instead of giving it ACCOUNTADMIN:
 ```sql
 -- Replace the operator-role placeholder with an existing approved role.
 GRANT MODIFY PROGRAMMATIC AUTHENTICATION METHODS
-  ON USER GAB_SNOWFLAKE_DEMO_20260925_SVC TO ROLE <PAT_OPERATOR_ROLE>;
+  ON USER STUDIO_MCP_EXAMPLE_SVC TO ROLE <PAT_OPERATOR_ROLE>;
 ```
 
 ## 7. Onboard the endpoint in Agent Studio
@@ -535,8 +538,7 @@ registration objects; it does not run the SQL or create a Snowflake MCP object.
 The credential is stored in a deployment-prefixed AWS Secrets Manager secret.
 An AgentCore Identity EXTERNAL API-key provider references it, and Gateway injects
 `Authorization: Bearer <PAT>` on the outbound Snowflake request. Studio-created
-secrets use JSON key `credential`; the original deployment-managed reader secret
-uses key `pat`. The agent does not receive either value.
+secrets use JSON key `credential`. The agent does not receive the value.
 
 AWS Agent Registry is the new `agent-registry-control` service. Its console is
 <https://console.aws.amazon.com/agent-registry/home?region=us-east-1#>, in the AWS
@@ -560,21 +562,21 @@ SELECT 1 AS MCP_CONNECTION_OK;
 SELECT CURRENT_USER() AS USER_NAME, CURRENT_ROLE() AS ROLE_NAME;
 SHOW DATABASES;
 SELECT SCHEMA_NAME
-FROM GAB_SNOWFLAKE_DEMO_20260925.INFORMATION_SCHEMA.SCHEMATA
+FROM STUDIO_MCP_EXAMPLE.INFORMATION_SCHEMA.SCHEMATA
 ORDER BY SCHEMA_NAME;
 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-FROM GAB_SNOWFLAKE_DEMO_20260925.INFORMATION_SCHEMA.TABLES
+FROM STUDIO_MCP_EXAMPLE.INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = 'DEMO'
 ORDER BY TABLE_NAME LIMIT 50;
 SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, ORDINAL_POSITION
-FROM GAB_SNOWFLAKE_DEMO_20260925.INFORMATION_SCHEMA.COLUMNS
+FROM STUDIO_MCP_EXAMPLE.INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = 'DEMO'
 ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 100;
 SELECT REGION, SUM(REVENUE) AS REVENUE_USD, COUNT(*) AS TRANSACTIONS
-FROM GAB_SNOWFLAKE_DEMO_20260925.DEMO.SALES
+FROM STUDIO_MCP_EXAMPLE.DEMO.SALES
 WHERE SALE_DATE >= '2026-09-01' AND SALE_DATE < '2026-10-01'
 GROUP BY REGION ORDER BY REVENUE_USD DESC;
-SELECT GAB_SNOWFLAKE_DEMO_20260925.DEMO.DISCOUNT_QUOTE(1000, 12);
+SELECT STUDIO_MCP_EXAMPLE.DEMO.DISCOUNT_QUOTE(1000, 12);
 ```
 
 `SHOW DATABASES` worked in the original connection. Snowflake documents the
@@ -595,16 +597,18 @@ The September total is **17400 USD across 9 sales** for the unmodified fixture.
 Reload the agent page and confirm its conversation persists. Inspect the tool
 trace: a plausible model answer alone does not verify the MCP connection.
 
-For an independent Gateway check, run from this checkout with the bound AWS
-profile; no PAT is pasted into the terminal:
+For an independent Gateway check, set `GAB_RELEASE_STATE` to your protected state
+file and run from this checkout with its bound AWS profile; no PAT is pasted into
+the terminal:
 
 ```python
 import json
 from pathlib import Path
+import os
 import boto3
 from foundation_harness.journey_mcp import GatewayMCP
 
-state = json.loads(Path("artifacts/account-250708454815-us-east-1/release-state.json").read_text())
+state = json.loads(Path(os.environ["GAB_RELEASE_STATE"]).read_text())
 binding = state["target"]
 session = boto3.Session(profile_name=binding["profile"], region_name=binding["region"])
 assert session.client("sts").get_caller_identity()["Account"] == binding["account"]
@@ -631,10 +635,10 @@ update AWS Secrets Manager or the AgentCore provider automatically. Choose an
 interval long enough for your approved credential migration:
 
 ```sql
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_SVC
-  ROTATE PROGRAMMATIC ACCESS TOKEN STUDIO_MCP_PAT_20260926
+ALTER USER STUDIO_MCP_EXAMPLE_SVC
+  ROTATE PROGRAMMATIC ACCESS TOKEN STUDIO_MCP_PAT
   EXPIRE_ROTATED_TOKEN_AFTER_HOURS = 24;
-SHOW USER PROGRAMMATIC ACCESS TOKENS FOR USER GAB_SNOWFLAKE_DEMO_20260925_SVC;
+SHOW USER PROGRAMMATIC ACCESS TOKENS FOR USER STUDIO_MCP_EXAMPLE_SVC;
 ```
 
 After successful migration, remove the old token by the exact name returned by
@@ -642,7 +646,7 @@ SHOW (rotation returns a separate `rotated_token_name`):
 
 ```sql
 -- Replace OLD_TOKEN_NAME with the exact obsolete token name.
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_SVC
+ALTER USER STUDIO_MCP_EXAMPLE_SVC
   REMOVE PROGRAMMATIC ACCESS TOKEN OLD_TOKEN_NAME;
 ```
 
@@ -650,46 +654,6 @@ Run token administration from a separate administrator session, not a session
 authenticated with the same service user's PAT. Removing a credential or MCP
 registration in Studio does **not** revoke a Snowflake PAT. Removing a Studio MCP
 registration also does not drop its remote Snowflake object or any table.
-
-## 10. Optional legacy provisioning identity
-
-Earlier Studio versions created native Snowflake server objects from a configured
-Snowflake profile. The generic onboarding UI now registers an already running
-endpoint. It needs no Snowflake CREATE privilege or provisioner PAT. The following
-records the separate legacy provisioning role/user used for those earlier objects;
-keep existing identities if legacy connections still depend on them:
-
-```sql
-CREATE ROLE GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR
-  COMMENT = 'Agent Studio managed MCP provisioning with existing reader access';
-GRANT ROLE GAB_SNOWFLAKE_DEMO_20260925_READ TO ROLE GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR;
-GRANT CREATE MCP SERVER ON SCHEMA GAB_SNOWFLAKE_DEMO_20260925.DEMO
-  TO ROLE GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR;
-CREATE USER GAB_SNOWFLAKE_DEMO_20260925_MCP_SVC TYPE = SERVICE
-  DEFAULT_ROLE = GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR
-  DEFAULT_WAREHOUSE = GAB_SNOWFLAKE_DEMO_20260925_WH
-  COMMENT = 'Agent Studio MCP provisioning identity';
-GRANT ROLE GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR TO USER GAB_SNOWFLAKE_DEMO_20260925_MCP_SVC;
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_MCP_SVC SET AUTHENTICATION POLICY
-  GAB_SNOWFLAKE_DEMO_20260925.DEMO.MCP_PAT_POLICY;
-```
-
-If an operator explicitly maintains that legacy integration, its token is separate
-from the runtime reader token:
-
-```sql
-ALTER USER GAB_SNOWFLAKE_DEMO_20260925_MCP_SVC
-  ADD PROGRAMMATIC ACCESS TOKEN STUDIO_MCP_PROVISIONER_20260926
-  ROLE_RESTRICTION = 'GAB_SNOWFLAKE_DEMO_20260925_MCP_CREATOR'
-  DAYS_TO_EXPIRY = 30;
-SHOW USER PROGRAMMATIC ACCESS TOKENS FOR USER GAB_SNOWFLAKE_DEMO_20260925_MCP_SVC;
-```
-
-The old creator produced separate `STUDIO_<id>` MCP objects in the same schema.
-Different URLs name different Snowflake server objects; two Studio registrations
-can also point at the same object. Use `SHOW MCP SERVERS IN SCHEMA ...` and
-`DESCRIBE MCP SERVER <fully-qualified-name>` to inspect the exact current
-specification rather than infer it from the Studio connection label.
 
 ## Troubleshooting
 

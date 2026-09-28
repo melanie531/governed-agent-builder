@@ -27,9 +27,14 @@ def evidence_name(value):
 
 
 def review_existing_ui_change(previous, proposed):
-    """Keep the current pool, client, data, endpoints, and preexisting policies."""
+    """Update onboarding and retire creator access; preserve unrelated resources."""
     expected = copy.deepcopy(previous)
     proposed = copy.deepcopy(proposed)
+    if any(p["PolicyName"] == "McpCreation"
+           for p in proposed["Resources"]["WorkerRole"]["Properties"]["Policies"]):
+        raise ValueError("Remote MCP provisioning permissions have been retired")
+    existing_worker = expected["Resources"]["WorkerRole"]["Properties"]["Policies"]
+    existing_worker[:] = [p for p in existing_worker if p["PolicyName"] != "McpCreation"]
     for role, name in (("WorkerRole", "McpOnboarding"), ("BusinessRole", "McpRegistryRead"), ("BusinessRole", "McpCredentialSetup")):
         before = expected["Resources"][role]["Properties"]["Policies"]
         additions = [p for p in proposed["Resources"][role]["Properties"]["Policies"] if p["PolicyName"] == name]
@@ -160,16 +165,18 @@ class Release:
         print("Canonical Registry READY", flush=True)
 
     def configure(self):
+        from backend.mcp_onboarding import configuration
+        from scripts.deployment_target import PREFIX
+
         registry = self.state["mcpOnboardingRegistry"]
-        provider = self.state["journeyCredential"]
-        config = {"enabled": True, "registry_id": registry["registryId"], "registry_arn": registry["registryArn"],
-                  "workspaces": ["research", "operations"], "secret_arns": [provider["secret_arn"]],
-                  "connections": [{"id": "snowflake-reader", "name": "Snowflake service PAT",
-                      "allowed_origins": ["https://" + self.state["snowflakeConfig"]["endpoint"].split("/")[2]],
-                      "configuration": {"credentialProviderType": "API_KEY", "credentialProvider": {
-                          "apiKeyCredentialProvider": {"providerArn": provider["provider_arn"],
-                              "credentialLocation": "HEADER", "credentialParameterName": "Authorization",
-                              "credentialPrefix": "Bearer"}}}}]}
+        existing = self.state["journeyPlatform"].get("mcp_onboarding")
+        config = copy.deepcopy(existing) if existing is not None else {
+            "enabled": True, "registry_id": registry["registryId"], "registry_arn": registry["registryArn"],
+            "workspaces": ["research", "operations"], "secret_arns": [], "connections": [],
+            "credential_prefix": PREFIX}
+        configuration(config, self.state["journeyPlatform"])
+        if (config["registry_id"] != registry["registryId"] or config["registry_arn"] != registry["registryArn"]):
+            raise ValueError("Existing onboarding belongs to a different Registry")
         settings = {**self.state["journeyPlatform"], "mcp_onboarding": config}
         store = DynamoStore(self.state["app"]["outputs"]["StateTable"], self.target.session.resource("dynamodb"))
         with store.tx() as db:
@@ -198,7 +205,9 @@ class Release:
                  for name, r in body["Resources"].items() if r["Type"] == "AWS::IAM::Role"}
         physical = {r["LogicalResourceId"]: r["PhysicalResourceId"] for r in cf.list_stack_resources(
             StackName=stack_id)["StackResourceSummaries"]}
-        for role, names in (("WorkerRole", {"McpOnboarding"}), ("BusinessRole", {"McpRegistryRead", "McpCredentialSetup"})):
+        # Count the resulting policies: the old creator policy is removed by
+        # this reviewed change set, so it must not inflate the post-update size.
+        for role, names in (("WorkerRole", {"McpOnboarding", "McpCreation"}), ("BusinessRole", {"McpRegistryRead", "McpCredentialSetup"})):
             iam = self.client("iam")
             existing = [iam.get_role_policy(RoleName=physical[role], PolicyName=n)["PolicyDocument"]
                         for n in iam.list_role_policies(RoleName=physical[role])["PolicyNames"] if n not in names]
@@ -213,7 +222,9 @@ class Release:
         (self.evidence / "template-proposed.json").write_text(json.dumps(body, indent=2))
         (self.evidence / "preflight.json").write_text(json.dumps({
             "retention_tags": True, "no_function_urls": True, "inline_policy_bytes": sizes,
-            "only_onboarding_policies_changed": True}, indent=2))
+            "only_mcp_policies_changed": True,
+            "retired_creator_policy_removed": any(p["PolicyName"] == "McpCreation"
+                for p in previous["Resources"]["WorkerRole"]["Properties"]["Policies"])}, indent=2))
         package = (ROOT / "artifacts/serverless-release.zip").read_bytes()
         sha = hashlib.sha256(package).hexdigest()
         bucket = self.state["artifacts"]["outputs"]["Bucket"]

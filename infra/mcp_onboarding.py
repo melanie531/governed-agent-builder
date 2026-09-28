@@ -82,7 +82,7 @@ def configure_app(resources, settings):
                 {"Effect": "Allow", "Action": ["bedrock-agentcore:ListTagsForResource"],
                  "Resource": [vault, vault + "/apikeycredentialprovider/*"]},
             ]}})
-    # Reuse exact unconditional grants already installed by MCP provisioning.
+    # Reuse exact unconditional grants already installed on this worker role.
     # IAM counts all inline policies together; duplicate statements can exceed
     # the role's limit after CloudFormation resolves the resource ARNs.
     existing = [s for p in resources["WorkerRole"]["Properties"]["Policies"]
@@ -102,9 +102,14 @@ def configure_app(resources, settings):
         "PolicyName": "McpRegistryRead", "PolicyDocument": {"Version": "2012-10-17", "Statement": [{
             "Effect": "Allow", "Action": ["agent-registry:GetRegistry", "agent-registry:GetRegistryRecord"],
             "Resource": [registry, registry + "/record/*"]}]}})
+    # Keep the existing group metadata during creator-policy retirement. The
+    # saved legacy flag does not grant access to any provisioning secret.
+    switcher_description = ("Explicitly enrolled users may switch between their assigned business and admin roles"
+                            if settings.get("mcp_creation") else
+                            "Explicitly enrolled users can switch between assigned Studio roles")
     resources.setdefault("RoleSwitchers", {"Type": "AWS::Cognito::UserPoolGroup", "Properties": {
         "UserPoolId": ref("Pool"), "GroupName": "studio-role-switcher",
-        "Description": "Explicitly enrolled users can switch between assigned Studio roles"}})
+        "Description": switcher_description}})
     resources["Worker"]["Properties"]["Timeout"] = max(300, resources["Worker"]["Properties"]["Timeout"])
     resources["Jobs"]["Properties"]["VisibilityTimeout"] = max(
         resources["Jobs"]["Properties"]["VisibilityTimeout"], 6 * resources["Worker"]["Properties"]["Timeout"])

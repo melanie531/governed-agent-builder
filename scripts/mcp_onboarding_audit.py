@@ -10,15 +10,21 @@ from botocore.exceptions import ClientError
 from infra.resource_tags import TAG_PROPERTIES
 
 
-def audit(state_path, runtime_id=None, existing=False, output=None):
-    state = json.loads(state_path.read_text())
+def deployment_state(state, existing):
+    """QA users are optional operator enrollments, not installation prerequisites."""
     if existing:
         state = {**state, "prefix": "governed-agent-builder-serverless",
                  "journey": {**state["journeyStack"], "stackId": state["journeyStack"]["id"]},
                  "gateway": {"gatewayId": state["journeyGateway"]["id"], "gatewayArn": state["journeyGateway"]["arn"]},
                  "gateway_identity_tagged": state["journeyGatewayIdentity"]["arn"],
                  "registry": state["mcpOnboardingRegistry"], "release": {"sha256": state["releaseSha256"]},
-                 "qa-admin": state["journeyAdminQA"], "qa-business": state["journeyQA"]}
+                 **({"qa-admin": state["journeyAdminQA"]} if state.get("journeyAdminQA") else {}),
+                 **({"qa-business": state["journeyQA"]} if state.get("journeyQA") else {})}
+    return state
+
+
+def audit(state_path, runtime_id=None, existing=False, output=None):
+    state = deployment_state(json.loads(state_path.read_text()), existing)
     target = state["target"]
     session = boto3.Session(profile_name=target["profile"], region_name=target["region"])
     if session.client("sts").get_caller_identity()["Account"] != target["account"]:
@@ -185,6 +191,8 @@ def audit(state_path, runtime_id=None, existing=False, output=None):
             "retention_14_days": group.get("retentionInDays") == 14,
             "retention_tag": client("logs").list_tags_for_resource(resourceArn=log_arn)["tags"].get("auto-delete") == "no"})
     for role in ("admin", "business"):
+        if not state.get("qa-" + role):
+            continue
         for part in ("username", "password"):
             name = state["qa-" + role]["parameterPrefix"] + "/" + part
             record("QAParameter/" + role + "/" + part, {"retention_tag": tags(client("ssm").list_tags_for_resource(ResourceType="Parameter", ResourceId=name)["TagList"]).get("auto-delete") == "no"})

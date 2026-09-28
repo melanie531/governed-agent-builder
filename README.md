@@ -14,9 +14,13 @@ review discovered tools, and publish them through AWS Agent Registry.
 - [Agent creation, runtime, conversation and deletion contracts](docs/create-agent-journey.md)
 - [Serverless architecture and identity boundaries](docs/SERVERLESS-HOSTING.md)
 
-The current application is https://d11jko88tox2zk.cloudfront.net in AWS account
-`250708454815`, region `us-east-1`. Deployment commands require an explicit account,
-profile, region and target state; these identifiers are not credentials.
+A new installation starts with an empty AgentCore Gateway and AWS Agent Registry.
+It creates no remote MCP connection or provider credential. Administrators publish
+models and configure their own endpoints and authentication in Studio. Snowflake
+is an optional manual integration, not part of platform deployment.
+
+Deployment commands require your explicit account, profile, region and private
+target-state path. Never copy another installation's state or credentials.
 
 ## Local development
 
@@ -78,10 +82,11 @@ same generic Studio form. The full SQL and credential lifecycle are in the
 | `docs/` | Operator guides and retained implementation contracts |
 | `artifacts/` | Ignored target state, release receipts and sanitized validation evidence |
 
-`backend/mcp_servers.py`, `backend/mcp_cloud.py` and `infra/mcp_servers.py` retain
-compatibility for previously provisioned Snowflake connections and shared
-onboarding behavior. They are still used and tested. The unused Snowflake-only
-frontend and separate preview deployment path have been removed.
+`backend/mcp_onboarding.py` and `backend/mcp_onboarding_cloud.py` implement generic
+MCP registration. `backend/mcp_management.py` preserves read/management access to
+previously registered connections and protects their saved-agent dependencies.
+Snowflake provisioning scripts, creation APIs, IAM and demo templates have been
+removed. Runtime response compatibility for existing Cortex Agent bindings remains.
 
 Historical implementation contracts for foundation admission, model execution and
 research remain where source/tests reference them. Their old milestone evidence

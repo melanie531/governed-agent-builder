@@ -16,7 +16,10 @@ def role(service, statements, source):
         "Policies": [{"PolicyName": "JourneyScope", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}]}}
 
 
-def template(provider_arn, secret_arn, *, mcp_settings=None):
+def template(provider_arn=None, secret_arn=None, *, mcp_settings=None):
+    """Default to an empty Gateway; explicit legacy bindings retain their stack."""
+    if bool(provider_arn) != bool(secret_arn):
+        raise ValueError("A legacy provider and its secret must be supplied together")
     resources = {"Evidence": bucket(), "EvidenceTLS": tls_policy("Evidence"),
                  "Traces": {"Type": "AWS::Logs::LogGroup", "DeletionPolicy": "Retain",
                             "Properties": {"LogGroupName": "/governed-agent-builder/journey/traces", "RetentionInDays": 14}},
@@ -65,6 +68,14 @@ def template(provider_arn, secret_arn, *, mcp_settings=None):
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"),
             sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/gab-journey-tools-*")]),
     ], sub("arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/gab-journey-tools-*"))
+    if not provider_arn:
+        for name in ("Knowledge", "KnowledgeRole", "KnowledgeLogs"):
+            del resources[name]
+        # Until an administrator saves authentication, no provider or secret is
+        # accessible. Generic credential permissions are installed separately.
+        policy = resources["GatewayRole"]["Properties"]["Policies"][0]["PolicyDocument"]
+        policy["Statement"] = [s for s in policy["Statement"]
+                               if s["Action"] == ["bedrock-agentcore:GetWorkloadAccessToken"]]
     if mcp_settings:
         from infra.mcp_onboarding import configure_gateway
         configure_gateway(resources, mcp_settings)
@@ -73,7 +84,8 @@ def template(provider_arn, secret_arn, *, mcp_settings=None):
             "Parameters": {"ArtifactBucket": {"Type": "String"}, "ArtifactKey": {"Type": "String"}},
             "Resources": resources, "Outputs": {
                 "EvidenceBucket": {"Value": ref("Evidence")}, "RuntimeRole": {"Value": attr("RuntimeRole")},
-                "GatewayRole": {"Value": attr("GatewayRole")}, "KnowledgeFunction": {"Value": attr("Knowledge")},
+                "GatewayRole": {"Value": attr("GatewayRole")},
+                **({"KnowledgeFunction": {"Value": attr("Knowledge")}} if provider_arn else {}),
                 "TraceLogGroup": {"Value": ref("Traces")}}}
 
 
@@ -137,9 +149,6 @@ def configure_app(resources, settings):
     worker_statements[2]["Condition"] = {"StringEquals": {"iam:PassedToService": "bedrock-agentcore.amazonaws.com"}}
     resources["WorkerRole"]["Properties"]["Policies"].append({
         "PolicyName": "JourneyDeployment", "PolicyDocument": {"Version": "2012-10-17", "Statement": worker_statements}})
-    if settings.get("mcp_creation"):
-        from infra.mcp_servers import configure_app as configure_mcp
-        configure_mcp(resources, settings)
     if settings.get("mcp_onboarding"):
         from infra.mcp_onboarding import configure_app as configure_onboarding
         configure_onboarding(resources, settings)
