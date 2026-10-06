@@ -313,10 +313,14 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
         # Enforce while reading, rather than allocating an unbounded upload first.
         chunks, size = [], 0
+        # Python source has its own 64 KiB byte limit after JSON decoding.
+        body_limit = 400 * 1024 if request.method == "POST" and request.url.path == "/api/admin/mcp/python" else 65536
+        if request.method == "POST" and re.fullmatch(r"/api/admin/mcp/packages/[a-f0-9]{32}/parts/[0-9]{1,2}", request.url.path):
+            body_limit = 3 * 1024 * 1024
         async for chunk in request.stream():
             size += len(chunk)
-            if size > 65536:
-                return JSONResponse({"detail": "Request exceeds 64 KiB limit"}, status_code=413)
+            if size > body_limit:
+                return JSONResponse({"detail": "Request exceeds the size limit"}, status_code=413)
             chunks.append(chunk)
         request._body = b"".join(chunks)
         mutating = request.method not in ("GET", "HEAD", "OPTIONS")
@@ -423,6 +427,10 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         mcp_onboarding = McpOnboarding(store, journey.settings if journey else {}, onboarding_cloud, hosted=hosted, auth=auth)
     app.state.mcp_onboarding = mcp_onboarding
     app.include_router(onboarding_router(mcp_onboarding, who))
+    from .mcp_user_connections import UserConnections, router as user_connections_router
+    app.include_router(user_connections_router(mcp_onboarding, who, journey))
+    if journey is not None:
+        journey.user_connections = UserConnections(mcp_onboarding)
 
     @app.get("/api/demo/personas")
     def personas():
@@ -1014,8 +1022,15 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
         with store.tx() as db:
             mcp_run = get_run(db, 'mcp-job:' + job_id)
             onboarding_run = get_run(db, 'mcp-onboarding-job:' + job_id)
+            python_run = get_run(db, 'mcp-python-job:' + job_id)
             journey_run = get_run(db, 'journey-job:' + job_id)
             live_run = get_run(db, 'foundation-run:' + job_id) or get_run(db, 'foundation-pending:' + job_id)
+        if python_run:
+            if not getattr(mcp_onboarding, "python", None):
+                from .mcp_python import PythonMcp
+                mcp_onboarding.python = PythonMcp(mcp_onboarding)
+            mcp_onboarding.python.step(job_id)
+            return
         if onboarding_run:
             mcp_onboarding.step(job_id)
             return

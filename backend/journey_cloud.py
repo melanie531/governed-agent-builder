@@ -74,26 +74,73 @@ class JourneyCloud:
     def create(self, manifest, token):
         location = self.write("journey/manifests/" + digest(manifest) + ".json", manifest)
         artifact = manifest["artifact"]
-        response = self.control.create_agent_runtime(
-            agentRuntimeName="gab_journey_" + token[:24],
-            agentRuntimeArtifact={"codeConfiguration": {
+        request = {
+            "agentRuntimeName": "gab_journey_" + token[:24],
+            "agentRuntimeArtifact": {"codeConfiguration": {
                 "code": {"s3": {"bucket": artifact["bucket"], "prefix": artifact["key"],
                                "versionId": artifact["version_id"]}},
                 "runtime": "PYTHON_3_13", "entryPoint": ["main.py"]}},
-            roleArn=self.settings["runtime_role"],
-            networkConfiguration=self.settings["network"],
-            protocolConfiguration={"serverProtocol": "HTTP"},
-            lifecycleConfiguration={"idleRuntimeSessionTimeout": 60, "maxLifetime": 900},
-            environmentVariables={"JOURNEY_MANIFEST": json.dumps(location, separators=(",", ":"))},
-            clientToken=token,
-            tags={"project": "governed-agent-builder", "journey": "create-agent",
-                  "agent": manifest["agent_id"], "workspace": manifest["workspace"],
-                  "auto-delete": "no"})
+            "roleArn": self.settings["runtime_role"],
+            "networkConfiguration": self.settings["network"],
+            "protocolConfiguration": {"serverProtocol": "HTTP"},
+            "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 900},
+            "environmentVariables": {"JOURNEY_MANIFEST": json.dumps(location, separators=(",", ":"))},
+            "clientToken": token,
+            "tags": {"project": "governed-agent-builder", "journey": "create-agent",
+                     "agent": manifest["agent_id"], "workspace": manifest["workspace"],
+                     "auto-delete": "no"},
+        }
+        try:
+            response = self.control.create_agent_runtime(**request)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConflictException":
+                raise
+            binding = self._reconcile_created_runtime(request, location, manifest)
+            if binding is None:
+                raise
+            return binding
         binding = {"id": response["agentRuntimeId"], "arn": response["agentRuntimeArn"],
                    "version": response["agentRuntimeVersion"], "manifest": location}
+        if manifest.get("gateway_force_auth_v1") is True:
+            binding["gateway_force_auth_v1"] = True
         if not binding["arn"].startswith(f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:runtime/gab_journey_"):
             raise ValueError("Runtime target account or resource prefix mismatch")
         return binding
+
+    def _reconcile_created_runtime(self, request, location, manifest=None):
+        matches = []
+        token = None
+        while True:
+            page = self.control.list_agent_runtimes(**({"nextToken": token} if token else {}))
+            matches.extend(runtime for runtime in page.get("agentRuntimes", [])
+                           if runtime["agentRuntimeName"] == request["agentRuntimeName"])
+            token = page.get("nextToken")
+            if not token:
+                break
+        if not matches:
+            return None
+        if len(matches) != 1:
+            raise ValueError("Existing named Runtime is ambiguous; operator review required")
+        runtime = matches[0]
+        runtime_id = runtime["agentRuntimeId"]
+        arn = f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:runtime/{runtime_id}"
+        if (not runtime_id.startswith(request["agentRuntimeName"] + "-")
+                or runtime["agentRuntimeArn"] != arn):
+            raise ValueError("Existing named Runtime is outside this account or namespace; operator review required")
+        version = runtime["agentRuntimeVersion"]
+        native = self.control.get_agent_runtime(agentRuntimeId=runtime_id, agentRuntimeVersion=version)
+        tags = self.control.list_tags_for_resource(resourceArn=arn)["tags"]
+        expected_fields = ("agentRuntimeArtifact", "roleArn", "networkConfiguration",
+                           "protocolConfiguration", "lifecycleConfiguration", "environmentVariables")
+        if (native.get("agentRuntimeId") != runtime_id or native.get("agentRuntimeArn") != arn
+                or native.get("agentRuntimeVersion") != version
+                or native.get("agentRuntimeName") != request["agentRuntimeName"]
+                or native.get("status") not in ("CREATING", "UPDATING", "READY")
+                or any(native.get(field) != request[field] for field in expected_fields)
+                or any(tags.get(key) != value for key, value in request["tags"].items())):
+            raise ValueError("Existing named Runtime differs from this agent deployment; operator review required")
+        return {"id": runtime_id, "arn": arn, "version": version, "manifest": location,
+                **({"gateway_force_auth_v1": True} if (manifest or {}).get("gateway_force_auth_v1") is True else {})}
 
     def ready(self, binding):
         result = self.control.get_agent_runtime(agentRuntimeId=binding["id"], agentRuntimeVersion=binding["version"])
@@ -119,12 +166,17 @@ class JourneyCloud:
         from .journey_runtime_logs import provision
         return provision(self, binding)
 
-    def invoke(self, binding, definition, text, request_id, history=None):
+    def invoke(self, binding, definition, text, request_id, history=None, user_token=None, force_gateway_auth=False):
+        if force_gateway_auth and binding.get("gateway_force_auth_v1") is not True:
+            raise ValueError("This Runtime does not support forced Gateway authorization")
         if not self.ready(binding):
             raise ValueError("Runtime endpoint is not ready for the deployed version")
         response = self.data.invoke_agent_runtime(
             agentRuntimeArn=binding["arn"], qualifier="DEFAULT", runtimeSessionId="gab-" + request_id,
-            payload=canonical({"input": text, "request_id": request_id, **({"history": history} if history else {})}), contentType="application/json",
+            payload=canonical({"input": text, "request_id": request_id,
+                               **({"history": history} if history else {}),
+                               **({"user_token": user_token} if user_token else {}),
+                               **({"force_gateway_auth": True} if force_gateway_auth else {})}), contentType="application/json",
             accept="application/json")
         stream = response["response"]
         try:
@@ -134,6 +186,17 @@ class JourneyCloud:
         if len(raw) > 350000:
             raise ValueError("Runtime returned excessive evidence")
         receipt = json.loads(raw)
+        if receipt.get("status") == "AUTHORIZATION_REQUIRED":
+            fields = {"status", "authorization", "definition_digest", "session_id"}
+            count = receipt.get("completed_tool_calls")
+            if (set(receipt) not in (fields, fields | {"completed_tool_calls"})
+                    or receipt["definition_digest"] != definition["digest"]
+                    or receipt["session_id"] != "gab-" + request_id
+                    or not isinstance(receipt["authorization"], dict)
+                    or ("completed_tool_calls" in receipt and count is not None
+                        and (type(count) is not int or not 0 <= count <= 6))):
+                raise ValueError("Authorization challenge does not match this agent invocation")
+            return receipt
         self.validate_receipt(receipt, definition, request_id)
         stored = self.read(receipt["evidence"])
         if stored != {key: value for key, value in receipt.items() if key != "evidence"}:

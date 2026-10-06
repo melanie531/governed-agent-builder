@@ -8,8 +8,10 @@ review discovered tools, and publish them through AWS Agent Registry.
 
 ## Start here
 
+- [User guide: configure an MCP connection, create an agent and test its tools](docs/start-here.md)
 - [Deploy and update the application](docs/deployment.md)
 - [Set up Snowflake managed MCP, including SQL and PATs](docs/snowflake-managed-mcp.md)
+- [Deploy a separate Snowflake query MCP in AgentCore Runtime using per-user OAuth](docs/runtime-snowflake-mcp.md)
 - [Onboard and manage any supported MCP endpoint](docs/generic-mcp-onboarding.md)
 - [Agent creation, runtime, conversation and deletion contracts](docs/create-agent-journey.md)
 - [Serverless architecture and identity boundaries](docs/SERVERLESS-HOSTING.md)
@@ -55,8 +57,9 @@ the real application and an explicitly enrolled account; see the deployment guid
   persistence and ownership-checked deletion.
 - Generic MCP onboarding for authenticated HTTPS Streamable HTTP endpoints:
   save authentication, discover schemas, review, approve and publish.
-- Saved API-key/PAT credential management. Existing OAuth-client-credentials and
-  IAM configurations can be reused; the PAT form does not create OAuth providers.
+- Saved API-key/PAT and IAM connections, plus generic references to existing
+  OAuth providers. Per-user OAuth uses Cognito inbound authentication and native
+  Gateway consent; the platform does not create provider examples automatically.
 - Dependency checks protect connections used by saved agents and credentials used
   by MCP registrations. Editing an unused connection requires rediscovery/review.
 - New AWS Agent Registry (`agent-registry-control`) for MCP records; the Studio
@@ -79,7 +82,7 @@ same generic Studio form. The full SQL and credential lifecycle are in the
 | `scripts/` | Packaging, target-bound deployment, bootstrap and audits |
 | `examples/journey/` | Operator catalog/template inputs |
 | `tests/`, `frontend/e2e/`, `frontend/journey-e2e/` | Contract, security and browser tests |
-| `docs/` | Operator guides and retained implementation contracts |
+| `docs/` | User and operator guides and retained implementation contracts |
 | `artifacts/` | Ignored target state, release receipts and sanitized validation evidence |
 
 `backend/mcp_onboarding.py` and `backend/mcp_onboarding_cloud.py` implement generic

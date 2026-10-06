@@ -54,7 +54,8 @@ def component_ids(db, state):
     return sorted({r["id"] for row in db.select("components") if (
         (r := json.loads(row["body"]))["id"] == state["catalog_id"]
         or r.get("parent_id") == state["catalog_id"]
-        or (state.get("gateway_target_id") and r.get("binding", {}).get("target_id") == state["gateway_target_id"]))})
+        or (state.get("gateway_target_id") and r.get("binding", {}).get("target_id") == state["gateway_target_id"]))
+    } | set(state.get("publication_catalog_ids", [])))
 
 
 def strings(value):
@@ -122,12 +123,13 @@ def info(service, actor, source, sid):
                 "can_delete": available(state) and not blocked,
                 "reason": ("This connection is referenced by saved agent versions." if blocked else
                            "Finish or reconcile the current operation first." if not available(state) else ""),
-                "source": source, "revision": state.get("revision", 1)}
+                "source": source, "revision": state.get("revision", 1),
+                "tool_schema": state.get("tool_schema")}
     return service.tx(read)
 
 
 def begin(service, actor, source, sid, body, kind, session_hash):
-    from .mcp_onboarding import binding_digest, endpoint_origin
+    from .mcp_onboarding import binding_digest
     service.admin(actor)
     payload = body.model_dump()
     def reserve(db):
@@ -145,16 +147,24 @@ def begin(service, actor, source, sid, body, kind, session_hash):
             raise HTTPException(409, "Connection is used by saved agents; inspect its dependencies before changing it")
         config = service.config(db)
         if kind == "edit":
+            from .mcp_deployments import assert_endpoint_available
+            assert_endpoint_available(db, body.endpoint)
             from .mcp_auth_management import unlocked
             unlocked(db, body.connection_id)
             connection = next((c for c in config["connections"] if c["id"] == body.connection_id), None)
             try:
-                if (not connection or endpoint_origin(body.endpoint) not in connection["allowed_origins"]
+                from .mcp_onboarding import endpoint_allowed, discovered_tools
+                if (not connection or not endpoint_allowed(connection, body.endpoint)
                         or len(set(body.workspaces)) != len(body.workspaces)
                         or not set(body.workspaces) <= set(config["workspaces"])):
                     raise ValueError()
-            except ValueError:
-                raise HTTPException(422, "Choose a permitted endpoint, authentication connection and workspaces") from None
+                native_oauth = connection.get("user_authorization", {}).get("mode") == "gateway"
+                if bool(body.tool_schema) != native_oauth:
+                    raise ValueError()
+                schema = discovered_tools({"target_name": "schema"}, [
+                    {**t, "name": "schema___" + t["name"]} for t in body.tool_schema]) if native_oauth else None
+            except (ValueError, KeyError, TypeError):
+                raise HTTPException(422, "Choose a permitted endpoint, authentication connection and workspaces; user OAuth requires a valid tool schema") from None
             for row in db.select("settings"):
                 if row["key"].startswith("mcp-connection:"):
                     other = json.loads(row["body"])
@@ -175,12 +185,17 @@ def begin(service, actor, source, sid, body, kind, session_hash):
                      change={"id": change_id, "kind": kind, "catalog_ids": ids,
                              "payload": body.model_dump(exclude={"idempotency_key", "expected_revision"}) if kind == "edit" else {},
                              "native_registry": not state.get("legacy_source", False)})
+        if kind == "edit":
+            state["change"]["payload"].update(tool_schema=schema, schema_source="supplied" if native_oauth else "discovered")
         state["config_digest"] = binding_digest(config, state)
         # Keep the old native operations as immutable history; retirement has
         # its own intents, and edited revisions get new native request tokens.
         state["operations"] = {}
         for cid in ids:
-            item = json.loads(db.select("components", where=[("id", "=", cid)]).fetchone()["body"])
+            row = db.select("components", where=[("id", "=", cid)]).fetchone()
+            if not row:
+                continue  # Grants may have been prepared before catalog activation.
+            item = json.loads(row["body"])
             item.update(approved=False, execution_ready=False, management_lock=change_id)
             db.update("components", {"body": json.dumps(item)}, where=[("id", "=", cid)])
         if source == "servers":
@@ -226,7 +241,7 @@ def finish(service, db, state):
         state.update(**change["payload"], phase="CONNECTING", stage="connect",
                      target_name="studio-remote-" + state["id"][:12] + "-r" + str(state["revision"]), operations={})
         for key in ("tools", "selected_tools", "discovery_digest", "gateway_target_id", "registry_record_id",
-                    "registry_record_arn", "legacy_source"):
+                    "registry_record_arn", "legacy_source", "publication_catalog_ids"):
             state.pop(key, None)
         state["config_digest"] = binding_digest(service.config(db), state)
     state.pop("change")

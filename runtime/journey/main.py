@@ -25,19 +25,23 @@ def load_manifest():
 
 def invoke(payload, context):
     if (not isinstance(payload, dict) or not {"input", "request_id"} <= set(payload)
-            or set(payload) - {"input", "request_id", "history"}):
-        raise ValueError("Only input, request_id and conversation history may be supplied")
+            or set(payload) - {"input", "request_id", "history", "user_token", "force_gateway_auth"}):
+        raise ValueError("Only input, request_id, conversation history and user authorization may be supplied")
     import boto3
     import re
     import time
     manifest = load_manifest()
+    force_gateway_auth = payload.get("force_gateway_auth", False)
+    if type(force_gateway_auth) is not bool or (force_gateway_auth and manifest.get("gateway_force_auth_v1") is not True):
+        raise ValueError("This Runtime does not support forced Gateway authorization")
     request_id = payload["request_id"]
     if not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9]{32}", request_id):
         raise ValueError("Invalid request identifier")
     session_id = getattr(context, "session_id", None)
     if not session_id:
         raise ValueError("AgentCore session is required")
-    model, gateway = aws_dependencies(manifest)
+    model, gateway = aws_dependencies(manifest, user_token=payload.get("user_token"),
+                                      force_gateway_auth=force_gateway_auth)
     s3 = boto3.client("s3", region_name=manifest["region"])
     logs = boto3.client("logs", region_name=manifest["region"])
 
@@ -63,7 +67,17 @@ def invoke(payload, context):
 def create_app():
     from bedrock_agentcore import BedrockAgentCoreApp
     app = BedrockAgentCoreApp()
-    app.entrypoint(invoke)
+
+    @app.entrypoint
+    def active_invocation(payload, context):
+        # The SDK does not mark synchronous entrypoints busy automatically.
+        # Keep the session alive while tool/model calls or evidence writes run.
+        task = app.add_async_task("journey_invocation")
+        try:
+            return invoke(payload, context)
+        finally:
+            app.complete_async_task(task)
+
     return app
 
 

@@ -137,6 +137,7 @@ test('Cloudscape filtered persona, foundation reset, admin revoke and responsive
  await expect(page.getByRole('button',{name:/^Model route/})).toContainText('Select an approved model');
  await page.setViewportSize({width:390,height:844});
  await expect(page.getByRole('heading',{name:'Choose capabilities',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBeTruthy();
+ // Cloudscape settles its responsive layout after the viewport resize event.
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBeTruthy();
  await page.screenshot({path:'../artifacts/cloudscape-mobile.png',fullPage:true});
 });

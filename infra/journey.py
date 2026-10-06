@@ -89,6 +89,30 @@ def template(provider_arn=None, secret_arn=None, *, mcp_settings=None):
                 "TraceLogGroup": {"Value": ref("Traces")}}}
 
 
+RUNTIME_SERVICE_LINKED_ROLES = {
+    "AWSServiceRoleForBedrockAgentCoreRuntimeIdentity": "runtime-identity.bedrock-agentcore.amazonaws.com",
+    "AWSServiceRoleForBedrockAgentCoreRuntimeInstances": "runtime-instances.bedrock-agentcore.amazonaws.com",
+}
+
+
+def runtime_prerequisites_template(role_names=None):
+    """Account prerequisites created by the installer, outside application roles."""
+    names = set(RUNTIME_SERVICE_LINKED_ROLES if role_names is None else role_names)
+    if not names or not names <= RUNTIME_SERVICE_LINKED_ROLES.keys():
+        raise ValueError("Choose the missing AgentCore Runtime service-linked roles")
+    return {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Retained AWS-managed AgentCore Runtime account prerequisites",
+        "Resources": {
+            name: {
+                "Type": "AWS::IAM::ServiceLinkedRole",
+                "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+                "Properties": {"AWSServiceName": RUNTIME_SERVICE_LINKED_ROLES[name]},
+            } for name in sorted(names)
+        },
+    }
+
+
 def configure_app(resources, settings):
     """Attach the reviewed Journey permissions to the existing hosted application."""
     account, region = settings["account"], settings["region"]
@@ -96,7 +120,10 @@ def configure_app(resources, settings):
     bucket_arn = "arn:aws:s3:::" + settings["bucket"]
     worker = resources["Worker"]["Properties"]
     worker["Timeout"] = 300
-    worker["MemorySize"] = 1024
+    memory = settings.get("worker_memory_size", 1024)
+    if type(memory) is not int or not 512 <= memory <= 10240:
+        raise ValueError("Journey worker memory must be between 512 and 10240 MB")
+    worker["MemorySize"] = memory
     resources["Jobs"]["Properties"]["VisibilityTimeout"] = 1800
     for name in ("Business", "Auth", "Authorizer", "Worker"):
         resources[name]["Properties"]["Environment"]["Variables"]["JOURNEY_ENABLED"] = "1"
@@ -160,6 +187,23 @@ def configure_app(resources, settings):
         registry_permissions = [statement(["bedrock-agentcore:GetRegistry", "bedrock-agentcore:CreateRegistryRecord",
             "bedrock-agentcore:GetRegistryRecord", "bedrock-agentcore:SubmitRegistryRecordForApproval",
             "bedrock-agentcore:UpdateRegistryRecordStatus"], [registry, registry + "/record/*"])] if registry else []
+        if settings.get("mcp_onboarding"):
+            native_registry = settings["mcp_onboarding"]["registry_arn"]
+            # Model and skill administration uses the same bound Registry as MCP
+            # onboarding; it receives no Gateway mutation permissions.
+            required_tags = {"StringEquals": {
+                "aws:RequestTag/auto-delete": "no", "aws:RequestTag/project": "governed-agent-builder"}}
+            registry_permissions.extend([
+                statement(["agent-registry:GetRegistry", "agent-registry:GetRegistryRecord",
+                           "agent-registry:SubmitRegistryRecordForApproval",
+                           "agent-registry:UpdateRegistryRecordStatus"],
+                          [native_registry, native_registry + "/record/*"]),
+                {**statement(["agent-registry:CreateRegistryRecord"],
+                             [native_registry, native_registry + "/record/*"]),
+                 "Condition": required_tags},
+                {**statement(["agent-registry:TagResource"], [native_registry + "/record/*"]),
+                 "Condition": required_tags},
+            ])
         resources["BusinessRole"]["Properties"]["Policies"].append({
             "PolicyName": "PlatformAdministration", "PolicyDocument": {"Version": "2012-10-17", "Statement": [
                 *registry_permissions,

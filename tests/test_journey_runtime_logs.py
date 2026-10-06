@@ -79,13 +79,28 @@ def test_service_creation_race_is_reconciled_by_reading_the_exact_group():
         stub.assert_no_pending_responses()
 
 
-def test_deployment_cannot_advance_to_smoke_when_log_provisioning_fails():
+def test_deployment_cannot_be_marked_ready_when_log_provisioning_fails():
     journey = object.__new__(Journey)
     def denied(binding):
         raise PermissionError("Log provisioning denied")
     journey.cloud = SimpleNamespace(ready=lambda binding: True, provision_runtime_logs=denied)
     with pytest.raises(PermissionError, match="Log provisioning denied"):
         journey.perform({"kind": "deploy", "phase": "WAIT_RUNTIME", "binding": BINDING}, {}, None, False)
+
+
+@pytest.mark.parametrize("phase", ["WAIT_RUNTIME", "SMOKE"])
+def test_deployment_marks_ready_without_invoking_a_tool_even_for_an_old_smoke_job(phase):
+    journey = object.__new__(Journey)
+    calls = []
+    journey.cloud = SimpleNamespace(
+        ready=lambda binding: calls.append(("ready", binding)) or True,
+        provision_runtime_logs=lambda binding: calls.append(("logs", binding)),
+        invoke=lambda *args, **kwargs: pytest.fail("Deploy must not invoke the agent"),
+    )
+    journey.invocation = lambda *args: pytest.fail("Deploy must not invoke the agent")
+    result = journey.perform({"id": "old-deploy-job", "kind": "deploy", "phase": phase, "binding": BINDING}, {}, None, False)
+    assert result == {"phase": "DEPLOYED"}
+    assert calls == [("ready", BINDING), ("logs", BINDING)]
 
 
 def test_log_group_with_conflicting_owner_is_not_mutated():

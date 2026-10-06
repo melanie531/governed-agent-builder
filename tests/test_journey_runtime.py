@@ -65,6 +65,66 @@ def test_selected_mcp_operation_runs_and_records_actual_call_and_trace(manifest)
     assert receipt["session_id"] == tool_span["attributes"]["session.id"]
 
 
+def test_structured_tool_failure_is_not_reported_as_successful_evidence(manifest):
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    calls = []
+    def fail(name, arguments):
+        calls.append(name)
+        return json.dumps({"error": "Snowflake operation failed; no result was returned.", "failure_stage": "connect"})
+    gateway.call = fail
+    receipt = execute(manifest, "What tables can I read?", "gab-" + uuid4().hex, model=model, gateway=gateway)
+    evidence = json.loads(model.requests[1]["messages"][0]["content"][1]["text"].split("\n", 1)[1])
+    assert evidence[0]["status"] == "error"
+    assert "toolConfig" not in model.requests[1]
+    assert calls == [manifest["tools"][0]["name"]]
+    assert receipt["tool_calls"][0]["name"] == manifest["tools"][0]["name"]
+    assert receipt["tool_calls"][0]["status"] == "error"
+    assert "no result" in evidence[0]["result"]
+    tool_span = next(span for span in receipt["spans"] if span["attributes"]["gen_ai.operation.name"] == "execute_tool")
+    assert tool_span["attributes"]["gen_ai.tool.call.status"] == "error"
+    assert "A tool error is not proof" in model.requests[1]["system"][0]["text"]
+
+
+def test_gateway_consent_returns_control_to_studio_without_prompt_or_evidence_publication(manifest):
+    from foundation_harness.journey_mcp import GatewayAuthorizationRequired
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    challenge = {"authorization_url": "https://provider.example.com/private-consent", "session_uri": "private-session",
+                 "tool_name": manifest["tools"][0]["name"]}
+    gateway.call = lambda *_: (_ for _ in ()).throw(GatewayAuthorizationRequired(challenge))
+    published = []
+    session = "gab-" + uuid4().hex
+    result = execute(manifest, "Query my data", session, model=model, gateway=gateway, publish=published.append)
+    assert result == {"status": "AUTHORIZATION_REQUIRED", "authorization": challenge,
+                      "definition_digest": manifest["definition_digest"], "session_id": session,
+                      "completed_tool_calls": 0}
+    assert len(model.requests) == 1 and not published
+    assert "private-consent" not in json.dumps(model.requests)
+
+
+def test_gateway_consent_after_a_completed_tool_cannot_auto_resume(manifest):
+    from foundation_harness.journey_mcp import GatewayAuthorizationRequired
+    name = manifest["tools"][0]["name"]
+    class TwoCalls:
+        def __init__(self):
+            self.calls = 0
+        def converse(self, **request):
+            self.calls += 1
+            return {"output": {"message": {"role": "assistant", "content": [{"toolUse": {
+                "toolUseId": "call-" + str(self.calls), "name": name, "input": {"query": "Aurora launch"}}}]}},
+                "stopReason": "tool_use", "usage": {"inputTokens": 10, "outputTokens": 20}}
+    gateway = Gateway(manifest)
+    def call(selected, args):
+        if not gateway.calls:
+            gateway.calls.append((selected, args))
+            return "First read-only result"
+        raise GatewayAuthorizationRequired({"authorization_url": "https://provider.example.com/consent",
+            "session_uri": "private-session", "tool_name": selected})
+    gateway.call = call
+    result = execute(manifest, "Query my data", "gab-" + uuid4().hex, model=TwoCalls(), gateway=gateway)
+    assert result["status"] == "AUTHORIZATION_REQUIRED"
+    assert result["completed_tool_calls"] == 1
+
+
 def test_cortex_agent_final_answer_survives_large_internal_tool_context(manifest):
     manifest["tools"][0]["response_adapter"] = "snowflake-cortex-agent"
     gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
@@ -218,6 +278,27 @@ def test_tool_budget_finishes_from_collected_evidence_without_exceeding_gateway_
     assert root["attributes"]["gab.tool_budget_exhausted"] is True
     assert root["attributes"]["gab.tool_calls_skipped"] == (2 if parallel else 0)
     assert len([s for s in receipt["spans"] if s["attributes"]["gen_ai.operation.name"] == "execute_tool"]) == 6
+
+
+def test_successful_tool_work_can_take_longer_than_150_seconds(manifest, monkeypatch):
+    from types import SimpleNamespace
+    from foundation_harness import journey_runtime
+    elapsed = [0]
+    real_time = journey_runtime.time
+    monkeypatch.setattr(journey_runtime, "time", SimpleNamespace(
+        monotonic=lambda: elapsed[0], time=lambda: real_time.time() + elapsed[0]))
+    gateway, model = Gateway(manifest), Model(manifest["tools"][0]["name"])
+    call = gateway.call
+
+    def slow_success(*args):
+        elapsed[0] += 240
+        return call(*args)
+
+    gateway.call = slow_success
+    receipt = execute(manifest, "Finish the requested query.", "gab-" + uuid4().hex,
+                      model=model, gateway=gateway)
+    assert receipt["status"] == "SUCCEEDED"
+    assert len(gateway.calls) == 1 and len(model.requests) == 2
 
 
 def test_catalog_argument_controls_reach_model_and_gateway_without_mutating_provider_messages(manifest):

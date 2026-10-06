@@ -5,14 +5,14 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 
-def provision(cloud, binding):
+def provision(cloud, binding, *, runtime_prefix="gab_journey_", required_tags=None):
     account, region = cloud.settings["account"], cloud.settings["region"]
     runtime_id = binding["id"]
     expected = f"arn:aws:bedrock-agentcore:{region}:{account}:runtime/{runtime_id}"
-    if not re.fullmatch(r"gab_journey_[A-Za-z0-9_-]+", runtime_id) or binding["arn"] != expected:
+    if not re.fullmatch(re.escape(runtime_prefix) + r"[A-Za-z0-9_-]+", runtime_id) or binding["arn"] != expected:
         raise ValueError("Runtime log binding does not match this deployment")
     tags = cloud.control.list_tags_for_resource(resourceArn=expected)["tags"]
-    required = {"project": "governed-agent-builder", "journey": "create-agent", "auto-delete": "no"}
+    required = required_tags or {"project": "governed-agent-builder", "journey": "create-agent", "auto-delete": "no"}
     if any(tags.get(key) != value for key, value in required.items()):
         raise ValueError("Runtime owner or retention tags do not match")
     tags = {key: tags[key] for key in (*required, "agent", "workspace") if key in tags}
@@ -44,7 +44,7 @@ def provision(cloud, binding):
     if group is not None:
         current = logs.list_tags_for_resource(resourceArn=arn)["tags"]
         if any(key in current and current[key] != tags.get(key)
-               for key in ("project", "journey", "agent", "workspace")):
+               for key in (*required, "agent", "workspace") if key != "auto-delete"):
             raise ValueError("Runtime log group has a conflicting owner")
         if any(current.get(key) != value for key, value in tags.items()):
             logs.tag_resource(resourceArn=arn, tags=tags)

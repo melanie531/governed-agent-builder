@@ -1,0 +1,19 @@
+[project]
+name = "runtime-snowflake-mcp"
+version = "0.1.0"
+description = "Optional read-only Snowflake MCP on AgentCore Runtime with per-user Snowflake OAuth"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "mcp>=1.20,<2",
+  "snowflake-connector-python>=3.17,<5",
+  "sqlglot>=27,<30",
+  "boto3>=1.42,<2",
+  "pyjwt[crypto]>=2.10,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "aws-cdk-lib>=2.200,<3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

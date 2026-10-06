@@ -20,16 +20,23 @@ class Native:
     def __init__(self):
         self.rows = {}
         self.calls = []
+        self.modern = False
 
     def models(self):
         return [{"id": "synthetic.model", "name": "Synthetic model", "provider": "Synthetic", "type": "Foundation model"}]
 
     def register(self, item):
         arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:registry/abcdefghijkl/record/" + digest(item["id"])[:12]
+        if self.modern:
+            arn = arn.replace(":bedrock-agentcore:", ":agent-registry:")
         self.rows[arn] = {"recordArn": arn, "recordVersion": item["version"], "status": "DRAFT",
-                         "descriptors": {"custom": {"inlineContent": json.dumps(registry_descriptor(item))}}}
+                         "descriptors": {"custom": {
+                             "data" if self.modern else "inlineContent": json.dumps(registry_descriptor(item))}}}
+        if self.modern:
+            self.rows[arn]["recordType"] = "CUSTOM"
         self.calls.append("register")
-        return {"arn": arn, "status": "CREATING", "version": item["version"], "binding_digest": item["binding_digest"]}
+        return {"arn": arn, "status": "CREATING", "version": item["version"], "binding_digest": item["binding_digest"],
+                **({"descriptor_type": "custom"} if self.modern else {})}
 
     def record(self, binding):
         return copy.deepcopy(self.rows[binding["arn"]])
@@ -78,8 +85,10 @@ def test_business_cannot_read_admin_sources(platform, path):
     assert native.calls == []
 
 
-def test_model_registry_approval_publish_grant_and_withdraw(platform):
+@pytest.mark.parametrize("modern", [False, True])
+def test_model_registry_approval_publish_grant_and_withdraw(platform, modern):
     client, store, native, _ = platform
+    native.modern = modern
     login(client, "admin")
     created = client.post("/api/admin/platform/models", json={
         "model_id": "synthetic.model", "workspaces": ["research"], "reason": "Synthetic model review"})
@@ -117,8 +126,10 @@ def test_model_registry_approval_publish_grant_and_withdraw(platform):
 
 
 @pytest.mark.parametrize("field,value", [("schema", "tampered"), ("target_id", "different-target"), ("recordVersion", "changed")])
-def test_registry_descriptor_drift_blocks_approval(platform, field, value):
+@pytest.mark.parametrize("modern", [False, True])
+def test_registry_descriptor_drift_blocks_approval(platform, field, value, modern):
     client, _, native, _ = platform
+    native.modern = modern
     login(client, "admin")
     base = "/api/admin/platform/catalog/mcp-tavily"
     revision = {"version": "1", "reason": "Synthetic approval"}
@@ -127,7 +138,20 @@ def test_registry_descriptor_drift_blocks_approval(platform, field, value):
     if field == "recordVersion":
         next(iter(native.rows.values()))[field] = value
     else:
-        descriptor["inlineContent"] = json.dumps({**json.loads(descriptor["inlineContent"]), field: value})
+        key = "data" if modern else "inlineContent"
+        descriptor[key] = json.dumps({**json.loads(descriptor[key]), field: value})
+    assert client.post(base + "/submit", json=revision).status_code == 409
+
+
+def test_native_custom_record_type_cannot_drift(platform):
+    client, _, native, _ = platform
+    native.modern = True
+    login(client, "admin")
+    base = "/api/admin/platform/catalog/mcp-tavily"
+    revision = {"version": "1", "reason": "Synthetic approval"}
+    assert client.post(base + "/register", json=revision).status_code == 200
+    assert client.get(base + "/registry").status_code == 200
+    next(iter(native.rows.values()))["recordType"] = "MCP"
     assert client.post(base + "/submit", json=revision).status_code == 409
 
 

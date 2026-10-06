@@ -84,6 +84,11 @@ class InvokeAgent(VersionAction):
     conversation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
+class ResumeInvocation(Strict):
+    version: int = Field(ge=1)
+    job_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
 class DeletePreview(Strict):
     version: int = Field(ge=1)
 
