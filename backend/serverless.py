@@ -120,16 +120,26 @@ def worker_handler(event, context):
                 with app.state.store.tx() as db:
                     job = db.select("jobs", where=[("id", "=", job_id)]).fetchone()
                 if not job or job["stage"] in TERMINAL: break
+                if getattr(app.state, "hosted_auth", None) is not None:
+                    app.state.hosted_auth.renew_job_session(job_id)
                 app.state.step_job(job_id)
                 with app.state.store.tx() as db:
                     latest = db.select('jobs', where=[('id', '=', job_id)]).fetchone()
                     from .foundation_runs import get
-                    live = get(db, 'foundation-run:' + job_id) or get(db, 'foundation-pending:' + job_id) or get(db, 'journey-job:' + job_id) or get(db, 'mcp-job:' + job_id) or get(db, 'mcp-onboarding-job:' + job_id)
+                    live = get(db, 'foundation-run:' + job_id) or get(db, 'foundation-pending:' + job_id) or get(db, 'journey-job:' + job_id) or get(db, 'mcp-job:' + job_id) or get(db, 'mcp-onboarding-job:' + job_id) or get(db, 'mcp-python-job:' + job_id)
+                    python_cleanup = (get(db, 'mcp-python:' + live['server_id'])
+                        if live and latest['stage'] == 'DELETING'
+                        and job['agent'] == 'mcp-python:' + live.get('server_id', '') else None)
                 if live:
                     if latest['stage'] not in TERMINAL:
-                        if (live.get('kind') == 'delete'
+                        # Drain confirmed progress across frozen MCP resources.
+                        # One SQS hop per ZIP part hits Lambda's recursion limit.
+                        python_progress = (python_cleanup and python_cleanup.get('deletion')
+                            and python_cleanup['phase'] == 'DELETING' and not python_cleanup.get('claim')
+                            and python_cleanup['stage'] != json.loads(job['result']).get('stage'))
+                        if ((python_progress or (live.get('kind') == 'delete'
                                 and live.get('phase') in {'DELETE_DATA', 'DELETE_RECORDS'}
-                                and not live.get('claim') and step_index < 24
+                                and not live.get('claim'))) and step_index < 24
                                 and context.get_remaining_time_in_millis() >= 250000):
                             # Reserve room for the SDK's 210-second timeout and
                             # persistence. Runtime waits and paid calls yield.

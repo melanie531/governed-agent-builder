@@ -84,6 +84,21 @@ def test_default_integration_has_no_sample_tool_or_provider_secret():
     assert "snowflake" not in text.lower() and "tavily" not in text.lower()
 
 
+def test_fresh_account_runtime_prerequisites_are_retained_service_managed_roles():
+    from infra.journey import runtime_prerequisites_template
+
+    resources = runtime_prerequisites_template()["Resources"]
+    assert {r["Properties"]["AWSServiceName"] for r in resources.values()} == {
+        "runtime-identity.bedrock-agentcore.amazonaws.com",
+        "runtime-instances.bedrock-agentcore.amazonaws.com",
+    }
+    for resource in resources.values():
+        assert resource["Type"] == "AWS::IAM::ServiceLinkedRole"
+        assert resource["DeletionPolicy"] == "Retain"
+        assert resource["UpdateReplacePolicy"] == "Retain"
+        assert "Policies" not in resource["Properties"]
+
+
 def test_legacy_integration_keeps_explicit_bindings():
     body = template("operator-provider", "operator-secret")
     assert "KnowledgeFunction" in body["Outputs"]

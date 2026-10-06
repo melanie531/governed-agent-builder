@@ -15,9 +15,9 @@ from foundation_harness.config import canonical, digest
 from . import journey_catalog as catalog
 from . import journey_lifecycle as lifecycle
 from .foundation_runs import get, put
-from .journey_schema import AgentDefinition, InvokeAgent, SaveAgent, VersionAction, DeletePreview, DeleteAgent
+from .journey_schema import AgentDefinition, InvokeAgent, ResumeInvocation, SaveAgent, VersionAction, DeletePreview, DeleteAgent
 
-TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED"}
+TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED", "AUTHORIZATION_REQUIRED"}
 PREFIX = "journey-job:"
 
 
@@ -85,7 +85,14 @@ class Journey:
             if binding["type"] not in ("bedrock-converse", "mcp-server", "mcp", "instructions"):
                 raise HTTPException(409, "This capability needs a compatible Foundation Harness")
             if binding["type"] in ("mcp", "mcp-server") and binding["gateway_id"] != self.settings["gateway_id"]:
-                raise HTTPException(409, "Tool is not connected to the approved Gateway")
+                from .mcp_gateway_oauth import gateway_configuration
+                try:
+                    native = gateway_configuration((get(db, "mcp-onboarding") or {}).get("oauth_gateway"), self.settings)
+                    if (binding["gateway_id"] != native["gateway_id"] or binding["type"] == "mcp" and (
+                        binding.get("gateway_url") != native["gateway_url"] or binding.get("gateway_auth") != "COGNITO")):
+                        raise ValueError()
+                except (ValueError, KeyError, TypeError):
+                    raise HTTPException(409, "Tool is not connected to the approved Gateway") from None
             if binding["type"] == "instructions" and digest(binding["instructions"]) != binding["content_digest"]:
                 raise HTTPException(503, "Skill content does not match the approved catalog version")
         for tool_id in definition["tools"]:
@@ -127,18 +134,24 @@ class Journey:
                 "output_format": definition["output_format"],
                 "skill_instructions": [resolved[cid]["binding"]["instructions"] for cid in definition["skills"]],
                 "capability_versions": definition["component_versions"],
+                "gateway_force_auth_v1": self.settings.get("gateway_force_auth_v1") is True,
                 "tools": [{"name": resolved[cid]["binding"]["name"], "description": resolved[cid]["description"],
                            "inputSchema": resolved[cid]["binding"]["inputSchema"],
                            "schema_digest": resolved[cid]["binding"]["schema_digest"],
                            **({"argument_controls": resolved[cid]["binding"]["argument_controls"]}
                               if resolved[cid]["binding"].get("argument_controls") else {}),
                            **({"response_adapter": resolved[cid]["binding"]["response_adapter"]}
-                              if resolved[cid]["binding"].get("response_adapter") else {})} for cid in definition["tools"]],
+                              if resolved[cid]["binding"].get("response_adapter") else {}),
+                           **({"user_authorization": True} if resolved[cid]["binding"].get("user_authorization") is True else {}),
+                           **({key: resolved[cid]["binding"][key] for key in ("gateway_auth", "gateway_url")}
+                                if resolved[cid]["binding"].get("gateway_auth") == "COGNITO" else {})
+                           } for cid in definition["tools"]],
                 "region": self.settings["region"], "gateway_url": self.settings["gateway_url"],
                 "evidence_bucket": self.settings["bucket"], "evidence_prefix": "journey/evidence",
                 "log_group": self.settings["log_group"]}
 
-    def enqueue(self, db, actor, definition, kind, token, *, session_hash=None, text=None, conversation_id=None):
+    def enqueue(self, db, actor, definition, kind, token, *, session_hash=None, text=None, conversation_id=None,
+                force_gateway_auth=False):
         request_key = "journey-request:" + digest([actor["id"], kind, token])
         previous = get(db, request_key)
         signature = digest([definition["digest"], kind, text, conversation_id])
@@ -151,7 +164,7 @@ class Journey:
             raise HTTPException(429, "Workspace job budget reached; try again later")
         if kind == "deploy":
             deployment = get(db, self.deployment_key(definition))
-            if deployment and deployment["status"] not in ("FAILED", "UNKNOWN", "STALE"):
+            if deployment and deployment["status"] not in ("FAILED", "UNKNOWN", "STALE", "AUTHORIZATION_REQUIRED"):
                 return deployment["job_id"]
         if kind in ("invoke", "evaluation"):
             deployment = get(db, self.deployment_key(definition))
@@ -185,6 +198,8 @@ class Journey:
             state.update(conversation_id=conversation_id,
                          history=[{"role": item["role"], "text": item["text"][:4000]}
                                   for item in conversation["messages"][-6:]])
+            if force_gateway_auth:
+                state["force_gateway_auth"] = True
         db.insert("jobs", {"id": job_id, "agent": definition["agent_id"], "version": definition["version"],
                           "requester": actor["id"], "idem": token, "stage": "QUEUED",
                           "created": now, "updated": now, "deadline": state["deadline"]})
@@ -259,7 +274,7 @@ class Journey:
             return response
         return self.transaction(commit)
 
-    def detail(self, actor, agent_id):
+    def detail(self, actor, agent_id, session_hash=None):
         def load(db):
             agent, definition = self.owned(db, actor, agent_id)
             deletion = get(db, lifecycle.deletion_key(agent_id))
@@ -273,19 +288,36 @@ class Journey:
             versions = [dict(row) for row in db.select("versions", columns=["version", "digest", "created"],
                                                       where=[("agent", "=", agent_id)], order="version", descending=True)]
             issues = []
+            user_authorization_required = False
+            preopen_provider_tab = False
+            gateway_reauthorization = []
+            gateway_force_auth_supported = deployment.get("binding", {}).get("gateway_force_auth_v1") is True
             try:
-                self.validate(db, actor, definition)
+                _, resolved = self.validate(db, actor, definition)
+                user_authorization_required = any(item["binding"].get("user_authorization") for item in resolved.values())
+                if user_authorization_required and getattr(self, "user_connections", None):
+                    gateway_reauthorization = self.user_connections.gateway_reauthorization(
+                        db, actor, definition, session_hash)
+                    preopen_provider_tab = gateway_force_auth_supported and any(item["due"] for item in gateway_reauthorization)
             except HTTPException as exc:
                 issues.append(str(exc.detail))
             invocation_id = get(db, f"journey-invocation:{agent_id}:{definition['version']}")
             invocation = job_state(db, invocation_id) if invocation_id else None
-            last_invocation = ({key: invocation[key] for key in ("id", "phase", "output", "error", "trace_id", "model_id", "tool_calls")
+            last_invocation = ({key: invocation[key] for key in ("id", "phase", "output", "error", "trace_id", "model_id", "tool_calls", "authorization_flow_id")
                                 if key in invocation} if invocation else None)
+            if invocation and invocation["phase"] == "AUTHORIZATION_REQUIRED":
+                last_invocation["resumable"] = (type(invocation.get("completed_tool_calls")) is int
+                    and invocation["completed_tool_calls"] == 0 and invocation.get("resume_depth", 0) == 0)
+                last_invocation["input"] = invocation["input"]
             conversation_id = get(db, f"journey-chat:{agent_id}:{definition['version']}")
             conversation = get(db, f"journey-conversation:{agent_id}:{definition['version']}:{conversation_id}") if conversation_id else None
             return {**agent, "definition": definition, "deployment": deployment, "evaluation": evaluation,
                     "conversation": conversation, "deletion": deletion,
                     "last_invocation": last_invocation,
+                    "user_authorization_required": user_authorization_required,
+                    "preopen_provider_tab": preopen_provider_tab,
+                    "gateway_force_auth_supported": gateway_force_auth_supported,
+                    "gateway_reauthorization": gateway_reauthorization,
                     "versions": versions, "readiness": {"deployable": not issues, "issues": issues}, "mode": self.cloud.mode}
         return self.transaction(load)
 
@@ -296,14 +328,88 @@ class Journey:
             if request.version != agent["current_version"]:
                 raise HTTPException(409, "Use the current version of this agent")
             self.validate(db, actor, definition)
+            force_gateway_auth = False
+            if kind in ("invoke", "evaluation") and getattr(self, "user_connections", None):
+                self.user_connections.required(db, actor, definition)
+                if kind == "invoke":
+                    due = self.user_connections.gateway_reauthorization(db, actor, definition, session_hash)
+                    force_gateway_auth = any(item["due"] for item in due)
+                    if force_gateway_auth:
+                        deployment = get(db, self.deployment_key(definition)) or {}
+                        if deployment.get("binding", {}).get("gateway_force_auth_v1") is not True:
+                            raise HTTPException(409, "Revise and deploy this agent version to enable native Gateway sign-in")
             if kind == "evaluation" and not definition["dataset"]:
                 raise HTTPException(422, "Add an evaluation dataset in a new version before running evaluation")
             job_id = self.enqueue(db, actor, definition, kind, request.idempotency_key,
                                   session_hash=session_hash, text=getattr(request, "input", None),
-                                  conversation_id=getattr(request, "conversation_id", None))
+                                  conversation_id=getattr(request, "conversation_id", None),
+                                  force_gateway_auth=force_gateway_auth)
             state = job_state(db, job_id)
             return {"job_id": job_id, **({"conversation_id": state["conversation_id"]} if state.get("conversation_id") else {})}
         return self.transaction(commit)
+
+    def resume(self, actor, agent_id, request, *, session_hash=None):
+        """One idempotent continuation of a challenge before any tool completed."""
+        def commit(db):
+            if not getattr(self, "user_connections", None):
+                raise HTTPException(409, "Provider continuation is unavailable")
+            agent, definition = self.owned(db, actor, agent_id)
+            lifecycle.ensure_available(db, agent_id)
+            if request.version != agent["current_version"]:
+                raise HTTPException(409, "Use the current version of this agent")
+            self.validate(db, actor, definition)
+            source = job_state(db, request.job_id)
+            if (not source or source["agent"] != agent_id or source["owner"] != actor["id"]
+                    or source["version"] != request.version or source["kind"] != "invoke"):
+                raise HTTPException(404, "Original question not found")
+            token = digest([source["id"], source.get("authorization_flow_id"), "consent-resume"])[:32]
+            request_key = "journey-request:" + digest([actor["id"], "invoke", token])
+            previous = get(db, request_key)
+            if previous:
+                state = job_state(db, previous["job_id"])
+                if not state or state.get("resume_origin") != source["id"]:
+                    raise HTTPException(409, "Continuation request changed")
+                return {"job_id": state["id"], "conversation_id": state["conversation_id"]}
+            if (source["phase"] != "AUTHORIZATION_REQUIRED"
+                    or type(source.get("completed_tool_calls")) is not int
+                    or source["completed_tool_calls"] != 0
+                    or source.get("resume_depth", 0) != 0):
+                raise HTTPException(409, "This question cannot be safely resumed; run it again explicitly")
+            if (source["definition_digest"] != definition["digest"]
+                    or get(db, f"journey-invocation:{agent_id}:{request.version}") != source["id"]):
+                raise HTTPException(409, "A newer question or agent version replaced this continuation")
+            flow, binding = self.user_connections.owned(db, actor, source["authorization_flow_id"])
+            from .mcp_user_connections import connected
+            if (flow["phase"] != "CONNECTED" or flow["expires"] <= time.time()
+                    or flow["id"] != source["authorization_flow_id"]
+                    or binding["server_id"] not in definition["mcp_servers"]
+                    or not connected(db, actor["id"], binding["server_id"], binding["configuration_digest"])):
+                raise HTTPException(409, "Complete provider consent before continuing the question")
+            job_id = self.enqueue(db, actor, definition, "invoke", token, session_hash=session_hash,
+                                  text=source["input"], conversation_id=source["conversation_id"])
+            state = job_state(db, job_id)
+            state["resume_origin"] = source["id"]
+            state["resume_depth"] = 1
+            self.persist(db, state)
+            return {"job_id": job_id, "conversation_id": state["conversation_id"]}
+        return self.transaction(commit)
+
+    def resume_connected_flow(self, actor, flow_id, *, session_hash=None):
+        """Complete a linked first-tool question after provider consent."""
+        def source_request(db):
+            flow, _ = self.user_connections.owned(db, actor, flow_id)
+            if flow["phase"] != "CONNECTED" or not flow.get("source_job_id"):
+                return None
+            source = job_state(db, flow["source_job_id"])
+            if (not source or source.get("owner") != actor["id"]
+                    or source.get("authorization_flow_id") != flow_id):
+                raise HTTPException(409, "The saved question does not match this provider authorization")
+            return source["agent"], ResumeInvocation(version=source["version"], job_id=source["id"])
+        request = self.transaction(source_request)
+        if request is None:
+            return None
+        agent_id, body = request
+        return self.resume(actor, agent_id, body, session_hash=session_hash)
 
     def result(self, actor, job_id):
         def load(db):
@@ -312,7 +418,7 @@ class Journey:
                 raise HTTPException(404, "Job not found")
             self.owned(db, actor, state["agent"])
             return {key: state[key] for key in ("id", "kind", "phase", "version", "mode", "cases", "output", "error", "trace_id",
-                                               "model_id", "tool_calls", "score") if key in state}
+                                               "model_id", "tool_calls", "score", "authorization_flow_id") if key in state}
         return self.transaction(load)
 
     def authority(self, db, state):
@@ -385,7 +491,7 @@ class Journey:
             from botocore.exceptions import ClientError, BotoCoreError
             uncertain = bool(task and (isinstance(exc, (BotoCoreError, TimeoutError))
                              or isinstance(exc, ClientError) and exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0) >= 500)
-                             and (task[0]["kind"] in ("invoke", "evaluation") or task[0]["phase"] == "SMOKE"))
+                             and task[0]["kind"] in ("invoke", "evaluation"))
             message = str(exc.detail) if isinstance(exc, HTTPException) else (
                 str(exc) if isinstance(exc, (ValueError, TimeoutError)) else
                 (exc.operation_name + " failed: " + exc.response["Error"]["Code"]
@@ -419,8 +525,43 @@ class Journey:
             if receipt is None:
                 return None
             return receipt
-        return self.cloud.invoke(binding, definition, text, request_id,
-                                 **({"history": state["history"]} if state.get("history") else {}))
+        options = {"history": state["history"]} if state.get("history") else {}
+        if state.get("force_gateway_auth") is True:
+            options["force_gateway_auth"] = True
+        if getattr(self, "user_connections", None):
+            def user_context(db):
+                actor, current = self.authority(db, state)
+                bindings = self.user_connections.required(db, actor, current,
+                    require_consent=state["kind"] in ("invoke", "evaluation"))
+                if not bindings:
+                    return None, []
+                if not self.hosted:
+                    raise HTTPException(409, "Per-user tools require hosted Studio sign-in")
+                authority = db.select("job_authority", where=[("id", "=", state["id"])]).fetchone()
+                session = db.select("hosted_sessions", where=[("id_hash", "=", authority["session_hash"])]).fetchone()
+                claims = self.auth.verify(session["access_token"], "access")
+                if min(session["expires"], claims["exp"]) <= time.time() + 180:
+                    raise HTTPException(403, "Your Studio session is about to expire. Sign in again before running per-user tools.")
+                return session["access_token"], bindings
+            token, bindings = self.transaction(user_context)
+            for user_binding in bindings:
+                self.user_connections.validate_native(user_binding)
+            if token:
+                options["user_token"] = token
+        receipt = self.cloud.invoke(binding, definition, text, request_id, **options)
+        if receipt.get("status") == "AUTHORIZATION_REQUIRED":
+            def capture(db):
+                actor, current = self.authority(db, state)
+                source_job_id = (state["id"] if state["kind"] == "invoke"
+                                 and type(receipt.get("completed_tool_calls")) is int
+                                 and receipt["completed_tool_calls"] == 0
+                                 and state.get("resume_depth", 0) == 0 else None)
+                return self.user_connections.capture_gateway(
+                    db, actor, current, receipt["authorization"], source_job_id=source_job_id)
+            flow = self.transaction(capture)
+            return {"status": "AUTHORIZATION_REQUIRED", "authorization_flow_id": flow["id"],
+                    "completed_tool_calls": receipt.get("completed_tool_calls")}
+        return receipt
 
     def perform(self, state, definition, deployment, recovery):
         phase, kind = state["phase"], state["kind"]
@@ -431,19 +572,17 @@ class Journey:
                 manifest = self.transaction(lambda db: get(db, "journey-manifest:" + definition["digest"]))
                 binding = self.cloud.create(manifest, digest([definition["digest"], "deploy"]))
                 return {"phase": "WAIT_RUNTIME", "binding": binding}
-            if phase == "WAIT_RUNTIME":
+            if phase in ("WAIT_RUNTIME", "SMOKE"):
                 if not self.cloud.ready(state["binding"]):
                     return {"phase": "WAIT_RUNTIME"}
                 self.cloud.provision_runtime_logs(state["binding"])
-                return {"phase": "SMOKE"}
-            if phase == "SMOKE":
-                receipt = self.invocation(state, definition, state["binding"],
-                                          "Reply with one short sentence confirming that you are ready to help.", "smoke", recovery)
-                return {"phase": "DEPLOYED", "smoke": self.public_receipt(receipt)} if receipt else {
-                    "phase": "UNKNOWN", "error": "Smoke invocation outcome is uncertain; no duplicate invocation was sent"}
+                return {"phase": "DEPLOYED"}
         binding = deployment["binding"] if deployment else None
         if kind == "invoke":
             receipt = self.invocation(state, definition, binding, state["input"], "invoke", recovery)
+            if receipt and receipt.get("status") == "AUTHORIZATION_REQUIRED":
+                return {"phase": "AUTHORIZATION_REQUIRED", "authorization_flow_id": receipt["authorization_flow_id"],
+                        "completed_tool_calls": receipt.get("completed_tool_calls")}
             return {"phase": "SUCCEEDED", **self.public_receipt(receipt)} if receipt else {
                 "phase": "UNKNOWN", "error": "Invocation outcome is uncertain; no duplicate invocation was sent"}
         if kind == "evaluation":
@@ -451,6 +590,8 @@ class Journey:
             case = definition["dataset"][index]
             if phase in ("QUEUED", "EVAL_INVOKE"):
                 receipt = self.invocation(state, definition, binding, case["input"], "case:" + case["id"], recovery)
+                if receipt and receipt.get("status") == "AUTHORIZATION_REQUIRED":
+                    return {"phase": "AUTHORIZATION_REQUIRED", "authorization_flow_id": receipt["authorization_flow_id"]}
                 return {"phase": "EVAL_SCORE", "case_receipt": receipt["evidence"],
                         "case_output": self.public_receipt(receipt)} if receipt else {
                     "phase": "UNKNOWN", "error": "Case invocation outcome is uncertain; no duplicate invocation was sent"}
@@ -509,15 +650,15 @@ class Journey:
                 deployment["smoke"] = state["smoke"]
             if state.get("error"):
                 deployment["error"] = state["error"]
+            if state.get("authorization_flow_id"):
+                deployment["authorization_flow_id"] = state["authorization_flow_id"]
             put(db, self.deployment_key(definition), deployment)
-            if state["phase"] == "DEPLOYED" and definition["dataset"]:
-                auth = db.select("job_authority", where=[("id", "=", state["id"])]).fetchone()
-                self.enqueue(db, actor, definition, "evaluation", state["id"] + "-evaluation",
-                             session_hash=auth["session_hash"] if auth else None)
         if state["kind"] == "evaluation":
             put(db, self.evaluation_key(definition), {"status": state["phase"], "job_id": state["id"],
                                                       "cases": state["cases"], "score": state.get("score"),
-                                                      "error": state.get("error"), "total": len(definition["dataset"])})
+                                                      "error": state.get("error"), "total": len(definition["dataset"]),
+                                                      **({"authorization_flow_id": state["authorization_flow_id"]}
+                                                         if state.get("authorization_flow_id") else {})})
 
 
 def router(journey, who):
@@ -547,7 +688,7 @@ def router(journey, who):
 
     @routes.get("/agents/{agent_id}")
     def detail(agent_id: str, request: Request):
-        return journey.detail(who(request), agent_id)
+        return journey.detail(who(request), agent_id, session_hash(request))
 
     @routes.post("/agents/{agent_id}/deploy", status_code=202)
     def deploy(agent_id: str, body: VersionAction, request: Request):
@@ -558,6 +699,12 @@ def router(journey, who):
     @routes.post("/agents/{agent_id}/invoke", status_code=202)
     def invoke(agent_id: str, body: InvokeAgent, request: Request):
         result = journey.action(who(request), agent_id, body, "invoke", session_hash(request))
+        request.app.state.wake.set()
+        return result
+
+    @routes.post("/agents/{agent_id}/resume", status_code=202)
+    def resume(agent_id: str, body: ResumeInvocation, request: Request):
+        result = journey.resume(who(request), agent_id, body, session_hash=session_hash(request))
         request.app.state.wake.set()
         return result
 

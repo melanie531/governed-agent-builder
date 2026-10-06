@@ -50,7 +50,7 @@ def preflight():
                 "Live application template differs from the target configuration. "
                 "Restore the complete bound state or use a scoped, reviewed infrastructure release.")
     for name, current in (("artifacts", artifacts_template()), ("app", body)):
-        CF.validate_template(TemplateBody=json.dumps(current))
+        CF.validate_template(TemplateBody=json.dumps(current, separators=(",", ":")))
     save("preflight", {"accountMatch": True, "noVpcDependencies": True, "cloudFormationValidated": True, "time": time.time()})
     print("Preflight PASS: explicit STS account and bound stack identities, no VPC dependency, both templates AWS-validated", flush=True)
 
@@ -61,7 +61,7 @@ def deploy(name, body, parameters=None):
     TARGET.check_stacks()
     safety(body)
     stack_name = PREFIX + "-" + name
-    request = {"StackName": stack_name, "TemplateBody": json.dumps(body), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}, {"Key": "auto-delete", "Value": "no"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}
+    request = {"StackName": stack_name, "TemplateBody": json.dumps(body, separators=(",", ":")), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}, {"Key": "auto-delete", "Value": "no"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}
     try:
         prior = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
     except ClientError as exc:

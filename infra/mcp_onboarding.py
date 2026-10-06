@@ -49,6 +49,28 @@ def configure_app(resources, settings):
         statements.append({"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": secrets})
     if config.get("credential_prefix"):
         prefix = credential_prefix(config)
+        workload = identity + "/workload-identity/" + prefix + "-mcp-users-*"
+        business_workloads = [identity, workload]
+        oauth = vault + "/oauth2credentialprovider/" + prefix + "-mcp-oauth-*"
+        user_read = [
+            {"Effect": "Allow", "Action": ["bedrock-agentcore:GetAgentRuntime"],
+             "Resource": f"arn:aws:bedrock-agentcore:{region}:{account}:runtime/*"},
+            {"Effect": "Allow", "Action": ["bedrock-agentcore:GetWorkloadIdentity",
+                 "bedrock-agentcore:GetOauth2CredentialProvider", "bedrock-agentcore:ListTagsForResource"],
+             "Resource": [identity, workload, vault, oauth]},
+        ]
+        statements.extend(user_read)
+        resources["BusinessRole"]["Properties"]["Policies"].append({
+            "PolicyName": "McpUserAuthorization", "PolicyDocument": {"Version": "2012-10-17", "Statement": [
+                *user_read,
+                {"Effect": "Allow", "Action": ["bedrock-agentcore:GetWorkloadAccessToken", "bedrock-agentcore:GetWorkloadAccessTokenForJWT"],
+                 "Resource": business_workloads},
+                {"Effect": "Allow", "Action": ["bedrock-agentcore:GetResourceOauth2Token"],
+                 "Resource": [*business_workloads, vault, oauth]},
+                {"Effect": "Allow", "Action": ["bedrock-agentcore:CompleteResourceTokenAuth"], "Resource": "*",
+                 "Condition": {"StringEquals": {"aws:RequestedRegion": region}}},
+                {"Effect": "Deny", "Action": ["bedrock-agentcore:GetWorkloadAccessTokenForUserId"], "Resource": "*"},
+            ]}})
         provider = vault + "/apikeycredentialprovider/" + prefix + "-mcp-*"
         secret = secret_prefix + prefix + "/mcp/*"
         statements.extend(credential_use_statements(settings, prefix))
@@ -66,21 +88,25 @@ def configure_app(resources, settings):
                 # The service's get-or-create path authorizes this dependency
                 # even when the account's default vault already exists.
                 {"Effect": "Allow", "Action": ["bedrock-agentcore:CreateTokenVault", "bedrock-agentcore:GetTokenVault"], "Resource": vault},
-                {"Effect": "Allow", "Action": ["bedrock-agentcore:CreateApiKeyCredentialProvider"],
-                 "Resource": [vault, vault + "/apikeycredentialprovider/*"], "Condition": {"StringEquals": required_tags}},
+                {"Effect": "Allow", "Action": ["bedrock-agentcore:CreateApiKeyCredentialProvider",
+                                              "bedrock-agentcore:CreateOauth2CredentialProvider"],
+                 "Resource": [vault, vault + "/apikeycredentialprovider/*", vault + "/oauth2credentialprovider/*"],
+                 "Condition": {"StringEquals": required_tags}},
                 # Native CreateApiKeyCredentialProvider checks TagResource on
                 # the wildcard provider ARN without request-tag context.
                 # Creation itself requires tags; read-back verifies all tags
                 # before admitting a connection. Credential use stays prefixed.
                 {"Effect": "Allow", "Action": ["bedrock-agentcore:TagResource"],
-                 "Resource": [vault, vault + "/apikeycredentialprovider/*"]},
+                 "Resource": [vault, vault + "/apikeycredentialprovider/*", vault + "/oauth2credentialprovider/*"]},
                 # AgentCore authorizes metadata lookup against both the provider
                 # and its parent vault (including a not-yet-created provider).
                 {"Effect": "Allow", "Action": ["bedrock-agentcore:GetApiKeyCredentialProvider",
-                                              "bedrock-agentcore:DeleteApiKeyCredentialProvider"],
-                 "Resource": [vault, provider]},
+                                              "bedrock-agentcore:DeleteApiKeyCredentialProvider",
+                                              "bedrock-agentcore:GetOauth2CredentialProvider",
+                                              "bedrock-agentcore:DeleteOauth2CredentialProvider"],
+                 "Resource": [vault, provider, oauth]},
                 {"Effect": "Allow", "Action": ["bedrock-agentcore:ListTagsForResource"],
-                 "Resource": [vault, vault + "/apikeycredentialprovider/*"]},
+                 "Resource": [vault, vault + "/apikeycredentialprovider/*", vault + "/oauth2credentialprovider/*"]},
             ]}})
     # Reuse exact unconditional grants already installed on this worker role.
     # IAM counts all inline policies together; duplicate statements can exceed
@@ -96,8 +122,13 @@ def configure_app(resources, settings):
             for action in values(statement["Action"]) for resource in values(statement["Resource"]))
     statements = [{**s, "Action": [a for a in values(s["Action"]) if not covered({**s, "Action": [a]})]} for s in statements]
     statements = [s for s in statements if s["Action"]]
-    resources["WorkerRole"]["Properties"]["Policies"].append({
-        "PolicyName": "McpOnboarding", "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}})
+    # The existing worker is near IAM's aggregate 10KB inline-policy limit.
+    # Keep this independently bounded policy in CloudFormation; the release
+    # installer verifies native retention tags before publishing the UI.
+    resources["McpOnboardingPolicy"] = {"Type": "AWS::IAM::ManagedPolicy", "Properties": {
+        "Description": "Scoped Studio MCP onboarding and credential use",
+        "Roles": [ref("WorkerRole")],
+        "PolicyDocument": {"Version": "2012-10-17", "Statement": statements}}}
     resources["BusinessRole"]["Properties"]["Policies"].append({
         "PolicyName": "McpRegistryRead", "PolicyDocument": {"Version": "2012-10-17", "Statement": [{
             "Effect": "Allow", "Action": ["agent-registry:GetRegistry", "agent-registry:GetRegistryRecord"],
@@ -113,6 +144,9 @@ def configure_app(resources, settings):
     resources["Worker"]["Properties"]["Timeout"] = max(300, resources["Worker"]["Properties"]["Timeout"])
     resources["Jobs"]["Properties"]["VisibilityTimeout"] = max(
         resources["Jobs"]["Properties"]["VisibilityTimeout"], 6 * resources["Worker"]["Properties"]["Timeout"])
+    if settings.get("mcp_package_upload"):
+        from .mcp_packages import policies
+        resources.update(policies(settings))
 
 
 def credential_use_statements(settings, prefix):
@@ -123,6 +157,9 @@ def credential_use_statements(settings, prefix):
     return [
         {"Effect": "Allow", "Action": ["bedrock-agentcore:GetResourceApiKey"], "Resource": [
             vault + "/apikeycredentialprovider/" + prefix + "-mcp-*", vault, identity,
+            identity + "/workload-identity/" + settings["gateway_id"]]},
+        {"Effect": "Allow", "Action": ["bedrock-agentcore:GetResourceOauth2Token"], "Resource": [
+            vault + "/oauth2credentialprovider/" + prefix + "-mcp-oauth-*", vault, identity,
             identity + "/workload-identity/" + settings["gateway_id"]]},
         {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"],
          "Resource": f"arn:aws:secretsmanager:{region}:{account}:secret:{prefix}/mcp/*"},

@@ -1,4 +1,6 @@
 import json
+import time
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -7,13 +9,16 @@ from fastapi import HTTPException
 from backend.app import create_app
 from backend.catalog import PERSONAS
 from backend.foundation_runs import get, put
+from backend.journey import job_state
 from backend.journey_catalog import SkillPublication, publish_skill
-from backend.journey_schema import AgentDefinition, InvokeAgent, SaveAgent, VersionAction
+from backend.journey_schema import AgentDefinition, InvokeAgent, ResumeInvocation, SaveAgent, VersionAction
 from backend.live_catalog import grant_scope
 from backend.store import Store
 from tests.journey_support import definition, drain, make_journey
 from backend import journey_lifecycle as lifecycle
 from backend.journey_schema import DeleteAgent, DeletePreview
+from backend.mcp_user_connections import GRANT
+from foundation_harness.config import digest
 
 
 @pytest.fixture
@@ -37,12 +42,111 @@ def test_no_dataset_deploys_and_invokes_without_any_evaluation(setup, template):
     assert detail["evaluation"]["status"] == "SKIPPED"
     assert detail["evaluation"]["score"] is None
     assert not cloud.evaluations
+    assert not cloud.invocations  # Deploy only proves the Runtime endpoint is ready.
     job = journey.action(PERSONAS["alex"], saved["agent_id"],
                          InvokeAgent(version=1, idempotency_key=uuid4().hex, input="What is the support target?"), "invoke")
     drain(journey)
     assert journey.result(PERSONAS["alex"], job["job_id"])["phase"] == "SUCCEEDED"
     assert len(cloud.created) == 1
-    assert len(cloud.invocations) == 2  # health check and explicit invocation
+    assert len(cloud.invocations) == 1  # Only the user's explicit invocation.
+
+
+@pytest.mark.parametrize("new_conversation,due,expected", [
+    (True, False, False), (True, True, True), (False, True, True), (False, False, False)])
+def test_native_gateway_force_is_persisted_only_when_session_authorization_is_due(
+        setup, new_conversation, due, expected):
+    journey, _ = setup
+    journey.settings["gateway_force_auth_v1"] = True
+    saved = save(journey)
+    drain(journey)
+    with journey.store.tx() as db:
+        manifest = get(db, "journey-manifest:" + journey.owned(db, PERSONAS["alex"], saved["agent_id"])[1]["digest"])
+        assert manifest["gateway_force_auth_v1"] is True
+        deployment_key = journey.deployment_key(journey.owned(db, PERSONAS["alex"], saved["agent_id"])[1])
+        deployment = get(db, deployment_key)
+        deployment["binding"]["gateway_force_auth_v1"] = True
+        put(db, deployment_key, deployment)
+        conversation_id = uuid4().hex
+        if not new_conversation:
+            put(db, f"journey-conversation:{saved['agent_id']}:1:{conversation_id}",
+                {"id": conversation_id, "messages": []})
+    journey.user_connections = SimpleNamespace(
+        required=lambda *args, **kwargs: [],
+        gateway_reauthorization=lambda *args: [{"server_id": "gateway", "due": due}])
+    request = InvokeAgent(version=1, idempotency_key=uuid4().hex, input="List my tables",
+                          conversation_id=None if new_conversation else conversation_id)
+    job = journey.action(PERSONAS["alex"], saved["agent_id"], request, "invoke")
+    with journey.store.tx() as db:
+        assert job_state(db, job["job_id"]).get("force_gateway_auth", False) is expected
+    assert journey.action(PERSONAS["alex"], saved["agent_id"], request, "invoke") == job
+
+
+def test_old_runtime_cannot_pretend_to_force_fresh_gateway_consent(setup):
+    journey, _ = setup
+    saved = save(journey)
+    drain(journey)
+    journey.user_connections = SimpleNamespace(
+        required=lambda *args, **kwargs: [],
+        gateway_reauthorization=lambda *args: [{"server_id": "gateway", "due": True}])
+    with pytest.raises(HTTPException, match="Revise and deploy"):
+        journey.action(PERSONAS["alex"], saved["agent_id"], InvokeAgent(
+            version=1, idempotency_key=uuid4().hex, input="List my tables"), "invoke")
+
+
+@pytest.mark.parametrize("completed_tool_calls", [0, 1, None])
+def test_consent_resumes_original_question_only_before_any_tool_completed(setup, completed_tool_calls):
+    journey, cloud = setup
+    saved = save(journey)
+    drain(journey)
+    flow = {"id": "flow-one", "phase": "CONSENT_REQUIRED", "expires": time.time() + 600}
+    binding = {"server_id": "mcp-knowledge", "configuration_digest": "c" * 64}
+    journey.user_connections = SimpleNamespace(
+        required=lambda *args, **kwargs: [],
+        gateway_reauthorization=lambda *args: [],
+        capture_gateway=lambda *args, **kwargs: flow.update(
+            source_job_id=kwargs.get("source_job_id")) or flow,
+        owned=lambda db, actor, flow_id: (flow, binding),
+    )
+    actual_invoke = cloud.invoke
+    attempts = []
+    def invoke(*args, **kwargs):
+        attempts.append(args[2])
+        if len(attempts) == 1:
+            return {"status": "AUTHORIZATION_REQUIRED", "authorization": {},
+                    **({"completed_tool_calls": completed_tool_calls} if completed_tool_calls is not None else {})}
+        return actual_invoke(*args, **kwargs)
+    cloud.invoke = invoke
+    original = journey.action(PERSONAS["alex"], saved["agent_id"],
+        InvokeAgent(version=1, idempotency_key=uuid4().hex, input="What is the support target?"), "invoke")
+    drain(journey)
+    original_id = original["job_id"]
+    assert flow.get("source_job_id") == (original_id if completed_tool_calls == 0 else None)
+    detail = journey.detail(PERSONAS["alex"], saved["agent_id"])
+    assert detail["last_invocation"]["phase"] == "AUTHORIZATION_REQUIRED"
+    assert detail["last_invocation"]["resumable"] is (completed_tool_calls == 0)
+    request = ResumeInvocation(version=1, job_id=original_id)
+    with pytest.raises(HTTPException, match="consent" if completed_tool_calls == 0 else "safely resumed"):
+        journey.resume(PERSONAS["alex"], saved["agent_id"], request)
+    flow["phase"] = "CONNECTED"
+    with journey.store.tx() as db:
+        put(db, GRANT + digest(["alex", binding["server_id"]]), {
+            "phase": "CONNECTED", "configuration_digest": binding["configuration_digest"]})
+    if completed_tool_calls != 0:
+        with pytest.raises(HTTPException, match="safely resumed"):
+            journey.resume(PERSONAS["alex"], saved["agent_id"], request)
+        assert journey.resume_connected_flow(PERSONAS["alex"], flow["id"]) is None
+        assert attempts == ["What is the support target?"]
+        return
+    resumed = journey.resume_connected_flow(PERSONAS["alex"], flow["id"])
+    assert journey.resume_connected_flow(PERSONAS["alex"], flow["id"]) == resumed
+    assert resumed["job_id"] != original_id
+    assert journey.resume(PERSONAS["alex"], saved["agent_id"], request) == resumed
+    drain(journey)
+    assert journey.result(PERSONAS["alex"], original_id)["phase"] == "AUTHORIZATION_REQUIRED"
+    assert journey.result(PERSONAS["alex"], resumed["job_id"])["phase"] == "SUCCEEDED"
+    assert attempts == ["What is the support target?", "What is the support target?"]
+    conversation = journey.detail(PERSONAS["alex"], saved["agent_id"])["conversation"]
+    assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
 
 
 @pytest.mark.parametrize("template", ["research", "knowledge"])
@@ -53,10 +157,16 @@ def test_synthetic_cases_use_independent_sessions_and_evaluation_jobs(setup, tem
     drain(journey)
     result = journey.detail(PERSONAS["alex"], saved["agent_id"])
     assert result["deployment"]["status"] == "DEPLOYED"
+    assert result["evaluation"]["status"] == "NOT_STARTED"
+    assert not cloud.invocations and not cloud.evaluations
+    journey.action(PERSONAS["alex"], saved["agent_id"],
+                   VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")
+    drain(journey)
+    result = journey.detail(PERSONAS["alex"], saved["agent_id"])
     assert result["evaluation"]["status"] == "PASSED"
     assert len(result["evaluation"]["cases"]) == len(cases) == 2
     assert len(cloud.evaluations) == 2
-    assert len({item["request_id"] for item in cloud.invocations}) == 3
+    assert len({item["request_id"] for item in cloud.invocations}) == 2
 
 
 def test_deployed_tool_argument_controls_come_from_the_catalog_binding(setup):
@@ -81,6 +191,9 @@ def test_evaluation_failure_preserves_deployed_runtime(setup, failure):
     cloud.fail_evaluation = failure == "service"
     saved = save(journey, dataset=[{"id": "a", "input": "A question", "expected_response": "Reference answer"}])
     drain(journey)
+    journey.action(PERSONAS["alex"], saved["agent_id"],
+                   VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")
+    drain(journey)
     result = journey.detail(PERSONAS["alex"], saved["agent_id"])
     assert result["deployment"]["status"] == "DEPLOYED"
     assert result["evaluation"]["status"] == ("FAILED_QUALITY" if failure == "quality" else "ERROR")
@@ -94,9 +207,33 @@ def test_double_submit_and_duplicate_worker_do_not_duplicate_cloud_work(setup):
     for _ in range(12):
         journey.step(first["job_id"])
     assert len(cloud.created) == 1
-    assert len(cloud.invocations) == 1
+    assert not cloud.invocations
     repeated = journey.action(PERSONAS["alex"], first["agent_id"], VersionAction(version=1, idempotency_key=uuid4().hex), "deploy")
     assert repeated["job_id"] == first["job_id"]
+
+
+def test_consent_blocked_deployment_can_retry_without_replaying_tool_call(setup):
+    journey, cloud = setup
+    saved = save(journey)
+    journey.step(saved["job_id"])  # The Runtime was created, but the old deployment tried a smoke call.
+    with journey.store.tx() as db:
+        state = get(db, "journey-job:" + saved["job_id"])
+        binding = state["binding"]
+        state.update(phase="AUTHORIZATION_REQUIRED", authorization_flow_id="previous-consent")
+        journey.persist(db, state)
+        _, current = journey.owned(db, PERSONAS["alex"], saved["agent_id"])
+        put(db, journey.deployment_key(current), {"status": "AUTHORIZATION_REQUIRED",
+            "job_id": saved["job_id"], "binding": binding, "authorization_flow_id": "previous-consent"})
+    request = VersionAction(version=1, idempotency_key=uuid4().hex)
+    retry = journey.action(PERSONAS["alex"], saved["agent_id"], request, "deploy")
+    assert retry["job_id"] != saved["job_id"]
+    assert journey.action(PERSONAS["alex"], saved["agent_id"], request, "deploy") == retry
+    drain(journey)
+    assert journey.result(PERSONAS["alex"], saved["job_id"])["phase"] == "AUTHORIZATION_REQUIRED"
+    detail = journey.detail(PERSONAS["alex"], saved["agent_id"])
+    assert detail["deployment"]["status"] == "DEPLOYED"
+    assert detail["deployment"]["binding"] == binding
+    assert not cloud.invocations
 
 
 def test_failed_knowledge_agent_recovers_with_current_foundation_without_losing_configuration(setup, monkeypatch):
@@ -346,9 +483,9 @@ def test_uncertain_invocation_is_not_automatically_replayed(setup, monkeypatch):
 def test_expired_evaluate_claim_is_not_replayed(setup):
     journey, cloud = setup
     saved = save(journey, dataset=[{"id": "a", "input": "Question", "expected_response": "Answer"}])
-    for _ in range(3):
-        journey.step(saved["job_id"])
-    evaluation = journey.detail(PERSONAS["alex"], saved["agent_id"])["evaluation"]["job_id"]
+    drain(journey)
+    evaluation = journey.action(PERSONAS["alex"], saved["agent_id"],
+                                VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")["job_id"]
     journey.step(evaluation)
     with journey.store.tx() as db:
         state = get(db, "journey-job:" + evaluation)
@@ -363,9 +500,9 @@ def test_expired_evaluate_claim_is_not_replayed(setup):
 def test_repeated_evaluation_click_reuses_the_active_job(setup):
     journey, _ = setup
     saved = save(journey, dataset=[{"id": "a", "input": "Question"}])
-    for _ in range(3):
-        journey.step(saved["job_id"])
-    evaluation = journey.detail(PERSONAS["alex"], saved["agent_id"])["evaluation"]["job_id"]
+    drain(journey)
+    evaluation = journey.action(PERSONAS["alex"], saved["agent_id"],
+                                VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")["job_id"]
     second = journey.action(PERSONAS["alex"], saved["agent_id"],
                             VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")
     assert second["job_id"] == evaluation

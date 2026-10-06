@@ -133,6 +133,30 @@ def test_generic_endpoint_discovery_requires_review_before_native_approval_and_p
     assert client.get(record_path).status_code == 409
 
 
+def test_existing_workspace_catalog_does_not_limit_new_mcp_publication(setup):
+    client, store, service, _ = setup
+    existing = []
+    with store.tx() as db:
+        for index in range(35):
+            item = {"id": f"existing-capability-{index}", "name": f"Existing capability {index}",
+                    "approved": True, "default_grant_workspaces": ["research"]}
+            existing.append(item)
+            db.insert("components", {"id": item["id"], "body": json.dumps(item)})
+    created = start(setup)
+    drain(service, created["job_id"])
+    result = approve(setup, created)
+    assert result.status_code == 202, result.text
+    drain(service, result.json()["job_id"])
+    state = detail(setup, created)
+    assert state["phase"] == "READY"
+    with store.tx() as db:
+        for item in existing:
+            assert json.loads(db.select("components", where=[("id", "=", item["id"])]).fetchone()["body"]) == item
+        server = json.loads(db.select("components", where=[("id", "=", state["catalog_id"])]).fetchone()["body"])
+        assert server["approved"] is True
+        assert len(server["default_tool_ids"]) == 1
+
+
 @pytest.mark.parametrize("patch", [
     {"endpoint": "http://data.example.com/mcp"}, {"endpoint": "https://127.0.0.1/mcp"},
     {"endpoint": "https://data.example.com.evil.test/mcp"},

@@ -5,10 +5,15 @@ import boto3
 from botocore.config import Config
 
 from foundation_harness.config import digest
-from foundation_harness.journey_mcp import GatewayMCP
-from .mcp_onboarding import configuration, endpoint_origin
+from foundation_harness.journey_mcp import GatewayMCP, USER_TOKEN_HEADER
+from .mcp_onboarding import configuration, endpoint_allowed
+from .mcp_gateway_oauth import gateway_for, target_configuration
 
 NO_RETRIES = Config(retries={"total_max_attempts": 1}, connect_timeout=5, read_timeout=30)
+
+def user_metadata(connection):
+    return {"allowedRequestHeaders": [USER_TOKEN_HEADER]} if (
+        connection.get("user_authorization") and connection["user_authorization"].get("mode") != "gateway") else {}
 
 
 class OnboardingCloud:
@@ -20,15 +25,26 @@ class OnboardingCloud:
         self.transport = transport or GatewayMCP(self.session, settings["gateway_url"], timeout=65)
         self.gateway_arn = f"arn:aws:bedrock-agentcore:{settings['region']}:{settings['account']}:gateway/{settings['gateway_id']}"
 
+    def routing(self, state, config):
+        connection = next(c for c in config["connections"] if c["id"] == state["connection_id"])
+        route = gateway_for(connection, config, self.settings)
+        return {**route, "arn": f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:gateway/{route['gateway_id']}"}
+
     def validate(self, state, config):
         config = configuration(config, self.settings)
         connection = next(c for c in config["connections"] if c["id"] == state["connection_id"])
-        if endpoint_origin(state["endpoint"]) not in connection["allowed_origins"]:
+        if not endpoint_allowed(connection, state["endpoint"]):
             raise ValueError("Endpoint is outside the credential connection")
-        gateway = self.control.get_gateway(gatewayIdentifier=self.settings["gateway_id"])
-        if (gateway["gatewayArn"] != self.gateway_arn or gateway["gatewayUrl"] != self.settings["gateway_url"]
-                or gateway["status"] != "READY" or gateway["authorizerType"] != "AWS_IAM"):
+        route = self.routing(state, config)
+        native_oauth = connection.get("user_authorization", {}).get("mode") == "gateway"
+        gateway = self.control.get_gateway(gatewayIdentifier=route["gateway_id"])
+        if (gateway["gatewayArn"] != route["arn"] or gateway["gatewayUrl"] != route["gateway_url"]
+                or gateway["status"] != "READY" or gateway["authorizerType"] != ("CUSTOM_JWT" if native_oauth else "AWS_IAM")):
             raise ValueError("Gateway identity or authorization changed")
+        if native_oauth and (not state.get("tool_schema") or gateway.get("authorizerConfiguration") != {
+            "customJWTAuthorizer": {"discoveryUrl": route["issuer"] + "/.well-known/openid-configuration",
+                                   "allowedClients": [route["client_id"]], "allowedScopes": ["openid"]}}):
+            raise ValueError("Cognito Gateway binding or supplied tool schema changed")
         registry = self.registry.get_registry(registryId=config["registry_id"])
         if (registry["registryArn"] != config["registry_arn"] or registry["status"] != "READY"
                 or registry.get("approvalConfiguration", {}).get("autoApprovalRules")):
@@ -37,9 +53,10 @@ class OnboardingCloud:
 
     def target(self, state, config, *, retiring=False):
         connection = self.validate(state, config)
+        route = self.routing(state, config)
         found, token = [], None
         for _ in range(20):
-            result = self.control.list_gateway_targets(gatewayIdentifier=self.settings["gateway_id"],
+            result = self.control.list_gateway_targets(gatewayIdentifier=route["gateway_id"],
                                                        **({"nextToken": token} if token else {}))
             found.extend(t for t in result["items"] if t["name"] == state["target_name"])
             token = result.get("nextToken")
@@ -51,14 +68,15 @@ class OnboardingCloud:
             return None
         if len(found) != 1:
             raise ValueError("Ambiguous Gateway target")
-        target = self.control.get_gateway_target(gatewayIdentifier=self.settings["gateway_id"], targetId=found[0]["targetId"])
-        expected = {"mcp": {"mcpServer": {"endpoint": state["endpoint"]}}}
+        target = self.control.get_gateway_target(gatewayIdentifier=route["gateway_id"], targetId=found[0]["targetId"])
+        expected = target_configuration(state)
         actual = json.loads(json.dumps(target["targetConfiguration"]))
         mode = actual.get("mcp", {}).get("mcpServer", {}).pop("listingMode", "DEFAULT")
-        if (target["name"] != state["target_name"] or target["gatewayArn"] != self.gateway_arn
+        if (target["name"] != state["target_name"] or target["gatewayArn"] != route["arn"]
                 or actual != expected or mode != "DEFAULT"
                 or target["credentialProviderConfigurations"] != [connection["configuration"]]
-                or target.get("metadataConfiguration") or target.get("privateEndpoint")
+                or {k: v for k, v in (target.get("metadataConfiguration") or {}).items() if v} != user_metadata(connection)
+                or target.get("privateEndpoint")
                 or (state.get("gateway_target_id") and target["targetId"] != state["gateway_target_id"])):
             raise ValueError("Gateway target binding changed")
         if not retiring and target["status"] in ("FAILED", "UPDATE_FAILED", "DELETE_FAILED", "DELETING"):
@@ -135,6 +153,7 @@ class OnboardingCloud:
 
     def write(self, stage, state, config):
         connection = self.validate(state, config)
+        route = self.routing(state, config)
         if stage == "retire_registry":
             record = self.record(state, config, retiring=True)
             if record:
@@ -143,16 +162,17 @@ class OnboardingCloud:
         if stage == "retire_target":
             target = self.target(state, config, retiring=True)
             if target:
-                return self.control.delete_gateway_target(gatewayIdentifier=self.settings["gateway_id"], targetId=target["targetId"])
+                return self.control.delete_gateway_target(gatewayIdentifier=route["gateway_id"], targetId=target["targetId"])
             return None
         request_token = digest([state["id"], stage] + ([state["revision"]] if state.get("revision", 1) > 1 else []))
         if stage == "connect":
             return self.control.create_gateway_target(
-                gatewayIdentifier=self.settings["gateway_id"], name=state["target_name"],
+                gatewayIdentifier=route["gateway_id"], name=state["target_name"],
                 description="Studio MCP onboarding " + state["id"],
                 clientToken=request_token,
-                targetConfiguration={"mcp": {"mcpServer": {"endpoint": state["endpoint"]}}},
-                credentialProviderConfigurations=[connection["configuration"]])
+                targetConfiguration=target_configuration(state),
+                credentialProviderConfigurations=[connection["configuration"]],
+                **({"metadataConfiguration": user_metadata(connection)} if user_metadata(connection) else {}))
         if stage == "register":
             return self.registry.create_registry_record(
                 registryId=config["registry_id"], name=state["catalog_id"], displayName=state["name"],
@@ -177,6 +197,8 @@ class OnboardingCloud:
         if target["status"] != "READY":
             return None
         prefix = state["target_name"] + "___"
+        if state.get("tool_schema"):
+            return [{**t, "name": prefix + t["name"]} for t in state["tool_schema"]]
         return [t for t in self.transport.discover() if t["name"].startswith(prefix)]
 
     def verify(self, state, config):

@@ -113,7 +113,10 @@ def router(store, who, cloud=None):
                 raise HTTPException(409, "Native MCP record changed; review the connection again") from None
             return
         try:
-            descriptor = json.loads(record["descriptors"]["custom"]["inlineContent"])
+            modern = registered.get("descriptor_type") == "custom"
+            if modern and record["recordType"] != "CUSTOM":
+                raise ValueError()
+            descriptor = json.loads(record["descriptors"]["custom"]["data" if modern else "inlineContent"])
         except (KeyError, ValueError, TypeError):
             raise HTTPException(409, "Registry descriptor does not match the Catalog") from None
         expected = registry_descriptor({**item, "version": binding(item)["version"]})

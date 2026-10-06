@@ -144,6 +144,11 @@ test and package first. Then run the following commands from the repository root
 .venv/bin/python -m scripts.serverless_deploy artifacts "${GAB_TARGET[@]}"
 .venv/bin/python -m scripts.serverless_deploy deploy "${GAB_TARGET[@]}"
 
+# Create missing AWS-managed Runtime service-linked roles with the installer.
+# Existing account prerequisites are preserved; workers do not receive IAM
+# service-linked-role creation permission.
+.venv/bin/python -m scripts.agentcore_prerequisites "${GAB_TARGET[@]}"
+
 # Runtime artifact, private evidence storage, scoped roles, empty Gateway,
 # and generic instruction templates. No model or external service is invoked.
 .venv/bin/python -m scripts.journey_platform prepare "${GAB_TARGET[@]}"
@@ -175,11 +180,19 @@ configured platform and does not republish its catalog or connections. Routine
 code deployment does not run provider bootstrap scripts.
 
 Invite your administrator through the new Cognito pool and assign `studio-admin`.
+For an account with a lower Lambda memory quota, set `worker_memory_size` in the
+target's protected `journeyPlatform` settings before activation. The supported
+range is 512–10240 MB; the default remains 1024 MB. Keep the live platform settings
+and target state in agreement when applying this installation setting.
 Assign business users their approved `studio-research` or `studio-operations`
 group. Complete sign-in and email verification through the deployed application.
 In model administration, discover, test and publish a Bedrock model available in
 your account/region before deploying an agent. No third-party MCP account is
 required to install or use the platform.
+Fresh installations register model and skill metadata as CUSTOM records in the
+same AWS Agent Registry configured for MCP onboarding. The administration role
+needs scoped Registry create, submit, approval and tagging permissions; a legacy
+`registry_arn` setting is not required. Existing legacy bindings remain readable.
 
 Open **MCP servers** to save your own authentication, register an endpoint, review
 its tools and publish it through Registry. Follow the [generic onboarding guide](generic-mcp-onboarding.md).

@@ -51,17 +51,22 @@ for (const template of ['Research', 'Knowledge Q&A']) {
       page.on('request', req => {if (req.method() === 'POST' && req.url().endsWith('/journey/agents')) createRequests.push(req.url());});
       await page.getByRole('button', {name: 'Deploy to AgentCore', exact: true}).click();
       await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
+      if (evaluation) {
+        await page.getByRole('tab', {name: 'Evaluation results', exact: true}).click();
+        await page.getByRole('button', {name: 'Run evaluation', exact: true}).click();
+        await page.getByRole('tab', {name: 'Chat', exact: true}).click();
+      }
       await expect(page.getByText(evaluation ? 'Evaluation passed' : 'Skipped — no dataset', {exact: true})).toBeVisible();
       expect(createRequests).toHaveLength(1);
       await page.reload();
       await expect(page.getByRole('heading', {name: 'Agent overview', exact: true})).toBeVisible();
       await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
       await page.getByRole('textbox', {name: 'Your question'}).fill('What is Aurora’s support target? Search the documents.');
-      await page.getByRole('button', {name: 'Run agent', exact: true}).click();
+      await page.getByRole('button', {name: 'Send message', exact: true}).click();
       await expect(page.getByLabel('Agent output')).toContainText('Aurora launches in October. Support responds in four hours.');
       if (template === 'Knowledge Q&A' && !evaluation) {
         await page.getByRole('textbox', {name: 'Your question'}).fill('Repeat the support target from your previous answer.');
-        await page.getByRole('button', {name: 'Run agent', exact: true}).click();
+        await page.getByRole('button', {name: 'Send message', exact: true}).click();
         await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
         await page.reload();
         await expect(page.getByRole('heading', {name: 'You', exact: true})).toHaveCount(2);
@@ -95,7 +100,7 @@ for (const template of ['Research', 'Knowledge Q&A']) {
         await page.getByRole('button', {name: 'Next', exact: true}).click();
         await page.getByRole('button', {name: 'Save draft', exact: true}).click();
         await expect(page.getByText('v2', {exact: true})).toBeVisible();
-        await expect(page.getByRole('button', {name: 'Run agent', exact: true})).toBeDisabled();
+        await expect(page.getByRole('button', {name: 'Send message', exact: true})).toBeDisabled();
         await page.getByRole('button', {name: 'Deploy to AgentCore', exact: true}).click();
         await expect(page.getByText('Deployed', {exact: true})).toBeVisible();
         await expect(page.getByText('Skipped — no dataset', {exact: true})).toBeVisible();

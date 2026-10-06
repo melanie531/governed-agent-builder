@@ -91,6 +91,33 @@ def test_edit_rediscovery_preserves_logical_identity_and_requires_new_publicatio
     assert client.post(path(state) + "/delete", json=delete_body(state)).status_code == 409
 
 
+def test_edit_user_oauth_requires_and_preserves_reviewed_tool_schema(setup):
+    from tests.test_mcp_gateway_oauth import oauth_config
+    client, store, service, cloud = setup
+    deletion_cloud(cloud)
+    config = oauth_config()
+    tools = [{"name": "list_datasets", "description": "Discover datasets.",
+              "inputSchema": {"type": "object", "properties": {}}}]
+    with store.tx() as db:
+        put(db, "mcp-onboarding", config)
+    created = start(setup, {**BODY, "tool_schema": tools})
+    drain(service, created["job_id"])
+    state = detail(setup, created)
+    body = {**BODY, "name": "Updated user data", "expected_revision": 1,
+            "idempotency_key": "edit-user-oauth-schema-001"}
+    before = list(cloud.writes)
+    assert client.post(path(state) + "/edit", json=body).status_code == 422
+    assert cloud.writes == before
+    response = client.post(path(state) + "/edit", json={**body, "tool_schema": tools})
+    assert response.status_code == 202, response.text
+    drain(service, response.json()["job_id"])
+    revised = service.tx(lambda db: service.load(db, state["id"]))
+    assert revised["tool_schema"] == tools
+    assert revised["schema_source"] == "supplied"
+    assert revised["phase"] == "REVIEW"
+    assert client.get(path(state)).json()["tool_schema"] == tools
+
+
 def test_management_reports_agent_dependencies_and_blocks_mutation_before_native_work(setup):
     client, store, service, cloud = setup
     state = ready(setup)

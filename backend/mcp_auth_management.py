@@ -48,24 +48,35 @@ class AuthManagement:
         self.credentials, self.service, self.cloud = credentials, credentials.service, credentials.cloud
 
     def detail_db(self, db, cid):
-        connection = next((c for c in self.service.config(db)["connections"] if c["id"] == cid), None)
+        config = self.service.config(db)
+        connection = next((c for c in config["connections"] if c["id"] == cid), None)
         if not connection:
             raise HTTPException(404, "Authentication connection not found")
         _, native = native_state(db, cid)
         refs = references(db, cid)
+        if native and native.get("auth_type") == "OAUTH" and native.get("secret_name"):
+            arn = connection["configuration"]["credentialProvider"]["oauthCredentialProvider"]["providerArn"]
+            refs.extend({"id": c["id"], "name": c["name"], "phase": "READY"} for c in config["connections"]
+                if c["id"] != cid and c["configuration"].get("credentialProvider", {}).get(
+                    "oauthCredentialProvider", {}).get("providerArn") == arn)
         lock = get(db, "mcp-auth-lock:" + cid)
         managed = bool(native and native["phase"] in ("READY", "MANAGING"))
+        iam = bool(native and native.get("auth_type") in ("GATEWAY_IAM_ROLE", "OAUTH"))
         editable = managed and not refs and not lock
         provider = connection["configuration"].get("credentialProvider", {}).get("apiKeyCredentialProvider", {})
         return {"id": cid, "name": connection["name"], "allowed_origins": connection["allowed_origins"],
                 "auth_type": connection["configuration"]["credentialProviderType"],
+                "owns_provider": bool(native and native.get("secret_name")),
+                "callback_url": (native or {}).get("callback_url", ""),
+                "grant_type": connection["configuration"].get("credentialProvider", {}).get("oauthCredentialProvider", {}).get("grantType", ""),
                 "header": provider.get("credentialParameterName", ""), "prefix": provider.get("credentialPrefix", ""),
                 "revision": (native or {}).get("revision", 1), "managed": managed, "references": refs,
                 "phase": "CHANGING" if lock else "READY", "operation": lock,
-                "can_edit": editable, "can_delete": editable,
+                "can_edit": editable and not iam, "can_delete": editable,
                 "reason": ("Managed by the deployment. Add a separate authentication connection to use your own credential."
-                           if not managed else "Used by MCP connections. Change or delete those connections first." if refs else
-                           "Finish the retained authentication operation first." if lock else "")}
+                           if not managed else "Used by MCP or authentication connections. Change or delete those connections first." if refs else
+                           "Finish the retained authentication operation first." if lock else
+                           "Authentication is bound to this endpoint. Delete an unused reference to replace it." if iam else "")}
 
     def detail(self, actor, cid):
         self.service.admin(actor)
@@ -87,6 +98,12 @@ class AuthManagement:
     def change(self, actor, cid, value, kind):
         from .mcp_onboarding import endpoint_origin
         self.service.admin(actor)
+        native = self.service.tx(lambda db: native_state(db, cid)[1])
+        if native and native.get("auth_type") in ("GATEWAY_IAM_ROLE", "OAUTH") and not native.get("secret_name"):
+            if kind != "delete":
+                raise HTTPException(409, "This connection references existing authentication; delete an unused reference to replace it")
+            from .mcp_iam import IamCredentials
+            return IamCredentials(self.service).delete(actor, cid, value)
         try:
             body = (EditCredential if kind == "edit" else DeleteConnection).model_validate(value)
             secret = body.secret.get_secret_value() if kind == "edit" else ""
@@ -106,7 +123,7 @@ class AuthManagement:
                     raise HTTPException(409, "This request is already retained with different details")
                 return prior, False
             info = self.detail_db(db, cid)
-            if not info["can_edit"] or info["revision"] != body.expected_revision:
+            if not info["can_edit" if kind == "edit" else "can_delete"] or info["revision"] != body.expected_revision:
                 raise HTTPException(409, info["reason"] or "Authentication connection changed; refresh it")
             if kind == "delete" and body.confirm_name != info["name"]:
                 raise HTTPException(422, "Enter the exact authentication connection name")
@@ -140,6 +157,10 @@ class AuthManagement:
                 lock = get(db, "mcp-auth-lock:" + op["connection_id"])
                 if not lock or lock["key"] != key or lock["owner"] != actor["id"]:
                     raise HTTPException(409, "Authentication operation changed")
+                if current["kind"] == "delete":
+                    info = self.detail_db(db, current["connection_id"])
+                    if info["references"]:
+                        raise HTTPException(409, info["reason"])
                 action(current)
                 put(db, key, current)
                 return current

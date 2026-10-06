@@ -54,6 +54,11 @@ def endpoint_origin(endpoint):
     return "https://" + host
 
 
+def endpoint_allowed(connection, endpoint):
+    return (endpoint_origin(endpoint) in connection["allowed_origins"]
+            and ("allowed_endpoints" not in connection or endpoint in connection["allowed_endpoints"]))
+
+
 def configuration(value, settings):
     config = copy.deepcopy(value)
     prefix = f"arn:aws:agent-registry:{settings['region']}:{settings['account']}:registry/"
@@ -71,6 +76,8 @@ def configuration(value, settings):
             raise ValueError("Credential connections require exact approved HTTPS origins")
         auth = connection["configuration"]
         kind = auth["credentialProviderType"]
+        if "user_authorization" in connection and kind not in ("GATEWAY_IAM_ROLE", "OAUTH"):
+            raise ValueError("Runtime user authorization requires an IAM Runtime connection")
         provider = auth.get("credentialProvider", {})
         vault = f"arn:aws:bedrock-agentcore:{settings['region']}:{settings['account']}:token-vault/default/"
         if kind == "API_KEY":
@@ -82,12 +89,14 @@ def configuration(value, settings):
                 raise ValueError("Invalid API-key credential connection")
         elif kind == "OAUTH":
             p = provider["oauthCredentialProvider"]
-            if not p["providerArn"].startswith(vault + "oauth2credentialprovider/") or p.get("grantType") != "CLIENT_CREDENTIALS":
+            if connection.get("user_authorization"):
+                from .mcp_gateway_oauth import validate_connection
+                validate_connection(connection, config, settings)
+            elif not p["providerArn"].startswith(vault + "oauth2credentialprovider/") or p.get("grantType") != "CLIENT_CREDENTIALS":
                 raise ValueError("Use a configured machine-to-machine OAuth connection")
-        elif kind == "IAM":
-            p = provider["iamCredentialProvider"]
-            if not re.fullmatch(r"[a-z0-9-]+", p["service"]):
-                raise ValueError("Invalid IAM signing service")
+        elif kind == "GATEWAY_IAM_ROLE":
+            from .mcp_iam import validate_connection
+            validate_connection(connection, settings, config.get("credential_prefix"))
         else:
             raise ValueError("An authenticated credential connection is required")
     if len(ids) > 20 or (not ids and not config.get("credential_prefix")):
@@ -99,6 +108,10 @@ def configuration(value, settings):
 
 
 def binding_digest(config, state):
+    connection = next(c for c in config["connections"] if c["id"] == state["connection_id"])
+    if connection.get("user_authorization", {}).get("mode") != "gateway":
+        # Adding a user Gateway does not change a legacy IAM/API-key contract.
+        config = {k: v for k, v in config.items() if k != "oauth_gateway"}
     if state.get("config_scope") != "connection":
         return digest(config)
     return digest({**{k: v for k, v in config.items() if k not in ("connections", "secret_arns", "credential_prefix")},
@@ -112,6 +125,7 @@ class Onboard(Strict):
     connection_id: str = Field(min_length=1, max_length=60)
     workspaces: list[str] = Field(min_length=1, max_length=2)
     idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    tool_schema: list[dict] | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("name", "endpoint")
     @classmethod
@@ -136,7 +150,7 @@ def discovered_tools(state, descriptors):
         raise ValueError("Expected 1–100 discovered tools")
     if len(json.dumps(descriptors).encode()) > 180_000:
         raise ValueError("Tool catalog exceeds the review size limit")
-    prefix, seen, result = state["target_name"] + "___", set(), []
+    prefix, seen, result = (state["target_name"] + "___" if state.get("target_name") else ""), set(), []
     for descriptor in descriptors:
         qualified = descriptor["name"]
         name = qualified.removeprefix(prefix)
@@ -211,7 +225,7 @@ class McpOnboarding:
         fields = ("id", "job_id", "name", "description", "endpoint", "connection_id", "workspaces",
                   "phase", "tools", "selected_tools", "discovery_digest", "gateway_target_id",
                   "registry_record_id", "registry_record_arn", "catalog_id", "created", "updated", "error",
-                  "failure_code", "failure_context", "revision", "history", "deleted_at")
+                  "failure_code", "failure_context", "revision", "history", "deleted_at", "schema_source")
         return {**{k: state[k] for k in fields if k in state}, "retry_available": retry_available(state)}
 
     def options(self, actor):
@@ -222,8 +236,16 @@ class McpOnboarding:
             return {"enabled": False, "connections": [], "workspaces": [],
                     "reason": "Configure the platform Registry and credential connections to enable onboarding."}
         return {"enabled": True, "workspaces": config["workspaces"], "credential_setup": bool(config.get("credential_prefix")),
+                "runtime_iam_setup": bool(config.get("credential_prefix")),
+                "oauth_setup": bool(config.get("credential_prefix")),
+                "oauth_grants": (["AUTHORIZATION_CODE"] if config.get("oauth_gateway") else []) + ["CLIENT_CREDENTIALS"],
+                "python_bundle": self.tx(lambda db: (get(db, "mcp-python-config") or {}).get("bundle_name")),
+                "python_packages": bool(self.settings.get("mcp_package_upload")),
                 "connections": [{"id": c["id"], "name": c["name"], "allowed_origins": c["allowed_origins"],
-                                 "auth_type": c["configuration"]["credentialProviderType"]} for c in config["connections"]]}
+                                 "auth_type": c["configuration"]["credentialProviderType"],
+                                 **({"callback_url": c["callback_url"]} if c.get("callback_url") else {}),
+                                 **({"requires_schema": True} if c.get("user_authorization", {}).get("mode") == "gateway" else {})
+                                 } for c in config["connections"]]}
 
     def list(self, actor):
         self.admin(actor)
@@ -255,7 +277,7 @@ class McpOnboarding:
 
     def create(self, actor, body, session_hash=None):
         self.admin(actor)
-        payload = body.model_dump(exclude={"idempotency_key"})
+        payload = body.model_dump(exclude={"idempotency_key"}, exclude_none=True)
         def enqueue(db):
             key = "mcp-onboard-request:" + digest([actor["id"], body.idempotency_key])
             prior = get(db, key)
@@ -263,15 +285,23 @@ class McpOnboarding:
                 if prior["digest"] != digest(payload):
                     raise HTTPException(409, "This request key belongs to another connection")
                 return prior["response"]
+            from .mcp_deployments import assert_endpoint_available
+            assert_endpoint_available(db, body.endpoint)
             try:
                 config = self.config(db)
                 connection = next(c for c in config["connections"] if c["id"] == body.connection_id)
                 from .mcp_auth_management import unlocked
                 unlocked(db, body.connection_id)
-                if endpoint_origin(body.endpoint) not in connection["allowed_origins"]:
+                if not endpoint_allowed(connection, body.endpoint):
                     raise ValueError()
                 if len(set(body.workspaces)) != len(body.workspaces) or not set(body.workspaces) <= set(config["workspaces"]):
                     raise ValueError()
+                native_oauth = connection.get("user_authorization", {}).get("mode") == "gateway"
+                if bool(body.tool_schema) != native_oauth:
+                    raise ValueError("Supply the tool schema for authorization-code OAuth")
+                if body.tool_schema:
+                    normalized_schema = discovered_tools({"target_name": "schema"}, [
+                        {**t, "name": "schema___" + t["name"]} for t in body.tool_schema])
             except (ValueError, KeyError, TypeError, StopIteration):
                 raise HTTPException(422, "Choose a configured connection, its approved HTTPS endpoint, and permitted workspaces") from None
             existing = [s for r in db.select("settings") if r["key"].startswith("mcp-connection:")
@@ -284,6 +314,9 @@ class McpOnboarding:
             state = {"id": sid, **payload, "phase": "CONNECTING", "stage": "connect", "revision": 1,
                      "config_scope": "connection", "target_name": "studio-remote-" + sid[:12],
                      "catalog_id": "mcp-remote-" + sid, "created": time.time(), "operations": {}, "owner": actor["id"]}
+            if native_oauth:
+                state["schema_source"] = "supplied"
+                state["tool_schema"] = normalized_schema
             state["config_digest"] = binding_digest(config, state)
             response = self.job(db, state, actor, session_hash)
             put(db, key, {"id": sid, "digest": digest(payload), "response": response})
@@ -295,6 +328,10 @@ class McpOnboarding:
         config = self.config(db)
         if binding_digest(config, state) != state["config_digest"]:
             raise ValueError("Onboarding configuration changed")
+        self.authorize_job(db, state)
+        return config
+
+    def authorize_job(self, db, state):
         if self.hosted:
             row = db.select("job_authority", where=[("id", "=", state["job_id"])]).fetchone()
             session = db.select("hosted_sessions", where=[("id_hash", "=", row["session_hash"])]).fetchone() if row else None
@@ -304,7 +341,6 @@ class McpOnboarding:
             membership = self.auth.membership(claims, dict(session).get("active_group"))
             if claims["sub"] != state["requester"] or membership["role"] != "admin":
                 raise ValueError("Administrator membership required")
-        return config
 
     def persist(self, db, state):
         state["updated"] = time.time()
@@ -331,7 +367,6 @@ class McpOnboarding:
                 raise HTTPException(422, "Select discovered tools")
             if binding_digest(self.config(db), state) != state["config_digest"]:
                 raise HTTPException(409, "Connection configuration changed; publication stopped")
-            self.publication_capacity(db, state, body.tools)
             state.update(stage="submit", phase="SUBMITTING", selected_tools=sorted(body.tools))
             response = self.job(db, state, actor, session_hash)
             put(db, key, {"digest": digest(body.model_dump()), "response": response})
@@ -460,10 +495,10 @@ class McpOnboarding:
                 if digest(tools) != state["discovery_digest"]:
                     raise ValueError("Discovered tool definitions changed")
                 def finish(db, current):
-                    self.publish_catalog(db, current)
-                    current.update(phase="READY")
-                    self.audit(db, current["requester"], "mcp_connection_published", current["id"],
-                               {"catalog_id": current["catalog_id"], "record_arn": current["registry_record_arn"]})
+                    if self.publish_catalog(db, current):
+                        current.update(phase="READY")
+                        self.audit(db, current["requester"], "mcp_connection_published", current["id"],
+                                   {"catalog_id": current["catalog_id"], "record_arn": current["registry_record_arn"]})
                 update(finish)
                 return
             if stage in ("submit", "approve"):
@@ -515,7 +550,6 @@ class McpOnboarding:
             self.tx(fail)
 
     def publish_catalog(self, db, state):
-        self.publication_capacity(db, state, state["selected_tools"])
         base = {"catalog": "journey", "version": "1", "approved": True, "fixture": False, "external": True,
                 "origin": "AWS Agent Registry", "provider": "Remote MCP", "protocol": "MCP",
                 "execution_ready": True, "integration_ready": True, "supported": True, "requestable": True,
@@ -525,7 +559,15 @@ class McpOnboarding:
                 "registry": {"arn": state["registry_record_arn"], "version": "1.0.0",
                              "descriptor_type": "mcpServer", "endpoint": state["endpoint"],
                              "discovery_digest": state["discovery_digest"]}}
-        binding = {"type": "mcp-server", "gateway_id": self.settings["gateway_id"], "target_id": state["gateway_target_id"]}
+        config = self.config(db)
+        connection = next(c for c in config["connections"] if c["id"] == state["connection_id"])
+        user_auth = connection.get("user_authorization")
+        from .mcp_gateway_oauth import gateway_for
+        gateway = gateway_for(connection, config, self.settings)
+        binding = {"type": "mcp-server", "gateway_id": gateway["gateway_id"], "target_id": state["gateway_target_id"]}
+        if user_auth:
+            binding["user_authorization"] = {"connection_id": state["connection_id"],
+                                             "configuration_digest": digest(user_auth)}
         server = {**base, "id": state["catalog_id"], "name": state["name"], "description": state["description"],
                   "kind": "mcp_server", "binding": binding, "binding_digest": digest(binding), "default_tool_ids": []}
         items = [server]
@@ -533,9 +575,14 @@ class McpOnboarding:
             if tool["name"] not in state["selected_tools"]:
                 continue
             cid = "mcp-remote-tool-" + state["id"] + "-" + digest(tool["name"])[:12]
-            binding = {"type": "mcp", "gateway_id": self.settings["gateway_id"], "target_id": state["gateway_target_id"],
+            binding = {"type": "mcp", "gateway_id": gateway["gateway_id"], "target_id": state["gateway_target_id"],
                        "name": state["target_name"] + "___" + tool["name"], "inputSchema": tool["inputSchema"],
                        "schema_digest": digest(tool["inputSchema"])}
+            if user_auth:
+                binding["user_authorization"] = True
+                if user_auth.get("mode") == "gateway":
+                    binding["gateway_auth"] = "COGNITO"
+                    binding["gateway_url"] = gateway["gateway_url"]
             items.append({**base, **tool, "id": cid, "kind": "tool", "operation": tool["name"],
                           "parent_id": state["catalog_id"], "binding": binding, "binding_digest": digest(binding)})
             server["default_tool_ids"].append(cid)
@@ -543,26 +590,34 @@ class McpOnboarding:
             item["registry"] = {**item["registry"], "binding_digest": item["binding_digest"]}
             if db.select("components", where=[("id", "=", item["id"])]).fetchone():
                 raise ValueError("Catalog identity already exists")
+        # Prepared grants cannot authorize a capability until its catalog record
+        # exists. Retain their bounded IDs so an interrupted publication can be
+        # resumed or explicitly retired by the normal management workflow.
+        state["publication_catalog_ids"] = [item["id"] for item in items]
+        grants = {(r["persona"], r["component"]) for r in db.select("grants")}
+        scopes = {r["key"] for r in db.select("settings")}
+        prepared = 0
+        for row in db.select("principals"):
+            actor = json.loads(row["body"])
+            if (actor["role"] != "business" or actor["workspace"] not in state["workspaces"]
+                    or actor.get("grant_initialization")):
+                continue
+            for item in items:
+                scope = grant_scope(actor, item["id"])
+                if (actor["id"], item["id"]) in grants and scope in scopes:
+                    continue
+                # At most 60 grant writes + 21 catalog records + job/state/audit
+                # and the revision fence: always below DynamoDB's 100 actions.
+                if prepared == 30:
+                    return False
+                db.insert("grants", {"persona": actor["id"], "component": item["id"]}, ignore=True)
+                put(db, scope, True)
+                prepared += 1
+        # Re-read membership under the same revision fence on every batch.
+        # Pending first-login grants pick up these defaults before activation.
+        for item in items:
             db.insert("components", {"id": item["id"], "body": json.dumps(item)})
-            for row in db.select("principals"):
-                actor = json.loads(row["body"])
-                if actor["role"] == "business" and actor["workspace"] in state["workspaces"]:
-                    db.insert("grants", {"persona": actor["id"], "component": item["id"]}, ignore=True)
-                    put(db, grant_scope(actor, item["id"]), True)
-
-    @staticmethod
-    def publication_capacity(db, state, selected):
-        # A publication and its existing-user grants must fit one DynamoDB
-        # transaction. Keep initial-login grant creation bounded as well.
-        people = [json.loads(r["body"]) for r in db.select("principals")]
-        members = sum(p["role"] == "business" and p["workspace"] in state["workspaces"] for p in people)
-        if (len(selected) + 1) * (1 + 2 * members) + 10 > 100:
-            raise HTTPException(422, "Too many workspace grants for this publication; select fewer tools or workspaces")
-        entries = [json.loads(r["body"]) for r in db.select("components")]
-        for workspace in state["workspaces"]:
-            count = sum(e.get("approved") is True and workspace in e.get("default_grant_workspaces", []) for e in entries)
-            if count + len(selected) + 1 > 35:
-                raise HTTPException(422, "This workspace has reached its catalog capacity; withdraw unused capabilities before publishing")
+        return True
 
 
 def router(service, who):
@@ -582,9 +637,129 @@ def router(service, who):
             from .mcp_credentials import Credentials
             service.credentials = Credentials(service)
         return service.credentials
+    def python():
+        if not getattr(service, "python", None):
+            from .mcp_python import PythonMcp
+            service.python = PythonMcp(service)
+        return service.python
+    def packages():
+        runtime = python()
+        if not getattr(runtime, "packages", None):
+            from .mcp_package import PackageUploads
+            runtime.packages = PackageUploads(runtime)
+        return runtime.packages
+    async def package_body(request):
+        try:
+            return await request.json()
+        except Exception:
+            raise HTTPException(422, "Invalid package upload request") from None
+    @routes.post("/packages", status_code=201)
+    async def package_reserve(request: Request):
+        actor = who(request, True)
+        service.admin(actor)
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(packages().reserve, actor, await package_body(request))
+    @routes.get("/package-requests/{token}")
+    def package_request(token: str, request: Request):
+        return packages().request(who(request, True), token)
+    @routes.get("/packages/{sid}")
+    def package_detail(sid: str, request: Request):
+        return packages().detail(who(request, True), sid)
+    @routes.post("/packages/{sid}/parts/{index}")
+    async def package_part(sid: str, index: int, request: Request):
+        actor = who(request, True)
+        service.admin(actor)
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(packages().part, actor, sid, index, await package_body(request))
+    @routes.post("/packages/{sid}/deploy", status_code=202)
+    def package_deploy(sid: str, request: Request):
+        result = packages().deploy(who(request, True), sid, session_hash(request))
+        request.app.state.wake.set()
+        return result
+    @routes.get("/python")
+    def python_list(request: Request):
+        return python().list(who(request, True))
+    def deployments():
+        from .mcp_deployments import Deployments
+        return Deployments(python())
+    @routes.get("/deployments")
+    def deployment_list(request: Request):
+        return deployments().list(who(request, True))
+    @routes.get("/deployments/{sid}")
+    def deployment_detail(sid: str, request: Request):
+        return deployments().detail(who(request, True), sid)
+    @routes.post("/deployments/{sid}/delete", status_code=202)
+    def deployment_delete(sid: str, body: mcp_management.DeleteConnection, request: Request):
+        result = deployments().delete(who(request, True), sid, body, session_hash(request))
+        request.app.state.wake.set()
+        return result
+    @routes.post("/deployments/{sid}/reconcile", status_code=202)
+    def deployment_reconcile(sid: str, request: Request):
+        result = python().resume(who(request, True), sid, session_hash(request))
+        request.app.state.wake.set()
+        return result
+    @routes.post("/deployments/{sid}/retry", status_code=202)
+    def deployment_retry(sid: str, body: RetryCreate, request: Request):
+        result = python().resume(who(request, True), sid, session_hash(request), body.job_id)
+        request.app.state.wake.set()
+        return result
+    @routes.get("/python/{sid}")
+    def python_detail(sid: str, request: Request):
+        return python().detail(who(request, True), sid)
+    @routes.get("/python-requests/{token}")
+    def python_request(token: str, request: Request):
+        return python().request(who(request, True), token)
+    @routes.post("/python", status_code=202)
+    async def python_create(request: Request):
+        actor = who(request, True)
+        service.admin(actor)
+        try:
+            value = await request.json()
+        except Exception:
+            raise HTTPException(422, "Invalid Python upload") from None
+        from starlette.concurrency import run_in_threadpool
+        result = await run_in_threadpool(python().create, actor, value, session_hash(request))
+        request.app.state.wake.set()
+        return result
+    @routes.post("/python/{sid}/reconcile", status_code=202)
+    def python_reconcile(sid: str, request: Request):
+        result = python().resume(who(request, True), sid, session_hash(request))
+        request.app.state.wake.set()
+        return result
+    @routes.post("/python/{sid}/retry", status_code=202)
+    def python_retry(sid: str, body: RetryCreate, request: Request):
+        result = python().resume(who(request, True), sid, session_hash(request), body.job_id)
+        request.app.state.wake.set()
+        return result
     def auth_management():
         from .mcp_auth_management import AuthManagement
         return AuthManagement(credentials())
+    @routes.post("/oauth-credentials")
+    async def create_oauth_credential(request: Request):
+        from .mcp_oauth_credentials import OAuthCredentials
+        from starlette.concurrency import run_in_threadpool
+        actor = who(request, True)
+        service.admin(actor)
+        return await run_in_threadpool(OAuthCredentials(service).create, actor, await request.json())
+    @routes.get("/oauth-credentials/{token}")
+    def oauth_credential_status(token: str, request: Request):
+        from .mcp_oauth_credentials import OAuthCredentials
+        return OAuthCredentials(service).read(who(request, True), token)
+    @routes.post("/iam-credentials")
+    async def create_iam_credential(request: Request):
+        from .mcp_iam import IamCredentials
+        actor = who(request, True)
+        service.admin(actor)
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(422, "Invalid IAM authentication request") from None
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(IamCredentials(service).create, actor, body)
+    @routes.get("/iam-credentials/{token}")
+    def iam_credential_status(token: str, request: Request):
+        from .mcp_iam import IamCredentials
+        return IamCredentials(service).read(who(request, True), token)
     @routes.get("/auth-connections")
     def auth_connections(request: Request):
         return auth_management().list(who(request, True))

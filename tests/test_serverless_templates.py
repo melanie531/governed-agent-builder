@@ -15,6 +15,17 @@ def test_no_vpc_dependencies_or_shared_resources():
     assert body["Resources"]["State"]["Properties"]["PointInTimeRecoverySpecification"]["PointInTimeRecoveryEnabled"]
 
 
+def test_journey_worker_can_fit_a_512_mb_account_limit_without_other_template_changes():
+    from copy import deepcopy
+    from tests.test_deployment_tags import SETTINGS
+
+    expected = template(journey=deepcopy(SETTINGS))
+    assert expected["Resources"]["Worker"]["Properties"]["MemorySize"] == 1024
+    expected["Resources"]["Worker"]["Properties"]["MemorySize"] = 512
+    actual = template(journey={**deepcopy(SETTINGS), "worker_memory_size": 512})
+    assert actual == expected
+
+
 def test_cloudfront_csp_allows_cloudscape_embedded_fonts_without_broadening_scripts():
     security = template()["Resources"]["Headers"]["Properties"]["ResponseHeadersPolicyConfig"]["SecurityHeadersConfig"]
     csp = security["ContentSecurityPolicy"]["ContentSecurityPolicy"]
@@ -60,8 +71,13 @@ def test_scoped_roles_and_durable_queue():
     assert r["WorkerMapping"]["Properties"]["FunctionResponseTypes"] == ["ReportBatchItemFailures"]
     assert r["Jobs"]["Properties"]["VisibilityTimeout"] >= r["Worker"]["Properties"]["Timeout"] * 6
     assert r["StreamMapping"]["Properties"]["DestinationConfig"]["OnFailure"]
+    filters = r["StreamMapping"]["Properties"]["FilterCriteria"]["Filters"]
+    assert json.loads(filters[0]["Pattern"])["dynamodb"]["NewImage"]["pk"]["S"] == ["jobs"]
     assert r["DeadLettersAlarm"] and r["DispatchFailuresAlarm"]
     assert artifacts_template()["Resources"]["Releases"]["DeletionPolicy"] == "Retain"
+
+
+
 
 
 def test_verification_table_isolated_and_scope_only_new_stack():

@@ -2,6 +2,7 @@
 import json
 import re
 import time
+from typing import Literal
 from uuid import uuid4
 
 import boto3
@@ -24,6 +25,32 @@ class CredentialInput(Strict):
     prefix: str = Field(default="", max_length=30, pattern=r"^[A-Za-z0-9 _-]*$")
     secret: SecretStr
     idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class OAuthCredentialInput(Strict):
+    auth_type: Literal["OAUTH"]
+    name: str = Field(min_length=2, max_length=80)
+    endpoint: str = Field(max_length=2048)
+    client_id: str = Field(min_length=1, max_length=1024)
+    secret: SecretStr
+    issuer: str | None = Field(default=None, max_length=2048)
+    authorization_endpoint: str | None = Field(default=None, max_length=2048)
+    token_endpoint: str | None = Field(default=None, max_length=2048)
+    discovery_url: str | None = Field(default=None, max_length=2048)
+    client_authentication_method: Literal["CLIENT_SECRET_BASIC", "CLIENT_SECRET_POST"]
+    grant_type: Literal["AUTHORIZATION_CODE", "CLIENT_CREDENTIALS"]
+    scopes: list[str] = Field(min_length=1, max_length=10)
+    idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+def oauth_provider_config(state):
+    discovery = ({"discoveryUrl": state["discovery_url"]} if state.get("discovery_url") else
+                 {"authorizationServerMetadata": {
+                     "issuer": state["issuer"], "authorizationEndpoint": state["authorization_endpoint"],
+                     "tokenEndpoint": state["token_endpoint"]}})
+    return {"customOauth2ProviderConfig": {
+        "oauthDiscovery": discovery,
+        "clientId": state["client_id"], "clientAuthenticationMethod": state["client_authentication_method"]}}
 
 
 class ProviderRetry(Strict):
@@ -67,14 +94,16 @@ class Credentials:
         state = get(db, self.key(actor, token))
         if not state:
             raise HTTPException(404, "Authentication request not found")
-        if credential_prefix(self.service.config(db)) != state["deployment_prefix"]:
+        config = self.service.config(db)
+        if (credential_prefix(config) != state["deployment_prefix"]
+                or ("gateway_binding" in state and digest(config.get("oauth_gateway")) != state["gateway_binding"])):
             raise HTTPException(409, "Authentication configuration changed")
         return state
 
     @staticmethod
     def public(state):
         retries = state.get("provider_retries", 0)
-        return {**{k: state[k] for k in ("id", "phase", "name", "origin", "connection_id", "failure_code", "failure_context") if k in state},
+        return {**{k: state[k] for k in ("id", "phase", "name", "origin", "connection_id", "callback_url", "failure_code", "failure_context") if k in state},
                 "retry_count": retries, "retry_available": bool(
                     state["phase"] not in ("READY", "MANAGING", "DELETED") and state.get("retry_verified") and "provider" in state["operations"]
                     and state.get("secret_arn") and retries < MAX_PROVIDER_RETRIES)}
@@ -88,16 +117,32 @@ class Credentials:
         # The route deliberately returns a fixed validation error, never Pydantic
         # input fields (which can contain a credential).
         try:
-            body = CredentialInput.model_validate(value)
+            body = (OAuthCredentialInput if value.get("auth_type") == "OAUTH" else CredentialInput).model_validate(value)
             secret = body.secret.get_secret_value()
-            if not 1 <= len(secret) <= 8192 or re.search(r"[\x00-\x1f\x7f]", secret):
+            if len(body.name.strip()) < 2 or not 1 <= len(secret) <= 8192 or re.search(r"[\x00-\x1f\x7f]", secret):
                 raise ValueError()
-            if body.header.lower() in {"host", "cookie", "content-length", "transfer-encoding", "connection"}:
+            if isinstance(body, OAuthCredentialInput):
+                metadata = (body.issuer, body.authorization_endpoint, body.token_endpoint)
+                if body.discovery_url is not None:
+                    if body.grant_type != "CLIENT_CREDENTIALS" or any(v is not None for v in metadata):
+                        raise ValueError()
+                    endpoints = (body.discovery_url,)
+                else:
+                    endpoints = metadata
+                for endpoint in endpoints:
+                    endpoint_origin(endpoint)
+                if (len(set(body.scopes)) != len(body.scopes)
+                        or any(not re.fullmatch(r"\S{1,128}", s) for s in body.scopes)
+                        or re.search(r"[\x00-\x1f\x7f]", body.client_id) or not body.client_id.strip()):
+                    raise ValueError()
+            elif body.header.lower() in {"host", "cookie", "content-length", "transfer-encoding", "connection"}:
                 raise ValueError()
             origin = endpoint_origin(body.endpoint)
         except Exception:
-            raise HTTPException(422, "Enter a name, HTTPS endpoint, valid credential header and API key or PAT") from None
-        metadata = body.model_dump(exclude={"secret", "idempotency_key"})
+            raise HTTPException(422, "Enter valid HTTPS endpoints and complete API key or OAuth client details") from None
+        # Omit new optional metadata so retained requests from earlier releases
+        # keep their exact digest and native provider configuration.
+        metadata = body.model_dump(exclude={"secret", "idempotency_key"}, exclude_none=True)
         def reserve(db):
             config = self.service.config(db)
             prefix = credential_prefix(config)
@@ -111,10 +156,21 @@ class Credentials:
             if len(requests) >= 20 or len(config["connections"]) >= 20:
                 raise HTTPException(429, "Authentication connection limit reached")
             sid = uuid4().hex
-            state = {"id": sid, "name": body.name.strip(), "origin": origin, "header": body.header,
-                     "prefix": body.prefix.strip(), "phase": "SAVING", "deployment_prefix": prefix,
-                     "secret_name": prefix + "/mcp/" + sid, "provider_name": prefix + "-mcp-" + sid,
+            oauth = isinstance(body, OAuthCredentialInput)
+            state = {**metadata, "id": sid, "name": body.name.strip(), "origin": origin,
+                     "phase": "SAVING", "deployment_prefix": prefix,
+                     "secret_name": prefix + "/mcp/" + sid,
+                     "provider_name": prefix + ("-mcp-oauth-" if oauth else "-mcp-") + sid,
                      "request_digest": digest(metadata), "created": time.time(), "operations": {}}
+            if oauth and body.grant_type == "AUTHORIZATION_CODE":
+                from .mcp_gateway_oauth import gateway_configuration
+                gateway = gateway_configuration(config.get("oauth_gateway"), self.service.settings)
+                auth = self.service.auth
+                if not auth or gateway["issuer"] != auth.issuer or gateway["client_id"] != auth.client_id:
+                    raise ValueError("Hosted Cognito Gateway is required for user OAuth")
+                state.update(return_url=auth.public_url + "/oauth/callback", gateway_binding=digest(gateway))
+            elif not oauth:
+                state["prefix"] = body.prefix.strip()
             self.save(db, actor, body.idempotency_key, state)
             self.service.audit(db, actor["id"], "mcp_authentication_requested", sid,
                                {"name": state["name"], "origin": origin})
@@ -137,6 +193,31 @@ class Credentials:
             return state
         return self.service.tx(mark)
 
+    @staticmethod
+    def connection(state, provider):
+        connection = {"id": state["connection_id"], "name": state["name"], "allowed_origins": [state["origin"]]}
+        if state.get("auth_type") == "OAUTH":
+            from .mcp_onboarding import endpoint_origin
+            oauth = {"providerArn": provider, "scopes": state["scopes"], "grantType": state["grant_type"]}
+            connection["allowed_endpoints"] = [state["endpoint"]]
+            if state["grant_type"] == "AUTHORIZATION_CODE":
+                oauth["defaultReturnUrl"] = state["return_url"]
+                if state.get("callback_url"):
+                    connection["callback_url"] = state["callback_url"]
+                connection["user_authorization"] = {
+                    "mode": "gateway", "provider_name": state["provider_name"], "scopes": state["scopes"],
+                    "return_url": state["return_url"], "authorization_origin": endpoint_origin(state["authorization_endpoint"]),
+                    "provider_digest": digest({"arn": provider, "configuration": oauth_provider_config(state),
+                        "secret_arn": state["secret_arn"], "secret_json_key": "credential"})}
+            connection["configuration"] = {"credentialProviderType": "OAUTH",
+                "credentialProvider": {"oauthCredentialProvider": oauth}}
+        else:
+            connection["configuration"] = {
+                "credentialProviderType": "API_KEY", "credentialProvider": {"apiKeyCredentialProvider": {
+                    "providerArn": provider, "credentialLocation": "HEADER",
+                    "credentialParameterName": state["header"], "credentialPrefix": state["prefix"]}}}
+        return connection
+
     def read(self, actor, token):
         self.service.admin(actor)
         state = self.service.tx(lambda db: self.load(db, actor, token))
@@ -153,11 +234,7 @@ class Credentials:
                     state["phase"] = "READY"
                     state.pop("failure_code", None)
                     state.pop("failure_context", None)
-                    connection = {"id": state["connection_id"], "name": state["name"],
-                        "allowed_origins": [state["origin"]], "configuration": {
-                            "credentialProviderType": "API_KEY", "credentialProvider": {"apiKeyCredentialProvider": {
-                                "providerArn": provider, "credentialLocation": "HEADER",
-                                "credentialParameterName": state["header"], "credentialPrefix": state["prefix"]}}}}
+                    connection = self.connection(state, provider)
                     def finish(db):
                         current = self.load(db, actor, token)
                         if current["phase"] in ("READY", "MANAGING", "DELETED"):
@@ -302,6 +379,8 @@ class CredentialCloud:
                                                   SecretString=json.dumps({"credential": value}))
         if stage == "provider_delete":
             if self.read_provider(state):
+                if state.get("auth_type") == "OAUTH":
+                    return self.control.delete_oauth2_credential_provider(name=state["provider_name"])
                 return self.control.delete_api_key_credential_provider(name=state["provider_name"])
             return None
         if stage == "secret_delete":
@@ -318,6 +397,8 @@ class CredentialCloud:
             Tags=[{"Key": k, "Value": v} for k, v in self.tags(state).items()])
 
     def read_provider(self, state):
+        if state.get("auth_type") == "OAUTH":
+            return self.read_oauth_provider(state)
         value = self.missing(lambda: self.control.get_api_key_credential_provider(name=state["provider_name"]))
         if not value:
             return None
@@ -333,7 +414,35 @@ class CredentialCloud:
         return expected
 
     def create_provider(self, state):
+        if state.get("auth_type") == "OAUTH":
+            config = oauth_provider_config(state)
+            config["customOauth2ProviderConfig"].update(clientSecretSource="EXTERNAL",
+                clientSecretConfig={"secretId": state["secret_arn"], "jsonKey": "credential"})
+            return self.control.create_oauth2_credential_provider(name=state["provider_name"],
+                credentialProviderVendor="CustomOauth2", oauth2ProviderConfigInput=config, tags=self.tags(state))
         self.control.create_api_key_credential_provider(name=state["provider_name"],
             apiKeySecretSource="EXTERNAL",
             apiKeySecretConfig={"secretId": state["secret_arn"], "jsonKey": "credential"},
             tags=self.tags(state))
+
+    def read_oauth_provider(self, state):
+        value = self.missing(lambda: self.control.get_oauth2_credential_provider(name=state["provider_name"]))
+        if not value:
+            return None
+        expected = (f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:"
+                    "token-vault/default/oauth2credentialprovider/" + state["provider_name"])
+        if (value["credentialProviderArn"] != expected or value["name"] != state["provider_name"]
+                or value.get("credentialProviderVendor") != "CustomOauth2"
+                or value.get("clientSecretSource") != "EXTERNAL"
+                or value.get("clientSecretArn") != {"secretArn": state["secret_arn"]}
+                or value.get("clientSecretJsonKey") != "credential"
+                or value.get("oauth2ProviderConfigOutput") != oauth_provider_config(state)):
+            raise ValueError("OAuth provider binding changed")
+        tags = self.control.list_tags_for_resource(resourceArn=expected)["tags"]
+        if any(tags.get(k) != v for k, v in self.tags(state).items()):
+            raise ValueError("OAuth provider ownership changed")
+        if value.get("status") != "READY":
+            # An existing provider still being created is not safe to re-create.
+            raise ValueError("OAuth provider is not ready; check status again")
+        state["callback_url"] = value.get("callbackUrl", "")
+        return expected
