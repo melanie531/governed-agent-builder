@@ -1,7 +1,10 @@
 import copy
 import json
+import secrets
+from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from foundation_harness.config import digest
@@ -9,6 +12,7 @@ from backend.catalog import PERSONAS
 from backend.foundation_runs import get
 from backend.journey_schema import AgentDefinition, SaveAgent
 from backend.store import Store
+from foundation_harness.journey_mcp import GatewayRoutes
 from foundation_harness.journey_runtime import execute
 from tests.journey_support import make_journey, definition
 
@@ -83,6 +87,52 @@ def test_structured_tool_failure_is_not_reported_as_successful_evidence(manifest
     tool_span = next(span for span in receipt["spans"] if span["attributes"]["gen_ai.operation.name"] == "execute_tool")
     assert tool_span["attributes"]["gen_ai.tool.call.status"] == "error"
     assert "A tool error is not proof" in model.requests[1]["system"][0]["text"]
+
+
+@pytest.mark.parametrize("adapter", [None, "snowflake-cortex-agent"])
+def test_native_mcp_tool_error_becomes_failed_evidence_without_retry_or_raw_details(manifest, monkeypatch, adapter):
+    name = manifest["tools"][0]["name"]
+    manifest["tools"][0]["response_adapter"] = adapter
+    for tool in manifest["tools"]:
+        tool.update(gateway_url="https://users.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+                    gateway_auth="COGNITO")
+    token = ".".join(secrets.token_urlsafe(12) for _ in range(3))
+    raw_error = "Permission denied. Private provider detail: " + secrets.token_hex(16)
+    calls = []
+
+    def handle(request):
+        body = json.loads(request.content)
+        if body["method"] == "initialize":
+            result = {"capabilities": {"tools": {}}}
+        elif body["method"] == "tools/list":
+            result = {"tools": copy.deepcopy(manifest["tools"])}
+        elif body["method"] == "tools/call":
+            calls.append(body["params"])
+            result = {"isError": True, "content": [{"type": "text", "text": raw_error}]}
+        else:
+            result = {}
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": body.get("id"), "result": result})
+
+    client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: client(transport=httpx.MockTransport(handle), **kwargs))
+    gateway = GatewayRoutes(SimpleNamespace(region_name="us-east-1"), manifest, token)
+    model = Model(name)
+    receipt = execute(manifest, "Query permitted data", "gab-" + uuid4().hex, model=model, gateway=gateway)
+
+    assert calls == [{"name": name, "arguments": {"query": "Aurora launch"}}]
+    assert len(model.requests) == 2
+    assert "toolConfig" not in model.requests[1]
+    evidence = json.loads(model.requests[1]["messages"][0]["content"][1]["text"].split("\n", 1)[1])
+    assert evidence[0]["status"] == "error"
+    failed = json.loads(evidence[0]["result"])
+    assert failed["failure_stage"] == "tool_result"
+    assert failed["downstream_execution"] == "unverified"
+    assert "cause" in failed["error"] and "unverified" in failed["error"]
+    assert receipt["tool_calls"] == [{"name": name, "arguments": calls[0]["arguments"], "status": "error"}]
+    tool_span = next(span for span in receipt["spans"] if span["attributes"]["gen_ai.operation.name"] == "execute_tool")
+    assert tool_span["attributes"]["gen_ai.tool.call.status"] == "error"
+    assert raw_error not in json.dumps([receipt, model.requests])
+    assert token not in json.dumps([receipt, model.requests])
 
 
 def test_gateway_consent_returns_control_to_studio_without_prompt_or_evidence_publication(manifest):

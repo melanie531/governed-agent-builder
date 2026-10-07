@@ -3,14 +3,16 @@ import {Alert, Box, Button, FormField, Input, SpaceBetween} from '@cloudscape-de
 import type {Api} from './JourneyBuilder';
 
 type Status = {phase: string; connection_id?: string; retry_available?: boolean; retry_count?: number; failure_code?: string};
-export default function McpAuthentication({api, identityKey, name, endpoint, onSaved, exactName = false}: {
+export default function McpAuthentication({api, identityKey, name, endpoint, onSaved, exactName = false, onBusyChange}: {
   api: Api; identityKey: string; name: string; endpoint: string; exactName?: boolean; onSaved: (id: string) => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const key = 'mcp-authentication:' + identityKey;
   const [secret, setSecret] = useState(''), [header, setHeader] = useState('Authorization'), [prefix, setPrefix] = useState('Bearer');
   const [token, setToken] = useState(''), [status, setStatus] = useState<Status>(), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [retryReady, setRetryReady] = useState(false);
   const lock = useRef(false);
+  useEffect(() => {onBusyChange?.(busy); return () => onBusyChange?.(false);}, [busy, onBusyChange]);
   useEffect(() => {
     try {setToken(sessionStorage.getItem(key) || '');}
     catch {setError('Session storage is required to retain authentication request status.');}

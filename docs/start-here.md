@@ -8,6 +8,12 @@ Platform administrators connect servers and publish tools. Business users create
 agents from the capabilities available in their workspace. Your account may have
 both roles; switch views through the profile menu when needed.
 
+**Setting up Snowflake for the first time?** Use the
+[complete managed MCP and new OAuth provider walkthrough](snowflake-setup.md#b-managed-mcp-with-user-sign-in-3lo).
+It starts with Snowflake object creation, shows the commands that supply every
+**Create provider** field, and continues through callback registration,
+publication and a business user's agent test. An existing provider is not needed.
+
 ## Before you start
 
 | You need | Where to get it |
@@ -26,22 +32,28 @@ grant users permissions to the external system's data.
 
 | What you already have | Next step |
 | --- | --- |
+| No Snowflake MCP or OAuth provider yet | [Snowflake managed MCP with a new OAuth integration and provider, B1–B10](snowflake-setup.md#b-managed-mcp-with-user-sign-in-3lo) |
 | An existing hosted MCP endpoint | [1A. Connect a hosted server](#1a-connect-a-hosted-server) |
 | A ZIP that has not been deployed | [1B. Upload a complete package](#1b-upload-a-complete-package) |
 | An uploaded package marked **READY** | [1C. Reuse a ready package](#1c-reuse-a-ready-package) |
 | Saved authentication for this exact endpoint | [2E. Reuse authentication](#2e-reuse-authentication) |
 | A published MCP connection | [4. Create an agent](#4-create-an-agent) |
 | A deployed agent with the intended MCP selected | [5. Test the agent](#5-test-the-agent) |
-| You are using Snowflake and need its account, access and OAuth values | [Snowflake setup: SQL to find or create each prerequisite](snowflake-oauth-setup.md#1-prepare-snowflake) |
+| Any Snowflake setup: managed MCP with PAT or 3LO, or an uploaded Python MCP | [Snowflake setup: choose your path and follow it through agent testing](snowflake-setup.md) |
 | A connection whose credentials need replacing | Read [Change an existing setup](#change-an-existing-setup) before creating or deleting anything |
 
 ## The portal journey
+
+Open **MCP servers → Add MCP connection** once. The wizard keeps server,
+authentication, tools and publication together:
+**Server → Authentication → Tools and workspaces → Review and publish**.
+You do not need to create authentication in a separate dialog.
 
 | Step | Who | What to do | Expected result |
 | --- | --- | --- | --- |
 | 1 | Platform administrator | Connect a hosted endpoint or select a deployed package | An MCP endpoint and connection name |
 | 2 | Platform administrator | Save the appropriate authentication connection | **Authentication saved** |
-| 3 | Platform administrator | Review tools, choose workspaces and publish | **Connection published**, status **Ready** |
+| 3 | Platform administrator | In **Tools and workspaces**, load tool definitions when requested and choose workspaces; in **Review and publish**, select tools and publish | **Connection published**, status **Ready** |
 | 4 | Business user | Select a template, model, MCP and tool permissions; deploy | Agent status **Deployed** |
 | 5 | Business user | Send a specific tool request; authorize provider access when required | A real tool result visible in Chat and Execution details |
 
@@ -53,8 +65,8 @@ part of setup.
 
 ## 1. Select the MCP server
 
-As Platform Admin, open **Platform governance → MCP servers → Create MCP
-connection**. Give the connection a descriptive, unique name. The description is
+As Platform Admin, open **Platform governance → MCP servers → Add MCP
+connection**. In **Server**, give the connection a descriptive, unique name. The description is
 optional.
 
 ### 1A. Connect a hosted server
@@ -64,7 +76,7 @@ optional.
    Obtain this URL from the server's deployment details or its owner. A
    provider's website, authorization endpoint or token endpoint is a different
    address.
-3. Continue to [authentication](#2-save-authentication).
+3. Choose **Next** to open [Authentication](#2-save-authentication).
 
 This path registers an already running server. Studio does not deploy that
 server. A local stdio command is not an HTTPS endpoint; its owner must expose a
@@ -76,8 +88,8 @@ supported HTTP service or supply a deployable package.
 2. Select the deployment ZIP in **MCP package ZIP**.
 3. Click **Upload and deploy package**.
 4. Use **Check package status** until the package reaches **READY**.
-5. Click **Use this MCP package**. Continue below the package status in the same
-   form to configure authentication.
+5. Click **Use this MCP package**, then **Next** to open **Authentication**.
+   Studio carries the endpoint and discovered tools into the following steps.
 
 The package must contain the complete server:
 
@@ -104,30 +116,31 @@ when requested, and choose **Resume same package**. Continue the retained upload
 
 ### 1C. Reuse a ready package
 
-1. Open **Create MCP connection → Upload MCP package (.zip)**.
+1. Open **Add MCP connection** and choose **Use a deployed package** in **Server**.
 2. Select the deployment under **Saved MCP package deployments**.
 3. Click **Use this MCP package**.
-4. Continue to authentication. Selecting the saved package does not upload or
+4. Choose **Next** to open **Authentication**. Selecting the saved package does not upload or
    deploy another server.
 
-The current portal uses this form to continue a saved upload. If the endpoint
-already has a published registration, select that registration under
+If the endpoint already has a published registration, select that registration under
 **Registered MCP connections** instead of submitting a duplicate.
 
 ### Find the MCP endpoint URL
 
-After selecting **Use this MCP package**, choose the authentication method in
-step 2. Studio displays the appropriate read-only **MCP endpoint URL** above the
-authentication fields. Keep that value: IAM and bearer authentication can use
-different addresses for the same deployment.
+After selecting **Use this MCP package**, Studio fills **MCP endpoint URL** in
+**Server**. In **Authentication**, **Server endpoint** shows the address for
+your chosen method. IAM and bearer authentication can use different addresses
+for the same deployment; Studio selects the appropriate one.
 
 For an already registered server, read **Endpoint** under **Registered MCP
-connections**. The uploaded-deployments list shows status and deletion controls.
-Return to the package configuration form when you need its generated endpoint.
+connections**. For an uploaded server, expand **Manage uploaded MCP servers**,
+select its row, and use **Copy MCP endpoint URL** or **Copy AWS IAM endpoint URL**
+when shown.
 
 ## 2. Save authentication
 
-Choose the method required by the server. Follow one setup path.
+In the wizard's **Authentication** step, choose the method required by the
+server. Follow one setup path, then choose **Next** to open **Tools and workspaces**.
 
 | Authentication method | Use it when | User sign-in to the provider |
 | --- | --- | --- |
@@ -137,11 +150,11 @@ Choose the method required by the server. Follow one setup path.
 | **AWS IAM / AgentCore Runtime** | Gateway must invoke an IAM-protected AgentCore Runtime | No provider OAuth consent |
 | **Existing connection** | Suitable authentication is already saved for this endpoint | Depends on that connection's method |
 
-In the MCP form, Studio derives the authentication name from the connection
-name, for example by adding ` OAuth` or ` IAM`. To save authentication
-independently, use **Authentication connections → Add authentication connection**,
-enter a friendly **Authentication name** and the full **Endpoint URL**, then
-follow the appropriate path below.
+Studio derives the authentication name from the connection name, for example
+by adding ` OAuth` or ` IAM`, and attaches it when saved. The optional
+**Manage saved authentication → Add authentication connection** control on the
+overview is for administrators managing credentials separately. It is not
+required for this journey.
 
 The endpoint in this dialog is the MCP URL from step 1. The OAuth issuer and
 authorization/token URLs identify the provider and have their own fields.
@@ -165,16 +178,12 @@ Keep it out of the ZIP, endpoint URL and agent instructions.
 This path uses an authorization-code client. Each user grants access to their
 provider account.
 
-**Using Snowflake? Complete [Snowflake setup](snowflake-oauth-setup.md) before
-filling the OAuth fields.** That guide includes these operations:
-
-| What you need | How the Snowflake guide obtains it |
-| --- | --- |
-| Account identifier and username | A SQL query using the current account and user |
-| Warehouse, data and reader role | Commands to list existing objects, create missing prerequisites and grant access to the selected data |
-| OAuth client ID, issuer and endpoints | Create a new OAuth integration, then run a query that returns the five values to copy into Studio, including scopes |
-| Client secret | Run `SYSTEM$SHOW_OAUTH_CLIENT_SECRETS` for the new integration and copy its primary secret value |
-| Callback configuration | Save authentication in Studio, copy its generated callback and set it on the new Snowflake integration |
+**Using Snowflake?** Follow the [first-time walkthrough](snowflake-setup.md#b-managed-mcp-with-user-sign-in-3lo).
+If this form is already open, keep it open and start at
+[B3: create the Snowflake integration](snowflake-setup.md#create-a-new-snowflake-oauth-integration).
+B4 retrieves the credentials and URLs; B5 maps them to every field below; B6
+registers the callback. The same file contains the separate PAT and Python
+package paths.
 
 1. In the provider's administration portal, create or obtain an OAuth application
    that supports authorization-code access to the MCP server's API.
@@ -199,31 +208,33 @@ secret authenticates the application; it is different from a user's password.
 
 **Create provider** registers these details in AWS for Studio. It does not create
 the upstream provider's OAuth application. For Snowflake, the integration is
-created by the SQL in the setup guide linked above.
+created by the SQL in the applicable setup guide linked above.
 
-5. Click **Save OAuth connection**. Wait for **Authentication saved**. The
-   standalone dialog instead reports **Authentication connection added**.
+5. Click **Save OAuth connection**. Wait for **Authentication saved**. Studio
+   selects the saved authentication for this connection.
 6. Copy the generated callback URL and register it on the provider application
-   as described below.
+   if it is not already allowed, as described below.
 
-#### Find and register the OAuth callback
+#### Check the OAuth callback
 
 **The callback is generated by AgentCore. There is no callback URL input in
 Studio.**
 
 | Where you are | Where to copy the callback |
 | --- | --- |
-| Still in the MCP form after saving OAuth | **Register the OAuth callback** panel |
-| Authentication was saved separately, or you have left the form | **MCP servers → Authentication connections → Refresh credentials → select your OAuth row → OAuth callback URL** below the table |
+| Still in **Authentication** after saving OAuth | **Check the OAuth callback** panel |
+| Authentication was saved separately, or you have left the wizard | **MCP servers → Manage saved authentication → Refresh credentials → select your OAuth row → OAuth callback URL** below the table |
 
-In the provider's portal, add this exact URL to the application's allowed
-callback/redirect URIs. Keep the scheme, host, path and generated identifier
-unchanged. The MCP endpoint and Studio home page are different URLs.
+Check the application's allowed callback/redirect URIs in the provider's portal.
+If this exact URL is already allowed, continue without changing the application.
+Otherwise add it, preserving other callbacks. Keep the scheme, host, path and
+generated identifier unchanged. The MCP endpoint and Studio home page are
+different URLs.
 
 Some providers require a redirect URI before issuing client credentials.
 Follow their supported initial registration process and complete the callback
 configuration before allowing sign-in. The
-[Snowflake example](snowflake-oauth-setup.md#2-create-the-new-integration-disabled)
+[Snowflake example](snowflake-setup.md#create-a-new-snowflake-oauth-integration)
 uses `<TEMPORARY_HTTPS_URL>` only while the new integration is disabled.
 Replace that temporary value with the full AgentCore callback copied from Studio
 before enabling the Snowflake integration or signing in.
@@ -261,7 +272,7 @@ the `client_credentials` grant and the MCP server accepts the resulting token.
 | **OAuth scopes** | The provider's service-access scopes, separated by spaces |
 
 4. Click **Save OAuth connection** and wait for **Authentication saved**.
-5. Continue to publication.
+5. Choose **Next** to open **Tools and workspaces**.
 
 This flow has no end-user callback or consent step. Choosing 2LO in Studio
 does not enable that grant at the provider. Use 3LO when access must follow
@@ -284,9 +295,10 @@ OAuth scopes.
 
 ### 2E. Reuse authentication
 
-Choose **Authentication method → Existing connection**, then select the saved
-**Authentication connection** intended for this endpoint. This is also how you
-attach authentication created through the standalone dialog.
+In **Authentication**, choose **Authentication method → Existing connection**,
+then select the saved **Authentication connection** intended for this endpoint.
+Choose **Next**. This also attaches authentication created through the optional
+management dialog; it does not create another credential.
 
 Per-user OAuth and IAM connections are bound to their exact endpoint. A shared
 hostname alone does not make a saved connection suitable for a different server.
@@ -299,18 +311,25 @@ secrets may need to be reentered for an explicit retry.
 
 ## 3. Review tools and publish
 
-Return to the MCP connection form with the intended authentication selected.
+Stay in the wizard. After saving or selecting authentication, choose **Next**.
 
-1. For 3LO, review **MCP tool schema JSON**. An uploaded package supplies its
-   discovered schema. For a hosted endpoint, obtain the server's complete
-   `tools/list` result from its owner in `{"tools": [...]}` form. Keep tool names
-   and input schemas intact.
+1. In **Tools and workspaces**, 3LO needs tool definitions before publication.
+   Uploaded packages show **Tools loaded from your package** automatically.
+   For a Snowflake SQL server, query `DESCRIBE MCP SERVER` and paste its complete
+   `server_spec` value using **Paste tool definitions instead**. Studio prepares
+   the SQL inputs automatically; follow the
+   [Snowflake import steps](snowflake-setup.md#b7-load-the-tool-definition-and-choose-workspaces).
+   For other hosted servers, choose **Choose tool definitions file** or paste
+   the server owner's MCP definitions. Standard `{"tools":[...]}` and JSON-RPC
+   `result.tools` formats remain supported, up to 180 KB and 100 tools. Review
+   the displayed tool names. Missing or invalid definitions disable **Connect and review**.
+   Other authentication methods discover the tools automatically.
 2. Select **Visible workspaces**. These are the Studio workspaces where users
    should be able to find this MCP; they are separate from OAuth scopes and
    provider data permissions.
 3. Click **Connect and review** for 3LO, or **Connect and discover** for the
    other authentication methods.
-4. At **Review**, inspect the tool names, descriptions and parameters. Select
+4. In **Review and publish**, inspect the tool names, descriptions and parameters. Select
    the tools you want to publish.
 5. Click **Approve and publish** and wait for **Connection published** and
    status **Ready**.
@@ -470,8 +489,8 @@ Review each object's dependencies before confirming deletion.
 | --- | --- | --- |
 | Agent | **Delete agent** | Removes the selected agent and its managed resources |
 | MCP registration | **Registered MCP connections → Delete connection** | Removes publication and Gateway/Registry bindings; retains the server and authentication |
-| Uploaded server | **Uploaded MCP deployments → Delete MCP deployment** | Deletes that hosted Runtime and uploaded package |
-| Saved authentication | **Authentication connections → Delete authentication** | Removes the unused saved connection; the confirmation explains whether its AWS provider and stored secret are also removed |
+| Uploaded server | **Manage uploaded MCP servers → select the deployment → Delete MCP deployment** | Deletes that hosted Runtime and uploaded package |
+| Saved authentication | **Manage saved authentication → select the row → Delete authentication** | Removes the unused saved connection; the confirmation explains whether its AWS provider and stored secret are also removed |
 
 Delete dependent test agents before their registration, and remove registrations
 before deleting a hosted deployment or its authentication. Enter the exact name

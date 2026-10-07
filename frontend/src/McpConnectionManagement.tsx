@@ -69,7 +69,7 @@ export function AuthenticationConnections({api, identityKey, onChanged, runtimeI
       }
     });
   }
-  return <Container header={<Header variant="h2" description="Save credentials independently, then reuse them when connecting an MCP server."
+  return <Container header={<Header variant="h2" description="Manage saved credentials. To set up a server and its authentication together, use Add MCP connection."
     actions={<SpaceBetween direction="horizontal" size="xs">
       <Button disabled={busy} onClick={() => void act(load)}>Refresh credentials</Button>
       <Button disabled={busy || !!pending} onClick={() => open('add')}>Add authentication connection</Button>
@@ -87,7 +87,8 @@ export function AuthenticationConnections({api, identityKey, onChanged, runtimeI
     {selected && <SpaceBetween size="s">
       {selected.reason && <Alert type="info">{selected.reason}</Alert>}
       {selected.callback_url && selected.grant_type !== 'CLIENT_CREDENTIALS' && <Alert type="info" header="OAuth callback URL">
-        Register this redirect URL in your provider’s client settings: <Box>{selected.callback_url}</Box>
+        Check that this URL is allowed by your provider. If it is already registered, no provider change is needed:
+        <Box>{selected.callback_url}</Box>
       </Alert>}
       <SpaceBetween direction="horizontal" size="s">
         <Button disabled={busy || !!pending || !selected.can_edit} onClick={() => open('edit')}>Edit authentication</Button>

@@ -4,17 +4,18 @@ For the portal walkthrough, start with the
 [Studio user guide](start-here.md). It covers server setup, each authentication
 method, publication, agent creation and tool testing. The sections below also
 cover package implementation and platform administration.
-For a new Snowflake authorization-code client, use the
-[generic Snowflake OAuth setup guide](snowflake-oauth-setup.md).
+For Snowflake, use the single [Snowflake setup guide](snowflake-setup.md).
+It covers managed MCP with PAT or user OAuth, Python package upload, credential
+retrieval, callback checks and agent testing.
 
 Use **Platform governance → MCP servers** in Agent Studio. The same form connects
-any supported authenticated HTTPS Streamable HTTP MCP endpoint. After **Create
-MCP connection**, the **MCP source** choices are visible: **Connect hosted
-endpoint** and **Upload MCP package (.zip)**. Complete packages contain their own
+any supported authenticated HTTPS Streamable HTTP MCP endpoint. **Add MCP
+connection** opens **Server → Authentication → Tools and workspaces → Review and
+publish**. In **Server**, choose **Connect hosted endpoint**, **Upload MCP package
+(.zip)** or **Use a deployed package**. Complete packages contain their own
 code, non-secret provider configuration and dependencies. The upload form has
 no vendor profile, account, warehouse, role or authentication-flow fields.
 Authentication is configured after the uploaded server is ready.
-For Snowflake object creation, use the [Snowflake SQL/PAT runbook](snowflake-managed-mcp.md).
 
 A fresh deployment has no saved authentication or MCP registrations. You supply
 the server URL and credentials; the platform does not install a provider example
@@ -23,24 +24,31 @@ through model administration. See [first installation](deployment.md#first-insta
 
 ## Register a server
 
-1. Choose **Create MCP connection → Connect hosted endpoint** and enter its name,
+1. Choose **Add MCP connection → Connect hosted endpoint** and enter its name,
    description and endpoint. For your own server package, follow **Upload a
-   complete MCP package** below.
-2. Choose **API key / PAT**, enter the value in the masked field, specify the header
+   complete MCP package** below. Choose **Next**.
+2. In **Authentication**, choose **API key / PAT**, enter the value in the masked field, specify the header
    and optional prefix, then **Save authentication**. Alternatively choose
    **AWS IAM / AgentCore Runtime** for a Runtime endpoint in the platform's account
    and region, then **Save IAM connection**; this requires no secret. Choose
    **Existing connection** to reuse saved API key, user OAuth, service OAuth or IAM
-   authentication. Select the workspaces that should see the connection.
+   authentication. After saving or selecting authentication, choose **Next**.
    OAuth has two separate setup steps: **User sign-in (OAuth 3LO)** for each
    user's authorization, and **Service credentials (OAuth 2LO)** for machine
    access. Follow the corresponding instructions below.
-3. Choose **Connect and discover**. The worker creates an AgentCore Gateway target,
+3. In **Tools and workspaces**, select the workspaces that should see the connection.
+   Choose **Connect and discover**. The worker creates an AgentCore Gateway target,
    discovers real tool schemas and creates a native AWS Agent Registry MCP draft.
-   For per-user OAuth, paste the server's `{"tools":[...]}` schema and choose
-   **Connect and review**. That native Gateway target uses the supplied schemas
+    For per-user OAuth, import the server owner's `tools/list` JSON file using
+    **Choose tool definitions file**, inspect the preview, then choose
+    **Connect and review**. For Snowflake SQL servers, paste the unedited
+    `server_spec` returned by `DESCRIBE MCP SERVER`; Studio prepares the inputs.
+    See the [Snowflake import steps](snowflake-setup.md#b7-load-the-tool-definition-and-choose-workspaces).
+    An uploaded package supplies these definitions
+   automatically. The native Gateway target uses the supplied schemas
    without acquiring an administrator's provider token.
-4. Review the schemas and select up to 20 tools. Discovery supports up to 100 tools.
+4. In **Review and publish**, inspect the schemas and select up to 20 tools.
+   Discovery supports up to 100 tools.
 5. Choose **Approve and publish**. The worker checks discovery again, submits and
    approves the Registry record, and publishes the selected tools to the catalog.
 6. Wait for **Connection published**. Create an agent in the selected workspace,
@@ -69,18 +77,10 @@ links, incompatible native libraries or invalid `main.py` syntax are rejected
 before a Runtime is created.
 
 1. Build the [complete generic example](../examples/complete-mcp-package/README.md)
-   or adapt its source and dependency lock. For Snowflake, edit the three
-   non-secret constants in
-   [`main.py`](../examples/runtime-snowflake-mcp/main.py): account, reader role
-   and warehouse. Build the complete server from the repository root:
-
-   ```sh
-   uv run --project examples/runtime-snowflake-mcp --locked python \
-     examples/runtime-snowflake-mcp/package.py \
-     --output artifacts/snowflake-mcp-runtime.zip
-   ```
-
-2. Open **MCP servers → Create MCP connection → Upload MCP package (.zip)**.
+   or adapt its source and dependency lock. For Snowflake, follow
+   [Python package setup](snowflake-setup.md#c-uploaded-python-mcp-with-user-sign-in-3lo)
+   in the Snowflake guide.
+2. Open **MCP servers → Add MCP connection → Upload MCP package (.zip)**.
    Enter a connection name and choose the built ZIP.
 3. Click **Upload and deploy package**. Studio transfers bounded chunks through
    the authenticated API into private, encrypted S3 storage, freezes their
@@ -89,30 +89,28 @@ before a Runtime is created.
 4. If transfer stops, click **Check package status**, select the same ZIP if
    necessary, and click **Resume same package**. This retains the request and
    skips confirmed parts. It does not create another deployment.
-5. Wait for **READY**, then click **Use this MCP package** inside **Create MCP
-   connection**. This reveals **MCP endpoint URL**, **Authentication method** and
-   **Visible workspaces** below the package status on the same page. Studio fills
-   the endpoint and tool schema from the package; scroll down within this panel.
-   If the separate **Add authentication connection** dialog is open, close it
-   and continue in **Create MCP connection** to use that automatic setup.
+5. Wait for **READY**, then click **Use this MCP package** and **Next**.
+   Studio carries the endpoint and discovered tools into **Authentication** and
+   **Tools and workspaces**. If the package was already deployed, start with
+   **Use a deployed package** and select it from **Saved MCP package deployments**.
    For the generic greeting example, select
    **AWS IAM / AgentCore Runtime**, then **Save IAM connection**. The configured Studio Gateway already has a
    scoped invocation grant for these packages. External data-source permissions
    are configured separately.
-6. For the Snowflake example, select **Authentication method → User sign-in
-   (OAuth 3LO)**. Use **Create provider** with the client details from the
-   [Snowflake OAuth setup guide](snowflake-oauth-setup.md), or choose
-   **Existing provider** when your administrator supplies a compatible installed
-   provider ARN. Save the OAuth connection and register its generated callback
-   with the provider. Wait for **Authentication saved**; Studio selects the new
-   saved connection automatically.
+6. For packages requiring user OAuth, select **Authentication method → User
+   sign-in (OAuth 3LO)** and follow [User sign-in](#user-sign-in-oauth-3lo).
+   The [Snowflake guide](snowflake-setup.md#configure-user-sign-in) provides that
+   provider's exact setup. Check the generated callback against its allowed URLs;
+   add it only if missing. Wait for **Authentication saved**; Studio selects the
+   new saved connection automatically.
    An existing saved OAuth connection is pinned to its exact endpoint;
    it cannot be reused for another uploaded server merely because the hostname
    matches.
    Service OAuth 2LO is a separate path for providers that support client
    credentials. A package upload does not perform either OAuth flow.
-7. Select workspaces, connect, review the discovered tools and approve and
-   publish. The workspace needs one catalog entry for the connection plus one
+7. Choose **Next**. In **Tools and workspaces**, select workspaces and connect.
+   In **Review and publish**, select tools, then choose **Approve and publish**.
+   The workspace needs one catalog entry for the connection plus one
    for each selected tool.
 8. Create and deploy an agent with those published tools. For the generic
    example, ask it to call `package_greeting` with `name: "Studio QA"` and verify
@@ -121,16 +119,15 @@ before a Runtime is created.
    `list_tables`, `describe_table` and a bounded read-only query.
 
 The example's ZIP includes its support module and text resource, so that tool
-result checks more than the entry point. Snowflake's ZIP includes
-`snowflake_mcp/`, the MCP SDK, the Snowflake connector and their locked
-dependencies. A folder containing only `main.py` and `requirements.txt` is not a
-deployable package unless its imports are already included.
+result checks more than the entry point. A folder containing only `main.py` and
+`requirements.txt` is not a deployable package unless its imports are already
+included.
 
 If the Runtime deploys but tool discovery fails, check its logs and the startup
 configuration inside the package. Select **Choose another package** to upload a
 corrected ZIP; reconciliation repeats discovery with the same immutable
-configuration. Delete unused failed deployments from **Uploaded MCP
-deployments** to free their slots and resources.
+configuration. Find status, copyable endpoints and deletion controls under
+**Manage uploaded MCP servers → Uploaded MCP deployments**.
 
 ### Packages that accept provider bearer tokens
 
@@ -171,8 +168,10 @@ installed Snowflake bundle is not required by the package API.
 
 ## Authentication connections
 
-Use **Add authentication connection** to save credentials independently of MCP
-onboarding. Enter a name, the endpoint and API key/PAT header details. Snowflake
+The **Authentication** step saves and attaches credentials during onboarding.
+For separate credential administration, expand **Manage saved authentication**
+on the overview and use **Add authentication connection**. Enter a name, the
+endpoint and API key/PAT header details. Snowflake
 uses header `Authorization` with prefix `Bearer`.
 
 The masked value goes to a deployment-prefixed Secrets Manager secret. An EXTERNAL
@@ -186,8 +185,9 @@ creates an EXTERNAL AgentCore OAuth provider.
 
 ### User sign-in (OAuth 3LO)
 
-1. In **Create MCP connection**, enter a name and endpoint, or use **Use this MCP
-   package** to fill them from a READY upload. In **Authentication method**,
+1. In **Add MCP connection**, enter a name and endpoint, or use **Use this MCP
+   package** to fill them from a READY upload. Choose **Next** to open
+   **Authentication**. In **Authentication method**,
    select **User sign-in (OAuth 3LO)**. The form displays **Set up user sign-in
    (3LO)**. For uploaded packages that accept provider tokens, Studio chooses
    their bearer-authenticated HTTPS endpoint when you select this method.
@@ -202,25 +202,32 @@ creates an EXTERNAL AgentCore OAuth provider.
    connection status** and **Continue OAuth setup** if offered. Expected:
    **Authentication saved**, with **Authentication method** changed to
    **Existing connection** and the new `<connection name> OAuth` selected.
-4. For a new provider, register the displayed AgentCore callback URL with the
-   upstream OAuth client before testing consent. Reusing a provider whose
-   callback is already registered does not require creating another OAuth client.
-5. Review **MCP tool schema JSON**. Studio fills this from an uploaded package;
-   for a hosted endpoint, supply its `{"tools":[...]}` schema. Select **Visible
-   workspaces**, then **Connect and review**. At **REVIEW**, select the tools,
+4. Check the displayed AgentCore callback against the upstream client's allowed
+   URLs. If that exact URL is already allowed, make no change. Add it only if
+   missing, preserving existing callbacks. Choose **Next**.
+5. In **Tools and workspaces**, review the definitions loaded from your package,
+   or import the hosted server's JSON using **Choose tool definitions file**.
+   The file can contain `{"tools":[...]}` or a JSON-RPC response with
+   `result.tools`; it must fit 180 KB and contain 1–100 tools with unique names
+   and object input schemas. Studio also accepts version-1 Snowflake
+   `server_spec` JSON for `SYSTEM_EXECUTE_SQL` tools and supplies their input
+   schemas automatically. **Paste tool definitions instead** accepts the same
+   formats.
+   Select **Visible workspaces**, then **Connect and review**.
+   In **Review and publish**, select the tools,
    choose **Approve and publish**, and wait for **Connection published**.
    Each user completes provider sign-in and consent when their agent calls a tool.
 
 **Existing provider** is a choice inside OAuth setup. **Existing connection**
-selects authentication that has already been saved for the endpoint. A new
-upload normally needs a new saved reference even when it reuses the same
-OAuth provider.
+selects authentication that has already been saved for the endpoint. Saved
+authentication can be restricted to one exact endpoint. For a different server
+URL, choose **Existing provider** inside OAuth setup to save a new reference
+for that endpoint, even when both servers reuse the same OAuth provider.
 
-The separate **Add authentication connection** dialog saves authentication
-independently. It requires **Authentication name** and the full **Endpoint URL**
-as well as the OAuth fields above. After saving there, return to **Create MCP
-connection**, use the uploaded package, select **Authentication method → Existing
-connection**, and select the reference you saved for that exact endpoint.
+If authentication was saved through the optional management dialog, start
+**Add MCP connection**, select the server and choose **Next**. In
+**Authentication**, select **Existing connection** and the reference saved for
+that exact endpoint. No new OAuth setup is needed.
 
 **Existing provider** saves a reference to an existing deployment-prefixed 3LO
 provider backed by an EXTERNAL Secrets Manager secret. The platform's user Gateway
@@ -233,12 +240,13 @@ new explicit invocation. Studio login remains Cognito.
 
 ### Service credentials (OAuth 2LO)
 
-1. Select **Service credentials (OAuth 2LO)**. The form displays **Set up service
+1. In **Authentication**, select **Service credentials (OAuth 2LO)**. The form displays **Set up service
    access (2LO)**.
 2. Enter the client ID, HTTPS **OAuth discovery URL**, client authentication
    method, masked client secret and scopes. The discovery document supplies the
    provider's token endpoint and authentication metadata.
-3. Choose **Save OAuth connection**, then **Connect and discover**. Review and
+3. Choose **Save OAuth connection**, then **Next**. Select workspaces in
+   **Tools and workspaces**, then **Connect and discover**. Review and
    publish the discovered tools. This path has no end-user consent or callback
    registration step.
 
@@ -256,22 +264,22 @@ URL encoded and `?qualifier=DEFAULT`. The platform saves the native
 installation's region. Saving authentication does not grant IAM permissions.
 It pins the exact Runtime URL, in addition to its HTTPS origin.
 
-The MCP page includes an expandable **Onboard a server hosted in AgentCore
-Runtime** checklist. For a separately deployable example that uses per-user OAuth to access
-Snowflake, see the [Runtime MCP guide](runtime-snowflake-mcp.md).
+The [Snowflake setup guide](snowflake-setup.md) includes an
+operator appendix for separately managed Python MCP stacks.
 
 ## Existing single-file deployments
 
 The single-file bundle overlay is no longer offered for new onboarding. Existing
 deployment records, runtime versions, authentication and registrations remain
 available. Use their saved endpoint to register an existing server, or remove an
-unused Runtime from **Uploaded MCP deployments**. New servers use the complete
+unused Runtime from **Manage uploaded MCP servers → Uploaded MCP deployments**. New servers use the complete
 ZIP workflow above. Legacy API receipts keep their original configuration and
 can be reconciled without changing their bytes or provider bindings.
 
 ## Edit and delete
 
-1. For an editable API-key/PAT authentication row, choose **Edit authentication**.
+1. Expand **Manage saved authentication**. For an editable API-key/PAT
+   authentication row, choose **Edit authentication**.
    An empty replacement value keeps its current secret; stored values are never
    displayed. OAuth client details cannot be edited through this control.
 2. Select an MCP registration and choose **Edit connection**, then **Save and
@@ -279,7 +287,8 @@ can be reconciled without changing their bytes or provider bindings.
 3. For an unused registration, choose **Delete connection** and type its exact name.
    Studio retires its Registry record, Gateway target, catalog entries and grants.
    The remote MCP server and saved credentials remain.
-4. To remove a Studio-hosted server, select it in **Uploaded MCP deployments**,
+4. To remove a Studio-hosted server, expand **Manage uploaded MCP servers** and
+   select it in **Uploaded MCP deployments**,
    choose **Delete MCP deployment**, type the exact deployment name and confirm.
    This also works for failed deployments and unfinished uploads. If a registration
    still points at it, remove that unused registration first. Saved-agent

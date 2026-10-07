@@ -18,8 +18,9 @@ const userFields = [
 const serviceFields = [['client_id', 'OAuth client ID'], ['discovery_url', 'OAuth discovery URL']] as const;
 const path = (intent: Intent) => '/admin/mcp/' + ('provider_arn' in intent ? 'oauth-credentials' : 'credentials');
 
-export default function McpOAuthAuthentication({api, identityKey, name, endpoint, onSaved, grant, allowedGrants}: {
+export default function McpOAuthAuthentication({api, identityKey, name, endpoint, onSaved, grant, allowedGrants, onBusyChange}: {
   api: Api; identityKey: string; name: string; endpoint: string; onSaved: (id: string) => Promise<void>; grant: Grant; allowedGrants?: string[];
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const key = 'mcp-gateway-oauth-reference:' + identityKey;
   const userConsent = grant === 'AUTHORIZATION_CODE';
@@ -34,6 +35,7 @@ export default function McpOAuthAuthentication({api, identityKey, name, endpoint
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [storageError, setStorageError] = useState('');
   const lock = useRef(false);
+  useEffect(() => {onBusyChange?.(busy); return () => onBusyChange?.(false);}, [busy, onBusyChange]);
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(key);
@@ -80,7 +82,7 @@ export default function McpOAuthAuthentication({api, identityKey, name, endpoint
   return <SpaceBetween size="s">
     <Header variant="h3">{heading}</Header>
     <Box>{userConsent
-      ? 'Each user signs in to the provider and approves access when an agent calls a tool. Configure an authorization-code client, then register the callback URL shown after saving.'
+      ? 'Each user signs in to the provider when an agent calls a tool. Supply a new or existing authorization-code client, then check the callback shown after saving. Update the provider only if that callback is not already allowed.'
       : 'Gateway uses a service client to request tokens. Supply the provider’s HTTPS discovery URL and client credentials. Users do not sign in or approve consent for this connection.'}</Box>
     {!intent && <>
     {userConsent && <FormField label="OAuth provider setup"><Select ariaLabel="OAuth provider setup"

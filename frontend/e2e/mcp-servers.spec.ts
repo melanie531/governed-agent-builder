@@ -24,7 +24,11 @@ test('existing managed servers remain visible without a vendor-specific authorin
   await page.getByRole('row').filter({hasText: 'Existing warehouse'}).getByRole('radio').check();
   await expect(page.getByText('existing-target', {exact: true})).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await page.getByRole('button', {name: 'Create MCP connection', exact: true}).click();
+  await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Server', exact: true})).toBeVisible();
+  await page.getByLabel('Connection name', {exact: true}).fill('Another server');
+  await page.getByLabel('MCP endpoint URL', {exact: true}).fill('https://another.example.com/mcp');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await expect(page.getByLabel('API key or PAT', {exact: true})).toBeVisible();
   await expect(page.getByText('Snowflake profile', {exact: true})).toHaveCount(0);
   expect(calls).not.toContain('/api/admin/mcp/options');

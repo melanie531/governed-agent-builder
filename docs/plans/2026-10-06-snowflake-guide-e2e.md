@@ -8,8 +8,9 @@ MCP deployment and connection, agent creation as a Business user, and real UI
 tool tests in the burner account. Keep the successful resources for review.
 Only failed artifacts created by this run may be removed.
 
-The independent tester follows `docs/snowflake-oauth-setup.md`,
-`docs/start-here.md` and the linked package README. The coordinating agent owns
+The independent tester followed the Snowflake OAuth guide, `docs/start-here.md`
+and the linked package README. Their Snowflake instructions are now consolidated
+in [the Snowflake setup guide](../snowflake-setup.md). The coordinating agent owns
 diagnosis and corrections. Neither agent may substitute backend creation or
 invocation for a documented portal action.
 

@@ -8,7 +8,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 
 from .config import canonical, digest
-from .journey_mcp import GatewayMCP, GatewayRoutes, GatewayAuthorizationRequired
+from .journey_mcp import GatewayMCP, GatewayRoutes, GatewayAuthorizationRequired, GatewayToolError
 from .journey_results import model_result
 from .journey_tools import model_schema, tool_arguments
 from .telemetry import ExecutionSpans
@@ -160,8 +160,12 @@ def _execute(manifest, user_input, session_id, *, model, gateway, publish=None, 
                     except GatewayAuthorizationRequired as required:
                         required.completed_tool_calls = len(tool_calls)
                         raise
+                    except GatewayToolError as failed:
+                        text = json.dumps({"error": str(failed), "failure_stage": "tool_result",
+                                           "downstream_execution": "unverified"})
+                    else:
+                        text = model_result(selected[name], text)
                     # This exact bounded content is both given to the model and recorded.
-                    text = model_result(selected[name], text)
                     span.set_attribute("gen_ai.tool.call.result", text)
                     try:
                         parsed = json.loads(text)

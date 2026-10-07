@@ -15,6 +15,10 @@ class GatewayFailure(RuntimeError):
     pass
 
 
+class GatewayToolError(GatewayFailure):
+    """A completed MCP call returned isError, without exposing its raw content."""
+
+
 def decode_rpc_response(raw, content_type, request_id):
     if "text/event-stream" not in content_type:
         return json.loads(raw)
@@ -145,7 +149,9 @@ class GatewayMCP:
         result = self.rpc("tools/call", params,
                           user_authorized=name in self.user_tools)
         if result.get("isError"):
-            raise GatewayFailure("The selected Gateway target could not complete the tool call")
+            raise GatewayToolError(
+                "The MCP tool returned an error. No successful result is available. "
+                "The underlying cause and downstream execution status are unverified.")
         content = result.get("content", [])
         text = "\n".join(block["text"] for block in content if block.get("type") == "text")
         if not text:
