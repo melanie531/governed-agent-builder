@@ -118,6 +118,26 @@ def test_self_approve_rejects_unapproved_component(client, app):
                        json={"approve": True, "reason": "Component no longer approved"}).status_code in (403, 404)
 
 
+def test_self_approve_rejects_data_policy_block(client, app):
+    from backend.foundation_runs import get as epoch_get
+    request_id = self_request(app)
+    with app.state.store.tx() as db:
+        body = json.loads(db.select("components", columns=["body"], where=[("id", "=", "restricted-insights")]).fetchone()[0])
+        body["external"] = True  # still approved, same version; admin persona disallows external data
+        db.update("components", {"body": json.dumps(body)}, where=[("id", "=", "restricted-insights")])
+        epoch_before = epoch_get(db, "foundation-epoch") or 0
+    login(client, "admin")
+    # Data-policy-blocked capabilities already fail catalog visibility (404)
+    # before the explicit 403 approval/data-policy guard; both deny.
+    assert client.post(f"/api/admin/requests/{request_id}/decision",
+                       json={"approve": True, "reason": "Blocked by workspace data policy"}).status_code in (403, 404)
+    with app.state.store.tx() as db:
+        assert db.select("requests", where=[("id", "=", request_id)]).fetchone()["status"] == "PENDING"
+        assert not db.select("grants", where=[("persona", "=", "admin"), ("component", "=", "restricted-insights")]).fetchone()
+        assert (epoch_get(db, "foundation-epoch") or 0) == epoch_before
+    assert not [a for a in client.get("/api/admin/audit").json() if a["action"] == "request_decided"]
+
+
 def test_reviewer_path_unchanged_audits_self_approved_false(client):
     login(client)
     r = client.post("/api/requests", json={"component_id": "restricted-insights", "reason": "Research strategy purpose"})
