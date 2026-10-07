@@ -329,8 +329,11 @@ Switch to the Business User view and the workspace where the MCP was published.
 
 1. Open **AI Catalog** and confirm the intended model and MCP are available.
    Use **Request access** where required. An authorized administrator handles
-   requests in **Policies & approvals**; the requester cannot approve their
-   own request by switching roles.
+   requests in **Policies & approvals**. An administrator whose active role is
+   Platform Admin may decide their own request; the decision is written to the
+   immutable audit log with an explicit self-approved marker, the approver,
+   the requester and the active role. Admin membership alone, while the
+   Business view is active, is rejected.
 2. Open **Create agent** and select an available template appropriate to the
    task. For a simple tool test, **Knowledge Q&A** can be used if your
    installation offers it. Click **Next**.

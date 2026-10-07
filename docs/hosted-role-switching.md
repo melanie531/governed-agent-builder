@@ -24,8 +24,11 @@ switching so state from the previous console does not carry over.
 Existing access tokens expire normally; Cognito group changes become visible
 with new tokens. Emergency revocation must also revoke the affected hosted
 sessions. The demo switch is not a substitute for separate production approvers:
-the original subject is retained, including the existing prohibition on
-approving one's own capability-access request.
+the original subject is retained. A user may decide their own capability-access
+request only while their server-verified active role is Platform Admin; the
+decision is recorded in the immutable audit log with an explicit self-approved
+marker, the approver, the requester and the active role. Admin membership with
+a business group active is rejected.
 
 Validation covers signed-token authorization on SQLite and DynamoDB, CSRF,
 unassigned roles, ambiguous assignments, session isolation, revocation, grant
