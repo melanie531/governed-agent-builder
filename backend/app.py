@@ -952,8 +952,9 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             row = db.select('requests', where=[('id', '=', request_id)]).fetchone()
             if not row:
                 raise HTTPException(404, "Request not found")
-            if row["requester"] == persona["id"]:
-                raise HTTPException(403, "Self-approval prohibited")
+            self_approved = row["requester"] == persona["id"]
+            if self_approved and persona["role"] != "admin":
+                raise HTTPException(403, "Self-approval requires the active Platform Admin role")
             if row["status"] != "PENDING":
                 raise HTTPException(409, "Request already decided")
             if len(data.reason.strip()) < 5:
@@ -973,7 +974,7 @@ def create_app(db_path=None, demo_mode=None, worker_enabled=True, public_url=Non
             db.update('requests', {'status': 'APPROVED' if data.approve else 'REJECTED', 'decision': data.reason}, where=[('id', '=', request_id)])
             from .foundation_runs import get as epoch_get, put as epoch_put
             epoch_put(db, 'foundation-epoch', (epoch_get(db, 'foundation-epoch') or 0) + 1)
-            audit(db, persona["id"], "request_decided", request_id, json.dumps({"decision": "approved" if data.approve else "rejected", "reason": data.reason, "workspace": row["workspace"]}))
+            audit(db, persona["id"], "request_decided", request_id, json.dumps({"decision": "approved" if data.approve else "rejected", "reason": data.reason, "workspace": row["workspace"], "actor": persona["id"], "requester": row["requester"], "actor_role": persona["role"], "self_approved": self_approved}))
         return {"ok": True, "notice": "Existing capability grant updated; no connector was created"}
 
     @app.post("/api/admin/catalog/{authority}/{resource_id}")

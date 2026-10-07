@@ -65,7 +65,9 @@ def test_available_requestable_approval_and_revoke(client):
     assert items['bedrock-claude']['usable']
     assert items['restricted-insights']['requestable'] and not items['restricted-insights']['usable']
     r=client.post('/api/requests',json={'component_id':'restricted-insights','reason':'Research strategy purpose'}).json()
-    assert client.post('/api/admin/requests/'+r['id']+'/decision',json={'approve':True,'reason':'Cannot self approve'}).status_code==403
+    # Self-decision without the active Platform Admin role is still rejected.
+    denied=client.post('/api/admin/requests/'+r['id']+'/decision',json={'approve':True,'reason':'Cannot self approve'})
+    assert denied.status_code==403 and denied.json()['detail']=='Platform admin required'
     login(client,'sam');assert client.get('/api/requests').json()==[]
     login(client,'admin')
     assert client.post('/api/admin/requests/'+r['id']+'/decision',json={'approve':True,'reason':'Approved for research'}).status_code==200

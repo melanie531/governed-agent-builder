@@ -78,7 +78,7 @@ def seed(store):
                 "network": {"networkMode": "PUBLIC"},
                 "artifact": {"bucket": "test-private-bucket", "key": "foundation.zip", "version_id": "1"},
                 "foundation": json.loads((ROOT / "examples/journey/foundation.json").read_text())}
-    model_binding = {"type": "bedrock-converse", "model_id": "test.claude", "supports_temperature": True}
+    model_binding = {"type": "bedrock-converse", "model_id": "global.test.claude", "supports_temperature": True}
     schema = {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
     bindings = [("bedrock-claude", "model", "Catalog test model", model_binding),
                 ("mcp-tavily", "mcp_server", "Tavily", {"type": "mcp-server", "gateway_id": "test-gateway", "target_id": "tavily"}),

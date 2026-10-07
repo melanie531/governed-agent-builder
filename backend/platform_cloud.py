@@ -6,6 +6,7 @@ import time
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from foundation_harness.config import digest
@@ -47,16 +48,14 @@ class PlatformCloud:
         def read():
             client = self.client("bedrock")
             rows = []
-            for model in client.list_foundation_models(byOutputModality="TEXT")["modelSummaries"]:
-                if model.get("modelLifecycle", {}).get("status") == "ACTIVE":
-                    rows.append({"id": model["modelId"], "name": model["modelName"],
-                                 "provider": model["providerName"], "type": "Foundation model"})
             token = None
             for _ in range(10):
                 page = client.list_inference_profiles(**({"nextToken": token} if token else {}))
                 rows.extend({"id": model["inferenceProfileId"], "name": model["inferenceProfileName"],
                              "provider": "Amazon Bedrock", "type": "Inference profile"}
-                            for model in page["inferenceProfileSummaries"] if model["status"] == "ACTIVE")
+                            for model in page["inferenceProfileSummaries"]
+                            if model["status"] == "ACTIVE" and model.get("type") == "SYSTEM_DEFINED"
+                            and model["inferenceProfileId"].startswith("global."))
                 token = page.get("nextToken")
                 if not token:
                     return sorted(rows, key=lambda item: item["name"])
@@ -107,6 +106,8 @@ class PlatformCloud:
         # native MCP server.json or Agent Skill format.
         if self.settings.get("mcp_onboarding"):
             registry_id, registry_arn = self.native_registry()
+            if item["kind"] == "model":
+                self.eligible_profile(item["binding"]["model_id"])
             response = self.client("agent-registry-control").create_registry_record(
                 registryId=registry_id, name=item["id"], description=item["description"][:4096],
                 recordType="CUSTOM", recordVersion=item["version"],
@@ -117,8 +118,11 @@ class PlatformCloud:
             return {"arn": response["recordArn"], "status": response["status"],
                     "version": item["version"], "binding_digest": item["binding_digest"],
                     "descriptor_type": "custom"}
+        registry_id = self.registry_id()
+        if item["kind"] == "model":
+            self.eligible_profile(item["binding"]["model_id"])
         response = self.client("bedrock-agentcore-control").create_registry_record(
-            registryId=self.registry_id(), name=item["id"], description=item["description"][:4096],
+            registryId=registry_id, name=item["id"], description=item["description"][:4096],
             descriptorType="CUSTOM", recordVersion=item["version"],
             descriptors={"custom": {"inlineContent": json.dumps(descriptor)}},
             clientToken=digest([self.registry_id(), item["id"], item["version"], item["binding_digest"]]))
@@ -153,15 +157,39 @@ class PlatformCloud:
             registryId=self.registry_id(), recordId=binding["arn"],
             status="APPROVED" if approve else "REJECTED", statusReason=reason)["status"]
 
+    def eligible_profile(self, model_id):
+        policy_error = HTTPException(422, "Platform policy requires an active, system-defined "
+                                     "global cross-region inference profile (global.*); "
+                                     "this model is not eligible.")
+        if not model_id.startswith("global."):
+            raise policy_error
+        try:
+            profile = self.client("bedrock").get_inference_profile(inferenceProfileIdentifier=model_id)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+                raise policy_error
+            raise
+        if (profile.get("status") != "ACTIVE" or profile.get("type") != "SYSTEM_DEFINED"
+                or profile.get("inferenceProfileId") != model_id):
+            raise policy_error
+
     def validate_model(self, model_id):
+        self.eligible_profile(model_id)
         client = self.session.client("bedrock-runtime", config=Config(
             connect_timeout=3, read_timeout=20, retries={"total_max_attempts": 1}))
-        response = client.converse(
-            modelId=model_id, messages=[{"role": "user", "content": [{"text": "Reply with ready."}]}],
-            inferenceConfig={"maxTokens": 64},
-            toolConfig={"tools": [{"toolSpec": {"name": "connection_check",
-                "description": "A connection validation tool; no tool will be executed.",
-                "inputSchema": {"json": {"type": "object", "properties": {}}}}}]})
+        try:
+            response = client.converse(
+                modelId=model_id, messages=[{"role": "user", "content": [{"text": "Reply with ready."}]}],
+                inferenceConfig={"maxTokens": 64},
+                toolConfig={"tools": [{"toolSpec": {"name": "connection_check",
+                    "description": "A connection validation tool; no tool will be executed.",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}}}]})
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") == "ValidationException":
+                raise HTTPException(422, "Bedrock rejected this model ID: "
+                                    f"{error.response['Error'].get('Message', '')} "
+                                    "Register the model's inference profile from discovery instead.")
+            raise
         if not response.get("output", {}).get("message", {}).get("content"):
             raise HTTPException(409, "The model did not return a valid Converse response")
         return {"request_id": response["ResponseMetadata"]["RequestId"], "validated_at": time.time()}

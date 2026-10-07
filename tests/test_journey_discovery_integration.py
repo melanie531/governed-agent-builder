@@ -39,7 +39,7 @@ def test_discovery_and_journey_models_share_catalog_but_only_published_models_ca
         rows = {item["id"]: item for item in response.json()["items"]}
         assert {"bedrock-claude", discovery["id"]} <= rows.keys()
         assert rows["bedrock-claude"]["catalog"] == "journey"
-        assert rows["bedrock-claude"]["model_id"] == "test.claude"
+        assert rows["bedrock-claude"]["model_id"] == "global.test.claude"
         assert rows["bedrock-claude"]["usable"] and rows["bedrock-claude"]["execution_ready"]
         assert not rows[discovery["id"]]["usable"] and not rows[discovery["id"]]["requestable"]
         options = client.get("/api/journey/options").json()

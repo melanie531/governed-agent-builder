@@ -610,6 +610,26 @@ def audit(state_path, runtime_id=None, existing=False, output=None, scoped_worke
         with store.tx() as db:
             python_config = get(db, "mcp-python-config")
             python_servers = [json.loads(r["body"]) for r in db.select("settings") if r["key"].startswith("mcp-python:")]
+        # Package uploads are optional, but a fresh install must never leave their
+        # absence silent, and a half-installed state must fail with the exact
+        # remaining step (docs/generic-mcp-onboarding.md, "Operators bind package
+        # permissions").
+        package_binding = state["journeyPlatform"].get("mcp_package_upload")
+        if not python_config and not package_binding:
+            record("PackageUploadInstallation", {
+                "status": "NOT_INSTALLED",
+                "action": "Optional feature. To enable Upload MCP package (.zip): install python "
+                          "hosting with examples/runtime-snowflake-mcp/facade_deploy.py plan/deploy/"
+                          "audit/configure --python-config, then scripts.mcp_onboarding_deploy "
+                          "configure_packages, deploy and publish."})
+        else:
+            from backend.mcp_python_cloud import artifact_bucket
+            record("PackageUploadInstallation", {
+                "python_config_installed": bool(python_config),
+                "package_binding_installed": bool(package_binding),
+                "binding_matches_python_config": bool(python_config) and bool(package_binding)
+                    and package_binding["bucket"] == artifact_bucket(python_config)
+                    and package_binding["runtime_prefix"] == python_config["runtime_prefix"]})
         if python_config:
             configuration(python_config, state["journeyPlatform"])
             python_cloud = PythonCloud(state["journeyPlatform"], session=session)
