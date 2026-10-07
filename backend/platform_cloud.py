@@ -48,17 +48,14 @@ class PlatformCloud:
         def read():
             client = self.client("bedrock")
             rows = []
-            for model in client.list_foundation_models(byOutputModality="TEXT")["modelSummaries"]:
-                if (model.get("modelLifecycle", {}).get("status") == "ACTIVE"
-                        and "ON_DEMAND" in model.get("inferenceTypesSupported", [])):
-                    rows.append({"id": model["modelId"], "name": model["modelName"],
-                                 "provider": model["providerName"], "type": "Foundation model"})
             token = None
             for _ in range(10):
                 page = client.list_inference_profiles(**({"nextToken": token} if token else {}))
                 rows.extend({"id": model["inferenceProfileId"], "name": model["inferenceProfileName"],
                              "provider": "Amazon Bedrock", "type": "Inference profile"}
-                            for model in page["inferenceProfileSummaries"] if model["status"] == "ACTIVE")
+                            for model in page["inferenceProfileSummaries"]
+                            if model["status"] == "ACTIVE" and model.get("type") == "SYSTEM_DEFINED"
+                            and model["inferenceProfileId"].startswith("global."))
                 token = page.get("nextToken")
                 if not token:
                     return sorted(rows, key=lambda item: item["name"])
@@ -156,6 +153,10 @@ class PlatformCloud:
             status="APPROVED" if approve else "REJECTED", statusReason=reason)["status"]
 
     def validate_model(self, model_id):
+        if not model_id.startswith("global."):
+            raise HTTPException(422, "Platform policy requires a global cross-region inference "
+                                "profile (global.*); this model binding is not eligible. "
+                                "Register the model's global inference profile instead.")
         client = self.session.client("bedrock-runtime", config=Config(
             connect_timeout=3, read_timeout=20, retries={"total_max_attempts": 1}))
         try:

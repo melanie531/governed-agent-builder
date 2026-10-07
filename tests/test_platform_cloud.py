@@ -15,33 +15,63 @@ def cloud():
     return adapter, client
 
 
-def test_models_excludes_profile_only_foundation_models():
+def test_models_returns_only_active_system_defined_global_profiles():
     adapter, client = cloud()
-    client.list_foundation_models.return_value = {"modelSummaries": [
-        {"modelId": "anthropic.claude-opus-5-5", "modelName": "Claude Opus 5.5",
-         "providerName": "Anthropic", "modelLifecycle": {"status": "ACTIVE"},
-         "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
-        {"modelId": "anthropic.claude-haiku-4-5", "modelName": "Claude Haiku 4.5",
-         "providerName": "Anthropic", "modelLifecycle": {"status": "ACTIVE"},
-         "inferenceTypesSupported": ["ON_DEMAND", "INFERENCE_PROFILE"]}]}
     client.list_inference_profiles.return_value = {"inferenceProfileSummaries": [
+        {"inferenceProfileId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+         "inferenceProfileName": "Global Claude Haiku 4.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+         "inferenceProfileName": "Global Claude Sonnet 4.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"}]}
+    rows = adapter.models()
+    assert [row["id"] for row in rows] == ["global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                                           "global.anthropic.claude-sonnet-4-5-20250929-v1:0"]
+    assert rows[0]["type"] == "Inference profile"
+
+
+def test_models_never_sources_foundation_models():
+    adapter, client = cloud()
+    client.list_inference_profiles.return_value = {"inferenceProfileSummaries": []}
+    assert adapter.models() == []
+    client.list_foundation_models.assert_not_called()
+
+
+def test_models_excludes_regional_inactive_and_non_system_defined_profiles():
+    adapter, client = cloud()
+    client.list_inference_profiles.return_value = {"inferenceProfileSummaries": [
+        {"inferenceProfileId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+         "inferenceProfileName": "Global Claude Haiku 4.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
         {"inferenceProfileId": "us.anthropic.claude-opus-5-5",
-         "inferenceProfileName": "US Claude Opus 5.5", "status": "ACTIVE"}]}
-    ids = [row["id"] for row in adapter.models()]
-    assert "anthropic.claude-opus-5-5" not in ids
-    assert "anthropic.claude-haiku-4-5" in ids
-    assert "us.anthropic.claude-opus-5-5" in ids
+         "inferenceProfileName": "US Claude Opus 5.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+         "inferenceProfileName": "EU Claude Sonnet 4.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "apac.amazon.nova-2-lite-v1:0",
+         "inferenceProfileName": "APAC Nova 2 Lite", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "global.anthropic.claude-opus-5-5",
+         "inferenceProfileName": "Global Claude Opus 5.5", "status": "INACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "global.forged.application-profile",
+         "inferenceProfileName": "Forged application profile", "status": "ACTIVE", "type": "APPLICATION"}]}
+    assert [row["id"] for row in adapter.models()] == ["global.anthropic.claude-haiku-4-5-20251001-v1:0"]
+
+
+@pytest.mark.parametrize("model_id", ["anthropic.claude-haiku-4-5", "us.anthropic.claude-opus-5-5"])
+def test_validate_model_rejects_non_global_binding_without_calling_converse(model_id):
+    adapter, _ = cloud()
+    with pytest.raises(HTTPException) as excinfo:
+        adapter.validate_model(model_id)
+    assert excinfo.value.status_code == 422
+    assert "global cross-region inference profile" in excinfo.value.detail
+    adapter.session.client.assert_not_called()
 
 
 def test_validate_model_maps_validation_exception_to_actionable_422():
     adapter, _ = cloud()
-    aws_message = ("Invocation of model ID anthropic.claude-opus-5-5 with on-demand throughput "
+    aws_message = ("Invocation of model ID global.anthropic.claude-opus-5-5 "
                    "isn't supported. Retry your request with the ID or ARN of an inference "
                    "profile that contains this model.")
     adapter.session.client.return_value.converse.side_effect = ClientError(
         {"Error": {"Code": "ValidationException", "Message": aws_message}}, "Converse")
     with pytest.raises(HTTPException) as excinfo:
-        adapter.validate_model("anthropic.claude-opus-5-5")
+        adapter.validate_model("global.anthropic.claude-opus-5-5")
     assert excinfo.value.status_code == 422
     assert aws_message in excinfo.value.detail
     assert "inference profile" in excinfo.value.detail
@@ -52,7 +82,7 @@ def test_validate_model_other_client_errors_still_escape_as_client_error():
     adapter.session.client.return_value.converse.side_effect = ClientError(
         {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "Converse")
     with pytest.raises(ClientError):
-        adapter.validate_model("anthropic.claude-haiku-4-5")
+        adapter.validate_model("global.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 
 def test_costs_do_not_report_zero_for_inactive_project_tag():

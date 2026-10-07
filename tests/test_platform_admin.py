@@ -143,6 +143,19 @@ def test_validation_http_exception_surfaces_detail_and_records_failed_phase(plat
         assert get(db, "platform-model-validation:" + cid)["phase"] == "FAILED"
 
 
+@pytest.mark.parametrize("model_id", ["global.not-real", "us.anthropic.claude-opus-5-5"])
+def test_model_registration_rejects_ids_absent_from_global_discovery(platform, model_id):
+    client, _, native, _ = platform
+    native.models = lambda: [{"id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                              "name": "Global Claude Haiku 4.5", "provider": "Amazon Bedrock",
+                              "type": "Inference profile"}]
+    login(client, "admin")
+    response = client.post("/api/admin/platform/models", json={
+        "model_id": model_id, "workspaces": ["research"], "reason": "Global policy test"})
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Select a model from current Bedrock discovery"
+
+
 @pytest.mark.parametrize("field,value", [("schema", "tampered"), ("target_id", "different-target"), ("recordVersion", "changed")])
 @pytest.mark.parametrize("modern", [False, True])
 def test_registry_descriptor_drift_blocks_approval(platform, field, value, modern):

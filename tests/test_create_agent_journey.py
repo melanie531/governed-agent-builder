@@ -395,6 +395,31 @@ def test_revoked_tool_and_cross_owner_are_denied(setup):
     assert denied.value.status_code == 403
 
 
+def rebind_catalog_model(journey, model_id):
+    with journey.store.tx() as db:
+        row = db.select("components", where=[("id", "=", "bedrock-claude")]).fetchone()
+        item = json.loads(row["body"])
+        item["binding"] = {**item["binding"], "model_id": model_id}
+        item["binding_digest"] = digest(item["binding"])
+        db.update("components", {"body": json.dumps(item)}, where=[("id", "=", "bedrock-claude")])
+
+
+@pytest.mark.parametrize("model_id", ["us.test.claude", "test.claude"])
+def test_save_rejects_non_global_model_bindings_by_policy(setup, model_id):
+    journey, _ = setup
+    rebind_catalog_model(journey, model_id)
+    with pytest.raises(HTTPException) as denied:
+        save(journey, deploy=False)
+    assert denied.value.status_code == 409
+    assert "global cross-region inference profile" in denied.value.detail
+
+
+def test_save_accepts_global_model_binding(setup):
+    journey, _ = setup
+    saved = save(journey, deploy=False)
+    assert saved["version"] == 1
+
+
 def test_dataset_validation_accepts_absence_but_rejects_duplicates(setup):
     journey, _ = setup
     payload = definition(journey)
