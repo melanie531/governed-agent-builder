@@ -106,6 +106,8 @@ class PlatformCloud:
         # native MCP server.json or Agent Skill format.
         if self.settings.get("mcp_onboarding"):
             registry_id, registry_arn = self.native_registry()
+            if item["kind"] == "model":
+                self.eligible_profile(item["binding"]["model_id"])
             response = self.client("agent-registry-control").create_registry_record(
                 registryId=registry_id, name=item["id"], description=item["description"][:4096],
                 recordType="CUSTOM", recordVersion=item["version"],
@@ -116,8 +118,11 @@ class PlatformCloud:
             return {"arn": response["recordArn"], "status": response["status"],
                     "version": item["version"], "binding_digest": item["binding_digest"],
                     "descriptor_type": "custom"}
+        registry_id = self.registry_id()
+        if item["kind"] == "model":
+            self.eligible_profile(item["binding"]["model_id"])
         response = self.client("bedrock-agentcore-control").create_registry_record(
-            registryId=self.registry_id(), name=item["id"], description=item["description"][:4096],
+            registryId=registry_id, name=item["id"], description=item["description"][:4096],
             descriptorType="CUSTOM", recordVersion=item["version"],
             descriptors={"custom": {"inlineContent": json.dumps(descriptor)}},
             clientToken=digest([self.registry_id(), item["id"], item["version"], item["binding_digest"]]))
@@ -152,11 +157,24 @@ class PlatformCloud:
             registryId=self.registry_id(), recordId=binding["arn"],
             status="APPROVED" if approve else "REJECTED", statusReason=reason)["status"]
 
-    def validate_model(self, model_id):
+    def eligible_profile(self, model_id):
+        policy_error = HTTPException(422, "Platform policy requires an active, system-defined "
+                                     "global cross-region inference profile (global.*); "
+                                     "this model is not eligible.")
         if not model_id.startswith("global."):
-            raise HTTPException(422, "Platform policy requires a global cross-region inference "
-                                "profile (global.*); this model binding is not eligible. "
-                                "Register the model's global inference profile instead.")
+            raise policy_error
+        try:
+            profile = self.client("bedrock").get_inference_profile(inferenceProfileIdentifier=model_id)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+                raise policy_error
+            raise
+        if (profile.get("status") != "ACTIVE" or profile.get("type") != "SYSTEM_DEFINED"
+                or profile.get("inferenceProfileId") != model_id):
+            raise policy_error
+
+    def validate_model(self, model_id):
+        self.eligible_profile(model_id)
         client = self.session.client("bedrock-runtime", config=Config(
             connect_timeout=3, read_timeout=20, retries={"total_max_attempts": 1}))
         try:

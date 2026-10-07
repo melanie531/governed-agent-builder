@@ -12,11 +12,12 @@ from foundation_harness.config import digest
 from tests.test_mcp_onboarding import CONFIG
 
 
+MODEL_ID = "global.amazon.nova-micro-v1:0"
 ITEM = {
     "id": "model-native-test", "kind": "model", "version": "1",
     "description": "Model reviewed for research.",
-    "binding": {"model_id": "us.amazon.nova-micro-v1:0"},
-    "binding_digest": digest({"model_id": "us.amazon.nova-micro-v1:0"}),
+    "binding": {"model_id": MODEL_ID},
+    "binding_digest": digest({"model_id": MODEL_ID}),
 }
 RECORD_ID = "record-test01"
 RECORD_ARN = CONFIG["registry_arn"] + "/record/" + RECORD_ID
@@ -28,6 +29,12 @@ RECORD = {
     "updatedAt": datetime(2026, 10, 6, tzinfo=timezone.utc),
     "descriptors": {"custom": {"data": json.dumps(registry_descriptor(ITEM))}},
 }
+PROFILE = {
+    "inferenceProfileName": "Global Nova Micro",
+    "inferenceProfileArn": f"arn:aws:bedrock:us-west-2:123456789012:inference-profile/{MODEL_ID}",
+    "models": [{"modelArn": "arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-micro-v1:0"}],
+    "inferenceProfileId": MODEL_ID, "status": "ACTIVE", "type": "SYSTEM_DEFINED",
+}
 
 
 @pytest.fixture
@@ -35,17 +42,21 @@ def native():
     session = boto3.Session(region_name="us-west-2",
                             aws_access_key_id="testing", aws_secret_access_key="testing")
     client = session.client("agent-registry-control")
+    bedrock = session.client("bedrock")
     adapter = PlatformCloud({"account": "123456789012", "region": "us-west-2",
                              "mcp_onboarding": dict(CONFIG)}, session=session)
 
     def sdk(service):
+        if service == "bedrock":
+            return bedrock
         assert service == "agent-registry-control"
         return client
 
     adapter.client = sdk
-    with Stubber(client) as stub:
-        yield adapter, stub
+    with Stubber(client) as stub, Stubber(bedrock) as bedrock_stub:
+        yield adapter, stub, bedrock_stub
         stub.assert_no_pending_responses()
+        bedrock_stub.assert_no_pending_responses()
 
 
 def create_parameters():
@@ -59,8 +70,10 @@ def create_parameters():
 
 
 def test_model_uses_native_custom_record_through_approval(native):
-    adapter, stub = native
+    adapter, stub, bedrock_stub = native
     identity = {"registryId": CONFIG["registry_id"], "recordId": RECORD_ID}
+    bedrock_stub.add_response("get_inference_profile", PROFILE,
+                              {"inferenceProfileIdentifier": MODEL_ID})
     stub.add_response("create_registry_record", {"recordArn": RECORD_ARN, "status": "CREATING"},
                       create_parameters())
     for status in ("DRAFT", "PENDING_APPROVAL"):
@@ -86,14 +99,14 @@ def test_model_uses_native_custom_record_through_approval(native):
 
 @pytest.mark.parametrize("kind", ["custom", "mcpServer"])
 def test_native_record_cannot_cross_registry_boundary(native, kind):
-    adapter, _ = native
+    adapter, _, _ = native
     with pytest.raises(HTTPException) as error:
         adapter.record({"descriptor_type": kind, "arn": RECORD_ARN.replace("123456789012", "999999999999")})
     assert error.value.status_code == 409
 
 
 def test_native_registration_rejects_foreign_configuration_before_sdk_call(native):
-    adapter, _ = native
+    adapter, _, _ = native
     adapter.settings["mcp_onboarding"]["registry_arn"] = CONFIG["registry_arn"].replace(
         "123456789012", "999999999999")
     with pytest.raises(HTTPException):
@@ -101,7 +114,9 @@ def test_native_registration_rejects_foreign_configuration_before_sdk_call(nativ
 
 
 def test_native_registration_does_not_accept_foreign_record_receipt(native):
-    adapter, stub = native
+    adapter, stub, bedrock_stub = native
+    bedrock_stub.add_response("get_inference_profile", PROFILE,
+                              {"inferenceProfileIdentifier": MODEL_ID})
     stub.add_response("create_registry_record", {
         "recordArn": RECORD_ARN.replace("123456789012", "999999999999"), "status": "CREATING",
     }, create_parameters())

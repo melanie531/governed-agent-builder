@@ -84,6 +84,7 @@ class Journey:
             binding = item["binding"]
             if binding["type"] not in ("bedrock-converse", "mcp-server", "mcp", "instructions"):
                 raise HTTPException(409, "This capability needs a compatible Foundation Harness")
+            # Cheap fail-fast only; the authoritative eligibility gate is PlatformCloud.eligible_profile (platform validation/publication), and catalog resolution already requires approved + validated + granted components, so a forged binding cannot arrive via governed paths.
             if binding["type"] == "bedrock-converse" and not binding["model_id"].startswith("global."):
                 raise HTTPException(409, "Platform policy requires a global cross-region inference profile; revise the agent to use a global model from the AI Catalog")
             if binding["type"] in ("mcp", "mcp-server") and binding["gateway_id"] != self.settings["gateway_id"]:
