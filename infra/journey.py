@@ -209,6 +209,8 @@ def configure_app(resources, settings):
                 *registry_permissions,
                 statement(["bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles",
                            "cloudwatch:GetMetricData", "ce:GetCostAndUsage", "ce:ListCostAllocationTags"], "*"),
+                statement(["bedrock:GetInferenceProfile"],
+                          [f"arn:aws:bedrock:*:{account}:inference-profile/*"]),
                 statement(["bedrock:InvokeModel"], [
                     "arn:aws:bedrock:*::foundation-model/*",
                     f"arn:aws:bedrock:*:{account}:inference-profile/*",

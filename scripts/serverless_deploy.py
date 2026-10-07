@@ -55,13 +55,27 @@ def preflight():
     print("Preflight PASS: explicit STS account and bound stack identities, no VPC dependency, both templates AWS-validated", flush=True)
 
 
+def template_input(name, body):
+    content = json.dumps(body, separators=(",", ":")).encode()
+    if len(content) <= 51200:
+        return {"TemplateBody": content.decode()}
+    bucket = TARGET.state["artifacts"]["outputs"]["Bucket"]
+    key = "templates/" + PREFIX + "-" + name + "/" + hashlib.sha256(content).hexdigest() + ".json"
+    uploaded = SESSION.client("s3").put_object(
+        Bucket=bucket, Key=key, Body=content, ServerSideEncryption="AES256",
+        ContentType="application/json", Tagging="auto-delete=no")
+    from urllib.parse import quote
+    return {"TemplateURL": f"https://{bucket}.s3.{TARGET.binding['region']}.amazonaws.com/{key}?versionId="
+            + quote(uploaded["VersionId"], safe="")}
+
+
 def deploy(name, body, parameters=None):
     if TARGET is None:
         raise RuntimeError("Explicit target initialization required")
     TARGET.check_stacks()
     safety(body)
     stack_name = PREFIX + "-" + name
-    request = {"StackName": stack_name, "TemplateBody": json.dumps(body, separators=(",", ":")), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}, {"Key": "auto-delete", "Value": "no"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}
+    request = {"StackName": stack_name, **template_input(name, body), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}, {"Key": "auto-delete", "Value": "no"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}
     try:
         prior = CF.describe_stacks(StackName=stack_name)["Stacks"][0]
     except ClientError as exc:
