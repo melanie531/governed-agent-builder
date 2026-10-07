@@ -3,7 +3,8 @@ import {Alert, Box, Button, Container, FormField, Header, Input, Modal, SpaceBet
 import type {Api} from './JourneyBuilder';
 
 type Deployment = {id: string; name: string; filename: string; phase: string; job_id?: string; revision: number;
-  endpoint?: string; can_delete: boolean; reason: string; blockers: {id: string; name: string; kind: string}[];
+  endpoint?: string; bearer_endpoint?: string; connection_mode?: string; upload_type?: string;
+  can_delete: boolean; reason: string; blockers: {id: string; name: string; kind: string}[];
   deleting?: boolean; failure_code?: string; retry_available?: boolean};
 type Intent = {id: string; payload: {confirm_name: string; expected_revision: number; idempotency_key: string}};
 
@@ -13,7 +14,10 @@ export default function McpDeployments({api, identityKey, refreshKey}: {api: Api
   const [pending, setPending] = useState<Intent>(), [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState(''), [busy, setBusy] = useState(false), [checked, setChecked] = useState(false);
   const [error, setError] = useState(''), [success, setSuccess] = useState(false), [storageError, setStorageError] = useState('');
+  const [copied, setCopied] = useState('');
   const lock = useRef(false);
+  const iamEndpoint = ['IAM', 'PACKAGE'].includes(selected?.connection_mode || '') ? selected?.endpoint : undefined;
+  const mcpEndpoint = selected?.bearer_endpoint || (!iamEndpoint ? selected?.endpoint : undefined);
   const path = (id: string) => '/admin/mcp/deployments/' + id;
   async function load() {
     const result = await api<{items: Deployment[]}>('/admin/mcp/deployments');
@@ -87,7 +91,7 @@ export default function McpDeployments({api, identityKey, refreshKey}: {api: Api
         ariaLabels={{selectionGroupLabel: 'MCP deployments', itemSelectionLabel: (_, item) => 'Select ' + item.name}}
         selectedItems={items.filter(i => i.id === selected?.id)}
         onSelectionChange={({detail}) => {
-          if (!busy && !pending) {setSelected(detail.selectedItems[0]); setSuccess(false); setError('');}
+          if (!busy && !pending) {setSelected(detail.selectedItems[0]); setSuccess(false); setError(''); setCopied('');}
         }} columnDefinitions={[
           {id: 'name', header: 'Deployment', cell: item => item.name},
           {id: 'file', header: 'Package', cell: item => <span style={{overflowWrap: 'anywhere'}}>{item.filename}</span>},
@@ -95,6 +99,15 @@ export default function McpDeployments({api, identityKey, refreshKey}: {api: Api
             type={item.phase === 'READY' ? 'success' : item.phase === 'DELETING' ? 'loading' : 'warning'}>{item.phase}</StatusIndicator>},
         ]} empty={<Box>No uploaded MCP deployments.</Box>}/>
       {selected && selected.phase !== 'DELETED' && <SpaceBetween size="s">
+        {[[mcpEndpoint, 'MCP endpoint URL'], [iamEndpoint, 'AWS IAM endpoint URL']].map(([endpoint, label]) => endpoint && <SpaceBetween size="xs" key={label}>
+          <Box variant="h3">{label}</Box>
+          <Box><span style={{overflowWrap: 'anywhere'}}>{endpoint}</span></Box>
+          <Button iconName="copy" disabled={busy} onClick={() => void act(async () => {
+            await navigator.clipboard.writeText(endpoint); setCopied(label + ' copied.');
+          })}>Copy {label}</Button>
+        </SpaceBetween>)}
+        {copied && <Box><span role="status">{copied}</span></Box>}
+        {selected.phase === 'READY' && selected.upload_type === 'package' && <Box>To connect this server, choose Add MCP connection, then Use a deployed package.</Box>}
         {selected.reason && <Alert type="info">{selected.reason} {selected.blockers.map(b => b.name).join(', ')}</Alert>}
         <Button disabled={busy || !!pending || !!storageError || !selected.can_delete} onClick={() => {
           setConfirmation(''); setConfirming(true);

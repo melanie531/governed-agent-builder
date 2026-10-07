@@ -5,23 +5,27 @@ import type {PythonMcp} from './McpPythonUpload';
 
 type Payload = {name: string; filename: string; size: number; source_digest: string; idempotency_key: string};
 type Intent = {payload: Payload; id?: string};
-type Upload = PythonMcp & {size: number; part_bytes?: number; part_count?: number; received_parts?: number[]};
+type Upload = PythonMcp & {size?: number; part_bytes?: number; part_count?: number; received_parts?: number[]};
 const hash = async (bytes: ArrayBuffer) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
   b => b.toString(16).padStart(2, '0')).join('');
 const deploying = (record?: Upload) => !!record && !['UPLOADING', 'READY', 'FAILED', 'NEEDS_RECONCILIATION', 'DELETED'].includes(record.phase);
 
-export default function McpPackageUpload({api, identityKey, name, onReady, onBusyChange, onReset}: {
+export default function McpPackageUpload({api, identityKey, name, onReady, onBusyChange, onReset, existingOnly = false, initial}: {
   api: Api; identityKey: string; name: string; onReady: (record: PythonMcp) => void; onBusyChange: (busy: boolean) => void; onReset: () => void;
+  existingOnly?: boolean; initial?: PythonMcp;
 }) {
   const key = 'mcp-package-upload:' + identityKey;
   const [file, setFile] = useState<{value: File; digest: string}>();
-  const [intent, setIntent] = useState<Intent>(), [record, setRecord] = useState<Upload>(), [items, setItems] = useState<Upload[]>([]);
+  const [intent, setIntent] = useState<Intent>(), [record, setRecord] = useState<Upload | undefined>(initial), [items, setItems] = useState<Upload[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [storageError, setStorageError] = useState('');
   const [checked, setChecked] = useState(false), [progress, setProgress] = useState('');
+  const [loaded, setLoaded] = useState(false);
   const lock = useRef(false), generation = useRef(0);
   useEffect(() => {
-    void api<{items: Upload[]}>('/admin/mcp/python').then(v => setItems(v.items.filter(i => i.upload_type === 'package')))
-      .catch(() => setError('Could not load saved package deployments.'));
+    void api<{items: Upload[]}>('/admin/mcp/python').then(v => {
+      setItems(v.items.filter(i => i.upload_type === 'package' && (!existingOnly || i.phase === 'READY'))); setLoaded(true);
+    }).catch(() => {setLoaded(true); setError('Could not load saved package deployments.');});
+    if (initial || existingOnly) return;
     try {
       const raw = sessionStorage.getItem(key);
       if (raw) {
@@ -32,7 +36,7 @@ export default function McpPackageUpload({api, identityKey, name, onReady, onBus
           .then(setRecord).catch(() => setError('Check the retained package status before resuming.'));
       }
     } catch {setStorageError('Session storage is required to retain package upload progress.');}
-  }, [key]);
+  }, [key, existingOnly]);
   useEffect(() => {onBusyChange(busy); return () => onBusyChange(false);}, [busy, onBusyChange]);
   useEffect(() => {
     if (!deploying(record) || busy) return;
@@ -110,9 +114,11 @@ export default function McpPackageUpload({api, identityKey, name, onReady, onBus
   const discoveryFailed = record?.failure_code === 'MCP_DISCOVERY_FAILED'
     || record?.stage === 'schema' && record.failure_code === 'ValueError';
   return <SpaceBetween size="m">
-    <Box>Upload the complete server: main.py at the ZIP root, your supporting modules, and all third-party dependencies
+    {!existingOnly && <Box>Upload the complete server: main.py at the ZIP root, your supporting modules, and all third-party dependencies
       built for Python 3.13 on Linux ARM64. Serve Streamable HTTP on 0.0.0.0:8000/mcp.
-      Maximum: 64 MiB ZIP, 256 MiB expanded. Requirements files are not installed during upload.</Box>
+      Maximum: 64 MiB ZIP, 256 MiB expanded. Requirements files are not installed during upload.</Box>}
+    {existingOnly && <Box>Select a ready package to continue with its endpoint and tools. This does not upload or deploy another server.</Box>}
+    {existingOnly && loaded && !items.length && !error && <Alert type="info">No ready packages are available. Choose Upload MCP package (.zip) to deploy one.</Alert>}
     {items.length > 0 && !intent && <FormField label="Saved MCP package deployments">
       <Select ariaLabel="Saved MCP package deployments" disabled={busy}
         options={items.map(i => ({value: i.id, label: i.name, description: i.phase}))}
@@ -120,12 +126,12 @@ export default function McpPackageUpload({api, identityKey, name, onReady, onBus
         onChange={({detail}) => {onReset(); setRecord(items.find(i => i.id === detail.selectedOption.value)); setFile(undefined);}}/>
     </FormField>}
     {(error || storageError) && <Alert type="error">{storageError || error}</Alert>}
-    {(!record || record.phase === 'UPLOADING') && <FormField label="MCP package ZIP"
+    {!existingOnly && (!record || record.phase === 'UPLOADING') && <FormField label="MCP package ZIP"
       description={intent ? 'Select the same ZIP to resume. Completed parts are retained.' : 'Include your code, non-secret configuration and dependencies.'}>
       <input type="file" accept=".zip,application/zip" aria-label="MCP package ZIP" disabled={busy}
         onChange={event => void choose(event.target.files?.[0])}/>
     </FormField>}
-    {!intent && !record && <>
+    {!existingOnly && !intent && !record && <>
       <Button variant="primary" loading={busy} disabled={!!storageError || !file || name.trim().length < 2}
         onClick={() => void act(() => upload({payload: {name: name.trim(), filename: file!.value.name, size: file!.value.size,
           source_digest: file!.digest, idempotency_key: crypto.randomUUID()}}, false))}>Upload and deploy package</Button>
@@ -143,7 +149,7 @@ export default function McpPackageUpload({api, identityKey, name, onReady, onBus
     })}>Check package status</Button>}
     {intent && (!record || record.phase === 'UPLOADING') && <Button disabled={busy || !checked || !sameFile || !!storageError}
       onClick={() => void act(() => upload(intent, true))}>Resume same package</Button>}
-    {record && <>
+    {record && <SpaceBetween size="s">
       <StatusIndicator type={record.phase === 'READY' ? 'success' : deploying(record) ? 'loading' : 'warning'}>{record.phase}</StatusIndicator>
       {record.failure_code && <Alert type="error">{record.failure_code === 'INVALID_PACKAGE'
         ? 'The ZIP was rejected before deployment. Check its root main.py, paths, Python syntax, dependencies and size limits.'
@@ -179,6 +185,6 @@ export default function McpPackageUpload({api, identityKey, name, onReady, onBus
           setStorageError('');
         } catch {setStorageError('Could not clear the retained package request.');}
       }}>Choose another package</Button>}
-    </>}
+    </SpaceBetween>}
   </SpaceBetween>;
 }

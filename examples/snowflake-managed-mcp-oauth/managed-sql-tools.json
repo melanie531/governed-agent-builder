@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "query_sql",
+      "description": "Run read-only SQL against objects allowed by the signed-in Snowflake user's reader role. Use fully qualified names and return only the data needed for the question.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "description": "Single SQL query to execute.",
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

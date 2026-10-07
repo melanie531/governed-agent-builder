@@ -12,6 +12,7 @@ async function setup(page: Page, scenario = 'normal') {
   let iamEndpoint = '';
   let oauthSaved = false;
   let oauthGrant = 'AUTHORIZATION_CODE';
+  let suppliedTools: any[] | undefined;
   let python: any;
   let archiveUpload: any, partReceived = false, packageInterrupted = false;
   const state = () => ({id: 'remote-1', job_id: 'job-1', name, description: '', revision,
@@ -19,7 +20,7 @@ async function setup(page: Page, scenario = 'normal') {
     phase, ...(scenario === 'oauth' ? {schema_source: 'supplied'} : {}),
     retry_available: scenario === 'native-retry', discovery_digest: 'a'.repeat(64), gateway_target_id: 'target-1',
     registry_record_arn: 'arn:aws:agent-registry:us-east-1:123456789012:registry/r/record/t',
-    tools: [{name: 'list_datasets', description: 'Discover datasets.', inputSchema: {type: 'object', properties: {}}}]});
+    tools: suppliedTools || python?.tools || [{name: 'list_datasets', description: 'Discover datasets.', inputSchema: {type: 'object', properties: {}}}]});
   await page.route('**/studio-config.json', route => route.fulfill({json: {hosted: true, journey_enabled: true}}));
   await page.route('**/api/**', route => {
     const r = route.request(), path = new URL(r.url()).pathname;
@@ -126,6 +127,7 @@ async function setup(page: Page, scenario = 'normal') {
     if (path === '/api/admin/mcp/onboarding' && r.method() === 'POST') {
       if (calls.length === 1 && scenario === 'rejected') return route.fulfill({status: 422, json: {detail: 'Endpoint configuration changed'}});
       if (calls.length === 1 && scenario === 'uncertain') return route.abort('failed');
+      suppliedTools = r.postDataJSON().tool_schema;
       return route.fulfill({status: 202, json: {id: 'remote-1', phase: 'CONNECTING'}});
     }
     if (path.startsWith('/api/admin/mcp/onboarding-requests/')) return route.fulfill({status: 404, json: {detail: 'Onboarding request not found'}});
@@ -141,12 +143,16 @@ async function setup(page: Page, scenario = 'normal') {
   await page.goto('/');
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
   if (scenario === 'management') return {calls, errors};
-  await page.getByRole('button', {name: 'Create MCP connection', exact: true}).click();
+  await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
   if (scenario === 'entry') return {calls, errors};
   await page.getByLabel('Connection name', {exact: true}).fill('Company data');
   await page.getByLabel('MCP endpoint URL', {exact: true}).fill('https://data.example.com/mcp');
+  if (scenario.startsWith('package-')) return {calls, errors};
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: /^Authentication method/}).click();
   await page.getByRole('option', {name: 'Existing connection', exact: true}).click();
+  await page.getByRole('button', {name: /^Authentication connection/}).click();
+  await page.getByRole('option', {name: 'Company service PAT API_KEY', exact: true}).click();
   return {calls, errors};
 }
 
@@ -173,6 +179,7 @@ test('complete ZIP upload carries its own package and offers generic IAM after d
   expect(Buffer.from(posts[1].body.data, 'base64')).toEqual(file);
   expect(await page.evaluate(() => JSON.stringify({...sessionStorage}))).not.toContain(file.toString('base64'));
   await page.getByRole('button', {name: 'Use this MCP package', exact: true}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: /^Authentication method/}).click();
   await page.getByRole('option', {name: 'AWS IAM / AgentCore Runtime', exact: true}).click();
   await expect(page.getByRole('button', {name: 'Save IAM connection', exact: true})).toBeVisible();
@@ -201,7 +208,8 @@ test('saved MCP deployment exposes copyable OAuth and IAM endpoints before onboa
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.reload();
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
-  await expect(page.getByRole('heading', {name: 'Create MCP connection', exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: 'Manage uploaded MCP servers', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Server', exact: true})).toHaveCount(0);
   await page.getByRole('radio', {name: 'Select Endpoint lookup MCP', exact: true}).check();
   await expect(page.getByText(oauthEndpoint, {exact: true})).toBeVisible();
   await expect(page.getByText(iamEndpoint, {exact: true})).toBeVisible();
@@ -211,6 +219,7 @@ test('saved MCP deployment exposes copyable OAuth and IAM endpoints before onboa
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(iamEndpoint);
   await page.screenshot({path: testInfo.outputPath('deployment-endpoints-desktop.png'), fullPage: true, animations: 'disabled'});
   await page.setViewportSize({width: 390, height: 844});
+  await page.getByText(oauthEndpoint, {exact: true}).scrollIntoViewIfNeeded();
   await expect(page.getByText(oauthEndpoint, {exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Copy MCP endpoint URL', exact: true})).toBeVisible();
   await expect(page.getByText(oauthEndpoint, {exact: true})).toBeInViewport();
@@ -236,6 +245,7 @@ test('uploaded MCP deployment can be deleted with an exact-name confirmation', a
   });
   await page.reload();
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
+  await page.getByRole('button', {name: 'Manage uploaded MCP servers', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'Uploaded MCP deployments', exact: true})).toBeVisible({timeout: 3000});
   await page.getByRole('radio', {name: 'Select Disposable MCP', exact: true}).check();
   await page.getByRole('button', {name: 'Delete MCP deployment', exact: true}).click();
@@ -269,6 +279,7 @@ for (const persisted of [false, true]) {
     });
     await page.reload();
     await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
+    await page.getByRole('button', {name: 'Manage uploaded MCP servers', exact: true}).click();
     await page.getByRole('radio', {name: 'Select Retained deletion', exact: true}).check();
     await page.getByRole('button', {name: 'Delete MCP deployment', exact: true}).click();
     await page.getByLabel('Confirm deployment name', {exact: true}).fill('Retained deletion');
@@ -277,6 +288,7 @@ for (const persisted of [false, true]) {
     await expect(page.getByRole('button', {name: 'Retry retained deletion request', exact: true})).toHaveCount(0);
     await page.reload();
     await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
+    await page.getByRole('button', {name: 'Manage uploaded MCP servers', exact: true}).click();
     expect(mutations).toHaveLength(1);
     if (!persisted) {
       await page.getByRole('button', {name: 'Check deletion status', exact: true}).click();
@@ -298,6 +310,7 @@ test('deployment deletion shows saved-agent blockers and disables the destructiv
   }]}}));
   await page.reload();
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
+  await page.getByRole('button', {name: 'Manage uploaded MCP servers', exact: true}).click();
   await page.getByRole('radio', {name: 'Select In-use MCP', exact: true}).check();
   await expect(page.getByText(/This deployment is used by saved agents. Working agent/)).toBeVisible();
   await expect(page.getByRole('button', {name: 'Delete MCP deployment', exact: true})).toBeDisabled();
@@ -314,7 +327,7 @@ test('an interrupted package upload waits for explicit resume of the same ZIP', 
   expect(calls.filter(c => c.path.endsWith('/deploy'))).toHaveLength(0);
   await page.reload();
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
-  await page.getByRole('button', {name: 'Create MCP connection', exact: true}).click();
+  await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
   await page.getByRole('radio', {name: 'Upload MCP package (.zip)', exact: true}).check();
   await expect(page.getByText('Retained package: mine.zip.', {exact: false})).toBeVisible();
   await page.getByRole('button', {name: 'Check package status', exact: true}).click();
@@ -340,11 +353,12 @@ test('a package owns provider configuration and offers separate OAuth steps afte
   const payload = calls.find(c => c.path === '/api/admin/mcp/packages')!.body;
   expect(Object.keys(payload).sort()).toEqual(['filename', 'idempotency_key', 'name', 'size', 'source_digest']);
   await page.getByRole('button', {name: 'Use this MCP package', exact: true}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: /^Authentication method/}).click();
   await page.getByRole('option', {name: 'User sign-in (OAuth 3LO)', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'Set up user sign-in (3LO)', exact: true})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Set up service access (2LO)', exact: true})).toHaveCount(0);
-  await expect(page.getByLabel('MCP endpoint URL', {exact: true})).toHaveValue('https://python.example.com/mcp/' + 'c'.repeat(32));
+  await expect(page.getByText('https://python.example.com/mcp/' + 'c'.repeat(32), {exact: true})).toBeVisible();
   await page.getByRole('button', {name: /^Authentication method/}).click();
   await page.getByRole('option', {name: 'Service credentials (OAuth 2LO)', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'Set up service access (2LO)', exact: true})).toBeVisible();
@@ -365,7 +379,7 @@ for (const scenario of ['package-discovery-failed', 'package-discovery-legacy'])
     await expect(page.getByRole('button', {name: 'Use this MCP package', exact: true})).toHaveCount(0);
     await page.reload();
     await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
-    await page.getByRole('button', {name: 'Create MCP connection', exact: true}).click();
+    await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
     await page.getByRole('radio', {name: 'Upload MCP package (.zip)', exact: true}).check();
     await expect(page.getByText(/The Runtime was deployed, but MCP tool discovery failed/)).toBeVisible();
     expect(calls.filter(c => c.path === '/api/admin/mcp/packages')).toHaveLength(1);
@@ -438,7 +452,10 @@ test('generic user OAuth onboarding references an existing provider and reviews 
   await page.getByLabel('OAuth scopes', {exact: true}).fill('read');
   await page.getByRole('button', {name: 'Save OAuth connection', exact: true}).click();
   await expect(page.getByText('Authentication saved', {exact: true})).toBeVisible();
+  await expect(page.getByText(/If your provider already allows this exact URL/)).toBeVisible();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   const tools = [{name: 'list_datasets', description: 'Discover datasets.', inputSchema: {type: 'object', properties: {}}}];
+  await page.getByRole('button', {name: 'Paste tool definitions instead', exact: true}).click();
   await page.getByLabel('MCP tool schema JSON', {exact: true}).fill(JSON.stringify({tools}));
   await page.getByRole('button', {name: 'Connect and review', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'Review supplied tools', exact: true})).toBeVisible();
@@ -446,6 +463,242 @@ test('generic user OAuth onboarding references an existing provider and reviews 
   expect(calls[1].body.tool_schema).toEqual(tools);
   expect(calls[1].body.connection_id).toBe('user-oauth');
   expect(JSON.stringify(calls)).not.toContain('client_secret');
+  expect(errors).toEqual([]);
+});
+
+test('saved user OAuth cannot submit an empty tool definition', async ({page}, testInfo) => {
+  const {calls, errors} = await setup(page, 'oauth');
+  await page.getByRole('button', {name: /^Authentication method/}).click();
+  await page.getByRole('option', {name: 'User sign-in (OAuth 3LO)', exact: true}).click();
+  await page.getByRole('button', {name: /^OAuth provider setup/}).click();
+  await page.getByRole('option', {name: 'Existing provider', exact: true}).click();
+  await page.getByLabel('OAuth provider ARN', {exact: true}).fill(
+    'arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/customer-mcp-oauth-data');
+  await page.getByLabel('OAuth scopes', {exact: true}).fill('read');
+  await page.getByRole('button', {name: 'Save OAuth connection', exact: true}).click();
+  await expect(page.getByText('Authentication saved', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await expect(page.getByText('Load the server’s tool definitions to continue.', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'Paste tool definitions instead', exact: true}).click();
+  await expect(page.getByLabel('MCP tool schema JSON', {exact: true})).toBeEmpty();
+  await page.screenshot({path: testInfo.outputPath('saved-oauth-missing-tools.png'), fullPage: true});
+  await expect(page.getByRole('button', {name: 'Connect and review', exact: true})).toBeDisabled();
+  expect(calls.filter(call => call.path === '/api/admin/mcp/onboarding')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+async function saveUserOAuth(page: Page) {
+  await page.getByRole('button', {name: /^Authentication method/}).click();
+  await page.getByRole('option', {name: 'User sign-in (OAuth 3LO)', exact: true}).click();
+  await page.getByRole('button', {name: /^OAuth provider setup/}).click();
+  await page.getByRole('option', {name: 'Existing provider', exact: true}).click();
+  await page.getByLabel('OAuth provider ARN', {exact: true}).fill(
+    'arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/customer-mcp-oauth-data');
+  await page.getByLabel('OAuth scopes', {exact: true}).fill('read');
+  await page.getByRole('button', {name: 'Save OAuth connection', exact: true}).click();
+  await expect(page.getByText('Authentication saved', {exact: true})).toBeVisible();
+}
+
+const snowflakeServerSpec = {
+  version: 1,
+  tools: [{
+    title: 'Query permitted Snowflake data', name: 'query_sql', type: 'SYSTEM_EXECUTE_SQL',
+    description: "Run read-only SQL against objects allowed by the signed-in Snowflake user's reader role. Use fully qualified names and return only the data needed for the question.",
+    config: {read_only: true, warehouse: 'COMPUTE_WH'},
+  }],
+};
+
+test('pasted Snowflake server_spec becomes callable SQL tools and publishes in the wizard', async ({page}, testInfo) => {
+  const {calls, errors} = await setup(page, 'oauth');
+  await saveUserOAuth(page);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: 'Paste tool definitions instead', exact: true}).click();
+  await page.getByLabel('MCP tool schema JSON', {exact: true}).fill(JSON.stringify(snowflakeServerSpec));
+  await expect(page.getByRole('heading', {name: '1 tool definition loaded', exact: true})).toBeVisible();
+  await expect(page.getByText('Snowflake definition ready', {exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Connect and review', exact: true})).toBeEnabled();
+  await page.screenshot({path: testInfo.outputPath('snowflake-spec-paste-desktop.png'), fullPage: true, animations: 'disabled'});
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await expect(page.getByRole('heading', {name: '1 tool definition loaded', exact: true})).toBeVisible();
+  await page.setViewportSize({width: 390, height: 844});
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path: testInfo.outputPath('snowflake-spec-paste-mobile.png'), fullPage: true, animations: 'disabled'});
+  await page.getByRole('button', {name: 'Connect and review', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Review supplied tools', exact: true})).toBeVisible();
+  const onboarding = calls.filter(call => call.path === '/api/admin/mcp/onboarding');
+  expect(onboarding).toHaveLength(1);
+  expect(onboarding[0].body.tool_schema).toEqual([{
+    name: 'query_sql', description: snowflakeServerSpec.tools[0].description,
+    inputSchema: {type: 'object', properties: {sql: {description: 'Single SQL query to execute.', type: 'string'}}},
+  }]);
+  expect(onboarding[0].body.tool_schema[0]).not.toHaveProperty('config');
+  expect(onboarding[0].body.tool_schema[0].inputSchema.properties).not.toHaveProperty('warehouse');
+  await page.getByRole('checkbox', {name: 'query_sql', exact: true}).check();
+  await page.getByRole('button', {name: 'Approve and publish', exact: true}).click();
+  await expect(page.getByText('Connection published', {exact: true})).toBeVisible();
+  expect(calls.filter(call => call.path.endsWith('/publish'))).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('Snowflake definition file rejects unsupported types and versions without partial submission', async ({page}) => {
+  const {calls, errors} = await setup(page, 'oauth');
+  await saveUserOAuth(page);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  for (const [document, message] of [
+    [{...snowflakeServerSpec, version: 2}, 'Snowflake server specification version must be 1.'],
+    [{tools: snowflakeServerSpec.tools}, 'Snowflake server specification version must be 1.'],
+    [{...snowflakeServerSpec, tools: [...snowflakeServerSpec.tools,
+      {name: 'custom_lookup', type: 'GENERIC', identifier: 'DEMO.DATA.LOOKUP'}]},
+    'Snowflake tool "custom_lookup" uses type "GENERIC", which Studio cannot convert yet.'],
+    [{...snowflakeServerSpec, tools: [snowflakeServerSpec.tools[0], snowflakeServerSpec.tools[0]]},
+    'Each tool must have a unique name.'],
+    [{...snowflakeServerSpec, tools: [{...snowflakeServerSpec.tools[0], inputSchema: {type: 'array'}}]},
+    'needs an inputSchema with type "object".'],
+  ] as const) {
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'server-spec.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(document)),
+    });
+    await expect(page.getByText(message, {exact: false}).first()).toBeVisible();
+    await expect(page.getByRole('button', {name: 'Connect and review', exact: true})).toBeDisabled();
+    await expect(page.getByRole('heading', {name: /tool definitions? loaded/})).toHaveCount(0);
+    expect(calls.filter(call => call.path === '/api/admin/mcp/onboarding')).toEqual([]);
+  }
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'server-spec.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(snowflakeServerSpec)),
+  });
+  await expect(page.getByRole('heading', {name: '1 tool definition loaded', exact: true})).toBeVisible();
+  await expect(page.getByText('Snowflake definition ready', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'Connect and review', exact: true}).click();
+  expect(calls.find(call => call.path === '/api/admin/mcp/onboarding')?.body.tool_schema[0].name).toBe('query_sql');
+  expect(errors).toEqual([]);
+});
+
+test('tool definition import validates before connecting and publishes within the same wizard', async ({page}, testInfo) => {
+  const {calls, errors} = await setup(page, 'oauth');
+  await saveUserOAuth(page);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  const tools = [{name: 'list_datasets', description: 'Discover datasets.', inputSchema: {type: 'object', properties: {}}}];
+  for (const [text, message] of [
+    ['{', 'This is not valid JSON.'],
+    [JSON.stringify({tools: []}), 'Use a server definition or tools/list response containing a tools array with 1–100 tools.'],
+    [JSON.stringify({tools: [tools[0], tools[0]]}), 'Each tool must have a unique name.'],
+    [JSON.stringify({tools: [{...tools[0], inputSchema: {type: 'array'}}]}), 'needs an inputSchema with type "object".'],
+    [JSON.stringify({tools: [{...tools[0], inputSchema: {type: 'object', $ref: 'https://other.example.com/schema'}}]}), 'Tool schemas cannot reference external documents.'],
+  ]) {
+    await page.locator('input[type="file"]').setInputFiles({name: 'tools.json', mimeType: 'application/json', buffer: Buffer.from(text)});
+    await expect(page.getByText(message, {exact: false}).first()).toBeVisible();
+    await expect(page.getByRole('button', {name: 'Connect and review', exact: true})).toBeDisabled();
+    expect(calls.filter(call => call.path === '/api/admin/mcp/onboarding')).toEqual([]);
+  }
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'tools.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({jsonrpc: '2.0', id: 1, result: {tools}})),
+  });
+  await expect(page.getByRole('heading', {name: '1 tool definition loaded', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Connect and review', exact: true})).toBeEnabled();
+  await expect(page.getByLabel('MCP tool schema JSON', {exact: true})).toBeHidden();
+  await page.screenshot({path: testInfo.outputPath('tools-import-desktop.png'), fullPage: true, animations: 'disabled'});
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
+  await expect(page.getByRole('button', {name: /^Authentication connection/})).toContainText('User data OAuth');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await expect(page.getByRole('heading', {name: '1 tool definition loaded', exact: true})).toBeVisible();
+  await page.setViewportSize({width: 390, height: 844});
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path: testInfo.outputPath('tools-import-mobile.png'), fullPage: true, animations: 'disabled'});
+  await page.getByRole('button', {name: 'Connect and review', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Review supplied tools', exact: true})).toBeVisible();
+  await page.getByRole('checkbox', {name: 'list_datasets', exact: true}).check();
+  await page.getByRole('button', {name: 'Approve and publish', exact: true}).click();
+  await expect(page.getByText('Connection published', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'Done', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Registered MCP connections', exact: true})).toBeVisible();
+  expect(calls.filter(call => call.path === '/api/admin/mcp/onboarding')).toHaveLength(1);
+  expect(calls.find(call => call.path === '/api/admin/mcp/onboarding')?.body.tool_schema).toEqual(tools);
+  expect(calls.filter(call => call.path.endsWith('/publish'))).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('uploaded OAuth package keeps discovered tools through authentication and publication', async ({page}) => {
+  const {calls, errors} = await setup(page, 'package-bearer');
+  await page.getByRole('radio', {name: 'Upload MCP package (.zip)', exact: true}).check();
+  await page.getByLabel('MCP package ZIP', {exact: true}).setInputFiles({
+    name: 'complete.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04complete-package'),
+  });
+  await page.getByRole('button', {name: 'Upload and deploy package', exact: true}).click();
+  await page.getByRole('button', {name: 'Use this MCP package', exact: true}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Use this MCP package', exact: true})).toBeVisible();
+  await expect(page.getByLabel('MCP package ZIP', {exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await saveUserOAuth(page);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await expect(page.getByText('Tools loaded from your package', {exact: true})).toBeVisible();
+  await expect(page.getByRole('cell', {name: 'package_greeting', exact: true})).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.getByLabel('MCP tool schema JSON', {exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: 'Connect and review', exact: true}).click();
+  await page.getByRole('checkbox', {name: 'package_greeting', exact: true}).check();
+  await page.getByRole('button', {name: 'Approve and publish', exact: true}).click();
+  await expect(page.getByText('Connection published', {exact: true})).toBeVisible();
+  expect(calls.filter(call => call.path === '/api/admin/mcp/packages')).toHaveLength(1);
+  expect(calls.find(call => call.path === '/api/admin/mcp/onboarding')?.body).toMatchObject({
+    connection_id: 'user-oauth', endpoint: 'https://python.example.com/mcp/' + 'c'.repeat(32),
+    tool_schema: [{name: 'package_greeting', inputSchema: {type: 'object', properties: {}}}],
+  });
+  expect(errors).toEqual([]);
+});
+
+test('the server step catches a duplicate endpoint and opens its existing registration', async ({page}) => {
+  const {calls, errors} = await setup(page, 'management');
+  await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Next', exact: true})).toBeDisabled();
+  await expect(page.getByRole('button', {name: /^Authentication method/})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Add authentication connection', exact: true})).toHaveCount(0);
+  await page.getByLabel('Connection name', {exact: true}).fill('New connection name');
+  await page.getByLabel('MCP endpoint URL', {exact: true}).fill('http://data.example.com/mcp');
+  await expect(page.getByText('Enter an HTTPS URL without embedded credentials or a fragment.', {exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Next', exact: true})).toBeDisabled();
+  await page.getByLabel('MCP endpoint URL', {exact: true}).fill('https://data.example.com/mcp');
+  await expect(page.getByText('This connection is already registered', {exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Next', exact: true})).toBeDisabled();
+  await page.getByRole('button', {name: 'View existing connection', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Company data', exact: true})).toBeVisible();
+  await expect(page.getByText('Connection published', {exact: true})).toBeVisible();
+  expect(calls).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a deployed package can resume setup without another ZIP or deployment', async ({page}, testInfo) => {
+  const {calls, errors} = await setup(page, 'entry');
+  const runtimeEndpoint = 'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/' +
+    'arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A123456789012%3Aruntime%2Fstudio_python_test-1234567890/invocations?qualifier=DEFAULT';
+  const saved = {id: 'f'.repeat(32), upload_type: 'package', phase: 'READY', name: 'Saved complete server',
+    filename: 'complete.zip', connection_mode: 'PACKAGE', endpoint: runtimeEndpoint,
+    tools: [{name: 'list_datasets', description: 'Discover datasets.', inputSchema: {type: 'object', properties: {}}}]};
+  await page.route('**/api/admin/mcp/python', route => route.fulfill({json: {items: [
+    saved, {...saved, id: 'failed', name: 'Failed deployment', phase: 'FAILED'},
+  ]}}));
+  await page.route('**/api/admin/mcp/python/' + saved.id, route => route.fulfill({json: saved}));
+  await page.getByRole('radio', {name: 'Use a deployed package', exact: true}).check();
+  await expect(page.getByLabel('MCP package ZIP', {exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Upload and deploy package', exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: /^Saved MCP package deployments/}).click();
+  await expect(page.getByRole('option', {name: /Failed deployment/})).toHaveCount(0);
+  await page.getByRole('option', {name: 'Saved complete server READY', exact: true}).click();
+  await page.getByRole('button', {name: 'Use this MCP package', exact: true}).click();
+  await expect(page.getByLabel('MCP endpoint URL', {exact: true})).toHaveValue(runtimeEndpoint);
+  await page.screenshot({path: testInfo.outputPath('reuse-package-desktop.png'), fullPage: true, animations: 'disabled'});
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: /^Authentication method/}).click();
+  await page.getByRole('option', {name: 'AWS IAM / AgentCore Runtime', exact: true}).click();
+  await page.getByRole('button', {name: 'Save IAM connection', exact: true}).click();
+  await expect(page.getByText('Authentication saved', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Review discovered tools', exact: true})).toBeVisible();
+  expect(calls.filter(call => call.path.includes('/packages'))).toEqual([]);
+  expect(calls.find(call => call.path === '/api/admin/mcp/onboarding')?.body.endpoint).toBe(runtimeEndpoint);
   expect(errors).toEqual([]);
 });
 
@@ -476,11 +729,13 @@ for (const grant of ['AUTHORIZATION_CODE', 'CLIENT_CREDENTIALS']) {
       expect(calls[0].body).not.toHaveProperty('authorization_endpoint');
       expect(calls[0].body).not.toHaveProperty('issuer');
       expect(calls[0].body).not.toHaveProperty('token_endpoint');
-      await expect(page.getByText('Register the OAuth callback', {exact: true})).toHaveCount(0);
+      await expect(page.getByText('Check the OAuth callback', {exact: true})).toHaveCount(0);
     }
     expect(await page.evaluate(() => JSON.stringify({local: {...localStorage}, session: {...sessionStorage}})))
       .not.toContain('test-client-secret-never-persist');
     await expect(page.getByLabel('OAuth client secret', {exact: true})).toHaveCount(0);
+    await page.getByRole('button', {name: 'Next', exact: true}).click();
+    if (grant === 'AUTHORIZATION_CODE') await page.getByRole('button', {name: 'Paste tool definitions instead', exact: true}).click();
     await expect(page.getByLabel('MCP tool schema JSON', {exact: true})).toHaveCount(grant === 'AUTHORIZATION_CODE' ? 1 : 0);
     expect(errors).toEqual([]);
   });
@@ -530,7 +785,10 @@ test('switching OAuth steps clears unsaved secrets and keeps a retained 2LO requ
   expect(calls).toHaveLength(1);
   await page.reload();
   await page.getByRole('link', {name: 'MCP servers', exact: true}).click();
-  await page.getByRole('button', {name: 'Create MCP connection', exact: true}).click();
+  await page.getByRole('button', {name: 'Add MCP connection', exact: true}).click();
+  await page.getByLabel('Connection name', {exact: true}).fill('Company data');
+  await page.getByLabel('MCP endpoint URL', {exact: true}).fill('https://data.example.com/mcp');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await select('Service credentials (OAuth 2LO)');
   await page.getByRole('button', {name: 'Check OAuth connection status', exact: true}).click();
   await page.getByLabel('OAuth client secret', {exact: true}).fill('service-secret-never-retain');
@@ -568,18 +826,23 @@ test('Runtime IAM onboarding needs no secret and retains an uncertain request un
   const endpoint = 'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/' +
     encodeURIComponent('arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/customer_mcp-AbCdEf1234') +
     '/invocations?qualifier=DEFAULT';
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
   await page.getByLabel('MCP endpoint URL', {exact: true}).fill(endpoint);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: /^Authentication method/}).click();
   await page.getByRole('option', {name: 'AWS IAM / AgentCore Runtime', exact: true}).click();
   await expect(page.getByLabel('API key or PAT', {exact: true})).toHaveCount(0);
   await page.getByRole('button', {name: 'Save IAM connection', exact: true}).click();
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
   await page.getByLabel('Connection name', {exact: true}).fill('Changed after uncertain request');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Check IAM connection status', exact: true}).click();
   await page.getByRole('button', {name: 'Retry retained IAM request', exact: true}).click();
   await expect(page.getByText('Authentication saved', {exact: true})).toBeVisible();
   expect(calls).toHaveLength(2);
   expect(calls[0].body).toEqual({name: 'Company data IAM', endpoint, idempotency_key: expect.any(String)});
   expect(calls[1].body).toEqual(calls[0].body);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByText('Review discovered tools', {exact: true})).toBeVisible();
   expect(calls[2].body).toMatchObject({endpoint, connection_id: 'runtime-iam'});
@@ -589,6 +852,7 @@ test('Runtime IAM onboarding needs no secret and retains an uncertain request un
 
 test('standalone saved credentials can be edited and deleted without retaining the secret', async ({page}) => {
   const {calls, errors} = await setup(page, 'management');
+  await page.getByRole('button', {name: 'Manage saved authentication', exact: true}).click();
   await page.getByRole('row').filter({hasText: 'Company service PAT'}).getByRole('radio').check();
   await page.getByRole('button', {name: 'Edit authentication', exact: true}).click();
   await page.getByLabel('Authentication name', {exact: true}).fill('Updated service PAT');
@@ -608,6 +872,7 @@ test('standalone saved credentials can be edited and deleted without retaining t
 
 test('saved authentication supports generic OAuth provider references', async ({page}) => {
   const {calls, errors} = await setup(page, 'management');
+  await page.getByRole('button', {name: 'Manage saved authentication', exact: true}).click();
   await page.getByRole('button', {name: 'Add authentication connection', exact: true}).click();
   await page.getByLabel('Authentication name', {exact: true}).fill('User data');
   await page.getByLabel('Authentication endpoint URL', {exact: true}).fill('https://data.example.com/mcp');
@@ -670,6 +935,7 @@ test('provider retry is explicit, bounded to the displayed attempt, and sends no
 
 test('onboards a generic endpoint, reviews discovered tools, and explicitly publishes', async ({page}) => {
   const {calls, errors} = await setup(page);
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByText('Review discovered tools', {exact: true})).toBeVisible();
   expect(calls.filter(c => c.path.endsWith('/publish'))).toHaveLength(0);
@@ -683,17 +949,23 @@ test('onboards a generic endpoint, reviews discovered tools, and explicitly publ
 
 test('definitive validation rejection leaves the form editable', async ({page}) => {
   const {calls} = await setup(page, 'rejected');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByText('Endpoint configuration changed', {exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Connect and discover', exact: true})).toBeEnabled();
   expect(calls).toHaveLength(1);
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
+  await page.getByRole('button', {name: 'Previous', exact: true}).click();
   await page.getByLabel('Connection name', {exact: true}).fill('Updated connection');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByText('Review discovered tools', {exact: true})).toBeVisible();
 });
 
 test('uncertain create requires GET before an explicit same-key retry', async ({page}) => {
   const {calls} = await setup(page, 'uncertain');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByText('Saved onboarding request', {exact: true})).toBeVisible();
   expect(calls).toHaveLength(1);
@@ -706,6 +978,7 @@ test('uncertain create requires GET before an explicit same-key retry', async ({
 
 test('native creation retry requires an explicit action bound to the displayed job', async ({page}) => {
   const {calls} = await setup(page, 'native-retry');
+  await page.getByRole('button', {name: 'Next', exact: true}).click();
   await page.getByRole('button', {name: 'Connect and discover', exact: true}).click();
   await expect(page.getByRole('button', {name: 'Retry original request', exact: true})).toBeVisible();
   expect(calls).toHaveLength(1);

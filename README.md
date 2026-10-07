@@ -10,8 +10,7 @@ review discovered tools, and publish them through AWS Agent Registry.
 
 - [User guide: configure an MCP connection, create an agent and test its tools](docs/start-here.md)
 - [Deploy and update the application](docs/deployment.md)
-- [Set up Snowflake managed MCP, including SQL and PATs](docs/snowflake-managed-mcp.md)
-- [Deploy a separate Snowflake query MCP in AgentCore Runtime using per-user OAuth](docs/runtime-snowflake-mcp.md)
+- [Snowflake setup: managed MCP with PAT or 3LO, Python MCP upload, and agent testing](docs/snowflake-setup.md)
 - [Onboard and manage any supported MCP endpoint](docs/generic-mcp-onboarding.md)
 - [Agent creation, runtime, conversation and deletion contracts](docs/create-agent-journey.md)
 - [Serverless architecture and identity boundaries](docs/SERVERLESS-HOSTING.md)
@@ -69,7 +68,7 @@ the real application and an explicitly enrolled account; see the deployment guid
 Snowflake is one remote MCP provider. Its native server, data objects and role
 permissions are created in Snowflake, then the endpoint is onboarded through the
 same generic Studio form. The full SQL and credential lifecycle are in the
-[Snowflake runbook](docs/snowflake-managed-mcp.md).
+[Snowflake setup guide](docs/snowflake-setup.md).
 
 ## Repository map
 

@@ -196,8 +196,9 @@ needs scoped Registry create, submit, approval and tagging permissions; a legacy
 
 Open **MCP servers** to save your own authentication, register an endpoint, review
 its tools and publish it through Registry. Follow the [generic onboarding guide](generic-mcp-onboarding.md).
-To connect Snowflake, deliberately follow the separate [Snowflake SQL/PAT guide](snowflake-managed-mcp.md)
-using your own Snowflake account. Platform installation does not run that guide.
+To connect Snowflake, follow the [Snowflake setup guide](snowflake-setup.md) using
+your own account. It covers managed MCP with PAT or 3LO and Python MCP upload.
+Platform installation does not create those Snowflake objects or credentials.
 
 Snowflake objects and PATs are managed manually in Snowflake. The platform has no
 Snowflake provisioning script, creation profile or preselected Snowflake catalog.
@@ -219,8 +220,9 @@ state, including legacy metadata, until an explicit state migration is reviewed.
 1. Open the deployed CloudFront URL and sign in through Cognito. Confirm the
    expected workspace and that anonymous `/api/me` is rejected.
 2. Open **MCP servers**. On a fresh installation, confirm zero saved credentials
-   and registrations and that **Create MCP connection** and **Add authentication
-   connection** are available. Registry and Gateway must contain no MCP records or
+   and registrations and that **Add MCP connection** opens the guided setup.
+   Independent credential administration is under **Manage saved authentication**.
+   Registry and Gateway must contain no MCP records or
    targets until an administrator onboards one. On an existing installation,
    verify its registrations and protected dependencies are preserved.
 3. Publish an available model and run a prompt-only agent. After deliberately

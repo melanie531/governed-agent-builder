@@ -563,13 +563,14 @@ workstream 3.
 2. **Publish a model:** select an approved Bedrock model, run the tool-capable
    model test and publish it to the intended workspace.
 3. **Open MCP servers:** confirm the initial catalog and saved credentials are empty.
-4. **Add authentication:** enter a name, the customer's exact MCP endpoint,
-   authentication **API key / PAT**, header **Authorization**, prefix **Bearer**
-   and the generated PAT in the masked field. Save and verify successful status.
-5. **Create MCP connection:** enter name/description/endpoint, select the saved
-   authentication and permitted workspaces, then **Connect and discover**.
-6. **Review tools:** confirm the actual discovered `query_sql` schema. Select the
-   approved tools and choose **Approve and publish**.
+4. **Add MCP connection:** in **Server**, choose **Connect hosted endpoint** and
+   enter the name, description and exact MCP endpoint. Choose **Next**.
+5. **Authentication:** choose **API key / PAT**, header **Authorization**, prefix
+   **Bearer** and the generated PAT in the masked field. Save and verify
+   **Authentication saved**, then choose **Next**. In **Tools and workspaces**,
+   select the permitted workspaces and choose **Connect and discover**.
+6. **Review and publish:** confirm the actual discovered `query_sql` schema.
+   Select the approved tools and choose **Approve and publish**.
 7. **Verify AWS resources:** check the Gateway target and native Registry record
    in the same customer account/region. Confirm their endpoint and IDs match the
    published application record.
