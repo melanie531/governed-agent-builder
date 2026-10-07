@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
-from backend.foundation_runs import put
+from backend.foundation_runs import get, put
 from backend.store import Store
 from backend.platform_metrics import overview
 from backend.platform_cloud import registry_descriptor
@@ -123,6 +123,24 @@ def test_model_registry_approval_publish_grant_and_withdraw(platform, modern):
     assert client.get("/api/catalog/" + cid).status_code == 404
     with store.tx() as db:
         assert {row["action"] for row in db.select("audit")} >= {"registry_registered", "registry_decided", "model_validated", "catalog_published", "catalog_withdrawn"}
+
+
+def test_validation_http_exception_surfaces_detail_and_records_failed_phase(platform):
+    client, store, native, _ = platform
+    detail = "Bedrock rejected this model ID: synthetic message. Register the model's inference profile from discovery instead."
+    def reject(model_id):
+        raise HTTPException(422, detail)
+    native.validate_model = reject
+    login(client, "admin")
+    created = client.post("/api/admin/platform/models", json={
+        "model_id": "synthetic.model", "workspaces": ["research"], "reason": "Validation failure test"})
+    cid = created.json()["id"]
+    response = client.post("/api/admin/platform/catalog/" + cid + "/validate-model",
+                           json={"version": "1", "reason": "Validation failure test"})
+    assert response.status_code == 422
+    assert response.json()["detail"] == detail
+    with store.tx() as db:
+        assert get(db, "platform-model-validation:" + cid)["phase"] == "FAILED"
 
 
 @pytest.mark.parametrize("field,value", [("schema", "tampered"), ("target_id", "different-target"), ("recordVersion", "changed")])

@@ -6,6 +6,7 @@ import time
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from foundation_harness.config import digest
@@ -48,7 +49,8 @@ class PlatformCloud:
             client = self.client("bedrock")
             rows = []
             for model in client.list_foundation_models(byOutputModality="TEXT")["modelSummaries"]:
-                if model.get("modelLifecycle", {}).get("status") == "ACTIVE":
+                if (model.get("modelLifecycle", {}).get("status") == "ACTIVE"
+                        and "ON_DEMAND" in model.get("inferenceTypesSupported", [])):
                     rows.append({"id": model["modelId"], "name": model["modelName"],
                                  "provider": model["providerName"], "type": "Foundation model"})
             token = None
@@ -156,12 +158,19 @@ class PlatformCloud:
     def validate_model(self, model_id):
         client = self.session.client("bedrock-runtime", config=Config(
             connect_timeout=3, read_timeout=20, retries={"total_max_attempts": 1}))
-        response = client.converse(
-            modelId=model_id, messages=[{"role": "user", "content": [{"text": "Reply with ready."}]}],
-            inferenceConfig={"maxTokens": 64},
-            toolConfig={"tools": [{"toolSpec": {"name": "connection_check",
-                "description": "A connection validation tool; no tool will be executed.",
-                "inputSchema": {"json": {"type": "object", "properties": {}}}}}]})
+        try:
+            response = client.converse(
+                modelId=model_id, messages=[{"role": "user", "content": [{"text": "Reply with ready."}]}],
+                inferenceConfig={"maxTokens": 64},
+                toolConfig={"tools": [{"toolSpec": {"name": "connection_check",
+                    "description": "A connection validation tool; no tool will be executed.",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}}}]})
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") == "ValidationException":
+                raise HTTPException(422, "Bedrock rejected this model ID: "
+                                    f"{error.response['Error'].get('Message', '')} "
+                                    "Register the model's inference profile from discovery instead.")
+            raise
         if not response.get("output", {}).get("message", {}).get("content"):
             raise HTTPException(409, "The model did not return a valid Converse response")
         return {"request_id": response["ResponseMetadata"]["RequestId"], "validated_at": time.time()}

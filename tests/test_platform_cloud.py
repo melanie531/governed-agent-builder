@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
+from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from backend.platform_cloud import PlatformCloud
@@ -12,6 +13,46 @@ def cloud():
     client = Mock()
     adapter.client = Mock(return_value=client)
     return adapter, client
+
+
+def test_models_excludes_profile_only_foundation_models():
+    adapter, client = cloud()
+    client.list_foundation_models.return_value = {"modelSummaries": [
+        {"modelId": "anthropic.claude-opus-5-5", "modelName": "Claude Opus 5.5",
+         "providerName": "Anthropic", "modelLifecycle": {"status": "ACTIVE"},
+         "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+        {"modelId": "anthropic.claude-haiku-4-5", "modelName": "Claude Haiku 4.5",
+         "providerName": "Anthropic", "modelLifecycle": {"status": "ACTIVE"},
+         "inferenceTypesSupported": ["ON_DEMAND", "INFERENCE_PROFILE"]}]}
+    client.list_inference_profiles.return_value = {"inferenceProfileSummaries": [
+        {"inferenceProfileId": "us.anthropic.claude-opus-5-5",
+         "inferenceProfileName": "US Claude Opus 5.5", "status": "ACTIVE"}]}
+    ids = [row["id"] for row in adapter.models()]
+    assert "anthropic.claude-opus-5-5" not in ids
+    assert "anthropic.claude-haiku-4-5" in ids
+    assert "us.anthropic.claude-opus-5-5" in ids
+
+
+def test_validate_model_maps_validation_exception_to_actionable_422():
+    adapter, _ = cloud()
+    aws_message = ("Invocation of model ID anthropic.claude-opus-5-5 with on-demand throughput "
+                   "isn't supported. Retry your request with the ID or ARN of an inference "
+                   "profile that contains this model.")
+    adapter.session.client.return_value.converse.side_effect = ClientError(
+        {"Error": {"Code": "ValidationException", "Message": aws_message}}, "Converse")
+    with pytest.raises(HTTPException) as excinfo:
+        adapter.validate_model("anthropic.claude-opus-5-5")
+    assert excinfo.value.status_code == 422
+    assert aws_message in excinfo.value.detail
+    assert "inference profile" in excinfo.value.detail
+
+
+def test_validate_model_other_client_errors_still_escape_as_client_error():
+    adapter, _ = cloud()
+    adapter.session.client.return_value.converse.side_effect = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "Converse")
+    with pytest.raises(ClientError):
+        adapter.validate_model("anthropic.claude-haiku-4-5")
 
 
 def test_costs_do_not_report_zero_for_inactive_project_tag():
