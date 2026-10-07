@@ -14,7 +14,7 @@ import McpDeployments from './McpDeployments';
 import {AuthenticationConnections, RegistrationManagement} from './McpConnectionManagement';
 
 type Connection = {id: string; name: string; auth_type: string; allowed_origins: string[]; requires_schema?: boolean; callback_url?: string};
-type Options = {enabled: boolean; reason?: string; workspaces: string[]; connections: Connection[]; credential_setup?: boolean; runtime_iam_setup?: boolean; oauth_setup?: boolean; oauth_grants?: string[]; python_bundle?: string; python_packages?: boolean};
+type Options = {enabled: boolean; reason?: string; workspaces: string[]; connections: Connection[]; credential_setup?: boolean; runtime_iam_setup?: boolean; oauth_setup?: boolean; oauth_grants?: string[]; python_bundle?: string; python_packages?: boolean; python_packages_reason?: string};
 type Tool = {name: string; description: string; inputSchema: {[key: string]: unknown}};
 type Record = {
   id: string; job_id?: string; name: string; description: string; endpoint: string; connection_id: string;
@@ -251,7 +251,10 @@ function Onboarding({api, identityKey}: {api: Api; identityKey: string}) {
         onChange={({detail}) => {
           setSource(detail.value); setEndpoint(''); setToolSchema(''); setUploaded(undefined);
           setAuthSaved(false); setConnectionId(''); setAuthMethod('new');
-        }}/></FormField>
+        }}/>
+        {options && !options.python_packages && <Box color="text-body-secondary" fontSize="body-s">
+          {options.python_packages_reason || 'Package upload is not installed for this deployment. Ask an operator to complete the package-hosting installation.'}
+        </Box>}</FormField>
       <FormField label="Connection name"><Input ariaLabel="Connection name" value={name} onChange={({detail}) => setName(detail.value)}/></FormField>
       <FormField label="Description"><Textarea ariaLabel="Connection description" value={description} onChange={({detail}) => setDescription(detail.value)}/></FormField>
       {source === 'package' && options?.python_packages && <McpPackageUpload api={api} identityKey={identityKey} name={name}

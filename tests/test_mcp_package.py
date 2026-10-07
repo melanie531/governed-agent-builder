@@ -223,6 +223,16 @@ def test_complete_packages_work_without_any_legacy_snowflake_bundle(setup, uploa
     assert setup[0].post("/api/admin/mcp/packages/" + record["id"] + "/deploy", json={}).status_code == 202
     options = setup[0].get("/api/admin/mcp/onboarding-options").json()
     assert options["python_packages"] is True and options["python_bundle"] is None
+    assert "python_packages_reason" not in options
+
+
+def test_fresh_install_without_package_hosting_reports_an_explicit_reason(setup):
+    assert not setup[2].settings.get("mcp_package_upload")
+    options = setup[0].get("/api/admin/mcp/onboarding-options").json()
+    assert options["python_packages"] is False
+    reason = options["python_packages_reason"]
+    assert isinstance(reason, str) and reason
+    assert "installation" in reason
 
 
 def test_malformed_package_json_is_rejected_without_echoing_contents(setup, uploads):

@@ -241,6 +241,9 @@ class McpOnboarding:
                 "oauth_grants": (["AUTHORIZATION_CODE"] if config.get("oauth_gateway") else []) + ["CLIENT_CREDENTIALS"],
                 "python_bundle": self.tx(lambda db: (get(db, "mcp-python-config") or {}).get("bundle_name")),
                 "python_packages": bool(self.settings.get("mcp_package_upload")),
+                **({} if self.settings.get("mcp_package_upload") else {"python_packages_reason":
+                    "Package hosting is not installed for this deployment. An operator must complete the "
+                    "package-hosting installation (docs/generic-mcp-onboarding.md) before ZIP uploads are available."}),
                 "connections": [{"id": c["id"], "name": c["name"], "allowed_origins": c["allowed_origins"],
                                  "auth_type": c["configuration"]["credentialProviderType"],
                                  **({"callback_url": c["callback_url"]} if c.get("callback_url") else {}),

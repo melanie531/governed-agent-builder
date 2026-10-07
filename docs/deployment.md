@@ -134,6 +134,18 @@ The `registry`/`configure` actions and `mcp_credentials_deploy` stages are initi
 configuration operations, not routine redeployment. Existing targets already have
 these settings; rerunning bootstrap can conflict with saved configuration.
 
+### Package upload prerequisite
+
+Fresh installations do not enable **Upload MCP package (.zip)**. Enabling it
+requires the package-hosting installation
+(`examples/runtime-snowflake-mcp/facade_deploy.py plan/deploy/audit/configure
+--python-config ...`) followed by `scripts.mcp_onboarding_deploy
+configure_packages`, then the scoped `deploy`/`publish` release above, per
+docs/generic-mcp-onboarding.md. While the package-upload binding is absent, the
+admin UI shows the package radio disabled with an explicit reason; complete the
+scoped release before using uploads. The security audit reports the
+installation status and fails a half-installed binding.
+
 ## First installation
 
 Use an initially absent state path for the target you selected above. Build,
