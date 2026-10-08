@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import os
+import time
 from functools import lru_cache
 from http.cookies import SimpleCookie
 from types import SimpleNamespace
@@ -18,6 +19,16 @@ from mangum import Mangum
 from .app import ACTIVE, TERMINAL, create_app
 from .dynamo_store import DynamoStore
 from .hosted_auth import HostedAuth, PENDING_COOKIE
+
+# Job stages that only poll a resource status between steps: journey and
+# foundation Runtime readiness (WAIT_RUNTIME) and MCP Python Runtime/log
+# provisioning (DEPLOYING). worker_handler drains these in-process instead of
+# spending one SQS self-requeue hop per 10-second poll, because Lambda's
+# recursive loop detection terminates a Lambda->SQS->same-Lambda chain at
+# ~16 invocations (observed live: a ~5 minute VPC Runtime creation needs ~30
+# hops and was dropped, visible only as RecursiveInvocationsDropped).
+STATUS_WAIT_STAGES = ('WAIT_RUNTIME', 'DEPLOYING')
+STATUS_WAIT_RESERVE_MS = 60000
 
 
 @lru_cache
@@ -142,7 +153,19 @@ def worker_handler(event, context):
                                 and not live.get('claim'))) and step_index < 24
                                 and context.get_remaining_time_in_millis() >= 250000):
                             # Reserve room for the SDK's 210-second timeout and
-                            # persistence. Runtime waits and paid calls yield.
+                            # persistence. Paid calls always yield to the queue.
+                            continue
+                        if (latest['stage'] in STATUS_WAIT_STAGES and step_index < 24
+                                and context.get_remaining_time_in_millis() > STATUS_WAIT_RESERVE_MS):
+                            # A status poll makes no paid call, so it only needs
+                            # time for one more cheap step. Waiting in-process
+                            # keeps the whole chain under Lambda's ~16-invocation
+                            # recursion cap: each delivery now covers >=240s of
+                            # waiting (Worker timeout 300s), every wait stage is
+                            # deadline-bounded and goes terminal in-process, so a
+                            # chain needs at most ceil(deadline / 250s) hops
+                            # (journey deploy: 3600s -> 15 < 16).
+                            time.sleep(10)
                             continue
                         boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
                             MessageBody=json.dumps({'job_id': job_id}), DelaySeconds=10)

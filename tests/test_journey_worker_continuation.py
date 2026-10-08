@@ -124,3 +124,70 @@ def test_cleanup_queue_failure_preserves_delivery_for_retry(tmp_path, monkeypatc
     context = SimpleNamespace(get_remaining_time_in_millis=lambda: 300000)
     assert serverless.worker_handler(event, context) == {"batchItemFailures": [{"itemIdentifier": "cleanup"}]}
     assert journey.result(PERSONAS["alex"], job_id)["phase"] == "DELETE_RUNTIMES"
+
+
+def runtime_wait_fixture(tmp_path, monkeypatch):
+    journey, cloud = make_journey(Store(str(tmp_path / "state.sqlite")))
+    cloud.ready_result = False
+    saved = journey.save(PERSONAS["alex"], SaveAgent(
+        definition=AgentDefinition(**definition(journey)), idempotency_key=uuid4().hex, deploy=True))
+    app = SimpleNamespace(state=SimpleNamespace(store=journey.store, step_job=journey.step))
+    monkeypatch.setattr(serverless, "application", lambda **kwargs: app)
+    monkeypatch.setenv("JOB_QUEUE_URL", "synthetic-queue")
+    messages = []
+    monkeypatch.setattr(serverless.boto3, "client",
+                        lambda name: SimpleNamespace(send_message=lambda **kwargs: messages.append(kwargs)))
+    event = {"Records": [{"messageId": "deploy", "body": json.dumps({"job_id": saved["job_id"]})}]}
+    return journey, cloud, saved, event, messages
+
+
+def test_runtime_wait_drains_in_process_without_sqs_hops(tmp_path, monkeypatch):
+    journey, cloud, saved, event, messages = runtime_wait_fixture(tmp_path, monkeypatch)
+    sleeps = []
+    def wait(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 3:
+            cloud.ready_result = True
+    monkeypatch.setattr(serverless.time, "sleep", wait)
+    context = SimpleNamespace(get_remaining_time_in_millis=lambda: 300000)
+    assert serverless.worker_handler(event, context) == {"batchItemFailures": []}
+    assert journey.result(PERSONAS["alex"], saved["job_id"])["phase"] == "DEPLOYED"
+    assert messages == [] and sleeps == [10, 10, 10]
+
+
+def test_runtime_wait_yields_to_queue_when_time_budget_is_low(tmp_path, monkeypatch):
+    journey, cloud, saved, event, messages = runtime_wait_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(serverless.time, "sleep",
+                        lambda seconds: pytest.fail("A low time budget must yield to the queue, not sleep"))
+    context = SimpleNamespace(get_remaining_time_in_millis=lambda: 59000)
+    assert serverless.worker_handler(event, context) == {"batchItemFailures": []}
+    assert journey.result(PERSONAS["alex"], saved["job_id"])["phase"] == "WAIT_RUNTIME"
+    assert len(messages) == 1 and messages[0]["DelaySeconds"] == 10
+    assert json.loads(messages[0]["MessageBody"]) == {"job_id": saved["job_id"]}
+
+
+def test_full_deadline_runtime_wait_stays_under_recursion_cap(tmp_path, monkeypatch):
+    # A runtime that never becomes READY must exhaust the job's 3600s deadline in
+    # fewer than 16 chain deliveries, because Lambda drops the 17th recursive
+    # delivery. The deadline failure itself must happen in-process (no extra hop).
+    journey, cloud, saved, event, messages = runtime_wait_fixture(tmp_path, monkeypatch)
+    clock = {"now": time.time()}
+    monkeypatch.setattr(serverless.time, "sleep",
+                        lambda seconds: clock.__setitem__("now", clock["now"] + seconds))
+    monkeypatch.setattr(time, "time", lambda: clock["now"])
+    deliveries = 0
+    while journey.result(PERSONAS["alex"], saved["job_id"])["phase"] != "FAILED":
+        start = clock["now"]
+        context = SimpleNamespace(
+            get_remaining_time_in_millis=lambda: 300000 - int((clock["now"] - start) * 1000))
+        before = len(messages)
+        assert serverless.worker_handler(event, context) == {"batchItemFailures": []}
+        deliveries += 1
+        assert deliveries < 16, "Lambda drops recursively queued invocations at the native limit"
+        if journey.result(PERSONAS["alex"], saved["job_id"])["phase"] != "FAILED":
+            assert len(messages) == before + 1
+            clock["now"] += 10  # DelaySeconds between chain hops
+    result = journey.result(PERSONAS["alex"], saved["job_id"])
+    assert "time budget" in result["error"]
+    assert deliveries <= 15
+    assert len(messages) == deliveries - 1  # the terminal delivery sends nothing
