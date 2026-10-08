@@ -12,7 +12,7 @@ from botocore.exceptions import ClientError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from infra.serverless import artifacts_template, template
-from infra.resource_tags import validate_resource_tags
+from infra.resource_tags import retain_legacy_pool_owner_tag, validate_resource_tags
 from scripts.deployment_target import DeploymentTarget, target_arguments
 
 PREFIX = "governed-agent-builder-serverless"
@@ -36,15 +36,25 @@ def safety(body):
     validate_resource_tags(body["Resources"])
 
 
+def live_app_template():
+    """Read the bound application stack's live template; None before install."""
+    bound = TARGET.state.get("app")
+    if not bound:
+        return None
+    previous = CF.get_template(StackName=bound["stackId"])["TemplateBody"]
+    return json.loads(previous) if isinstance(previous, str) else previous
+
+
 def preflight():
     if TARGET is None:
         raise RuntimeError("Explicit target initialization required")
     TARGET.check_stacks()
     body = template(journey=TARGET.state.get("journeyPlatform"))
     safety(body)
-    if TARGET.state.get("app"):
-        previous = CF.get_template(StackName=TARGET.state["app"]["stackId"])["TemplateBody"]
-        previous = json.loads(previous) if isinstance(previous, str) else previous
+    previous = live_app_template()
+    if previous is not None:
+        # Deploy applies this same retained rendering; see retain_legacy_pool_owner_tag.
+        body = retain_legacy_pool_owner_tag(previous, body)
         if previous != body:
             raise RuntimeError(
                 "Live application template differs from the target configuration. "
@@ -73,6 +83,11 @@ def deploy(name, body, parameters=None):
     if TARGET is None:
         raise RuntimeError("Explicit target initialization required")
     TARGET.check_stacks()
+    if name == "app":
+        previous = live_app_template()
+        if previous is not None:
+            # Submit the same retained rendering the preflight compared.
+            body = retain_legacy_pool_owner_tag(previous, body)
     safety(body)
     stack_name = PREFIX + "-" + name
     request = {"StackName": stack_name, **template_input(name, body), "Capabilities": ["CAPABILITY_IAM"], "Tags": [{"Key": "project", "Value": "governed-agent-builder"}, {"Key": "architecture", "Value": "managed-serverless"}, {"Key": "auto-delete", "Value": "no"}], "Parameters": [{"ParameterKey": k, "ParameterValue": v} for k,v in (parameters or {}).items()]}

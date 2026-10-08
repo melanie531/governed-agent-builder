@@ -76,6 +76,9 @@ def run(args):
     previous = cf.get_template(StackName=stack_id)["TemplateBody"]
     previous = json.loads(previous) if isinstance(previous, str) else previous
     body = template(journey=state.get("journeyPlatform"))
+    # Reviewed and submitted identically; see retain_legacy_pool_owner_tag.
+    from infra.resource_tags import retain_legacy_pool_owner_tag
+    body = retain_legacy_pool_owner_tag(previous, body)
     safety(body)
     reviewed_template_change(previous, body)
     parameters = {p["ParameterKey"]: p.get("ParameterValue") for p in stack.get("Parameters", [])}

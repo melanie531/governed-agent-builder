@@ -33,7 +33,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from infra.serverless import template  # noqa: E402
-from infra.resource_tags import validate_resource_tags  # noqa: E402
+from infra.resource_tags import retain_legacy_pool_owner_tag, validate_resource_tags  # noqa: E402
 from scripts.deployment_target import DeploymentTarget, target_arguments  # noqa: E402
 
 FUNCTIONS = {"Worker", "Dispatcher", "Auth", "Authorizer", "Business", "FoundationExchange"}
@@ -96,6 +96,8 @@ def run(args):
     previous = cf.get_template(StackName=stack_id)["TemplateBody"]
     previous = json.loads(previous) if isinstance(previous, str) else previous
     body = template(journey=state["journeyPlatform"])
+    # Reviewed and submitted identically; see retain_legacy_pool_owner_tag.
+    body = retain_legacy_pool_owner_tag(previous, body)
     validate_resource_tags(body["Resources"])
     reviewed_template_change(previous, body, args.expected_account)
 

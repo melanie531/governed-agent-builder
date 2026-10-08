@@ -15,7 +15,7 @@ from botocore.exceptions import ClientError
 from backend.dynamo_store import DynamoStore
 from backend.foundation_runs import get, put
 from foundation_harness.config import digest
-from infra.resource_tags import validate_resource_tags
+from infra.resource_tags import retain_legacy_pool_owner_tag, validate_resource_tags
 from infra.serverless import template
 from scripts.bootstrap_support import NO_RETRIES, retry_cloudformation_reads
 from scripts.deployment_target import DeploymentTarget, target_arguments
@@ -304,6 +304,8 @@ class Release:
         previous = cf.get_template(StackName=stack_id)["TemplateBody"]
         previous = json.loads(previous) if isinstance(previous, str) else previous
         body = template(journey=self.state["journeyPlatform"])
+        # Reviewed and submitted identically; see retain_legacy_pool_owner_tag.
+        body = retain_legacy_pool_owner_tag(previous, body)
         if self.state["journeyPlatform"].get("mcp_package_upload"):
             settings = self.state["journeyPlatform"]
             gateway = self.client("bedrock-agentcore-control").get_gateway(gatewayIdentifier=settings["gateway_id"])

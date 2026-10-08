@@ -303,7 +303,16 @@ for its scope. For a code-only update with an unchanged infrastructure template:
   --state "$GAB_STATE" --output "artifacts/$GAB_RELEASE/security-after.json"
 ```
 
-Preflight rejects unreviewed template changes. The legacy code-only preflight
+Preflight rejects unreviewed template changes. Installations created before the
+provider-neutral rendering tagged the Cognito user pool with a personal `owner`
+entry that current renderings no longer emit. The deployment and scoped release
+scripts automatically retain exactly that one tag value, read from the already
+identity-verified live stack template, in both the preflight comparison and the
+submitted update, so the live tag is never stripped or changed. Do not remove
+the tag manually and do not edit live resources to make a preflight pass: the
+tag is compatibility-only metadata, fresh installations never gain an `owner`
+tag, and every other template difference is still rejected. The legacy
+code-only preflight
 uses CloudFormation's inline template limit; a fully enabled template can exceed
 51,200 bytes. The first-installation pipeline and scoped MCP release support
 versioned template uploads. Resolve a legacy preflight failure through a reviewed

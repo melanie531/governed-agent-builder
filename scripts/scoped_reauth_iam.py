@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import time
 
-from infra.resource_tags import validate_resource_tags
+from infra.resource_tags import retain_legacy_pool_owner_tag, validate_resource_tags
 from infra.serverless import template
 from scripts.deployment_target import DeploymentTarget, target_arguments
 
@@ -73,6 +73,8 @@ def run(args):
     if isinstance(before, str):
         before = json.loads(before)
     after = template(journey=target.state["journeyPlatform"])
+    # Reviewed and submitted identically; see retain_legacy_pool_owner_tag.
+    after = retain_legacy_pool_owner_tag(before, after)
     gateway_id = target.state["journeyPlatform"]["mcp_onboarding"]["oauth_gateway"]["gateway_id"]
     gateway_arn = (f"arn:aws:bedrock-agentcore:{args.region}:{args.expected_account}:"
                    "workload-identity-directory/default/workload-identity/" + gateway_id)
