@@ -17,10 +17,19 @@ def validate_network(network):
 
 def networks_equivalent(a, b):
     try:
-        a, b = validate_network(a), validate_network(b)
+        a, b = validate_network(reported_network(a)), validate_network(reported_network(b))
     except ValueError:
         return False
     if a["networkMode"] != b["networkMode"]:
         return False
     return a["networkMode"] == "PUBLIC" or all(
         sorted(a["networkModeConfig"][k]) == sorted(b["networkModeConfig"][k]) for k in ("subnets", "securityGroups"))
+
+
+def reported_network(network):
+    """Drop service-added VPC fields (e.g. requireServiceS3Endpoint) that AgentCore returns but requests never send."""
+    if (not isinstance(network, dict) or network.get("networkMode") != "VPC"
+            or not isinstance(network.get("networkModeConfig"), dict)):
+        return network
+    config = {k: v for k, v in network["networkModeConfig"].items() if k in ("subnets", "securityGroups")}
+    return {"networkMode": "VPC", "networkModeConfig": config}

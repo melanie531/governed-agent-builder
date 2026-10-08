@@ -39,3 +39,16 @@ def test_networks_equivalent_ignores_list_order_only():
     assert not networks_equivalent(VPC, {"networkMode": "VPC", "networkModeConfig": {"subnets": ["subnet-a"], "securityGroups": ["sg-1"]}})
     assert not networks_equivalent(VPC, {"networkMode": "VPC", "networkModeConfig": {"subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-2"]}})
     assert not networks_equivalent(VPC, None)
+
+
+def test_networks_equivalent_ignores_service_reported_vpc_fields():
+    from backend.network_policy import networks_equivalent
+    requested = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-1"]}}
+    reported = {"networkMode": "VPC", "networkModeConfig": {
+        "securityGroups": ["sg-1"], "subnets": ["subnet-b", "subnet-a"],
+        "requireServiceS3Endpoint": False}}
+    assert networks_equivalent(reported, requested)
+    different = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-c"], "securityGroups": ["sg-1"], "requireServiceS3Endpoint": False}}
+    assert not networks_equivalent(different, requested)
