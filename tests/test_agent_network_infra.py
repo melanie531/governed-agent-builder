@@ -39,7 +39,7 @@ def test_gateway_interface_endpoint_uses_private_dns_in_the_bound_subnets():
     assert endpoint["VpcEndpointType"] == "Interface"
     assert endpoint["PrivateDnsEnabled"] is True
     assert endpoint["VpcId"] == {"Ref": "VpcId"} and endpoint["SubnetIds"] == {"Ref": "SubnetIds"}
-    assert endpoint["SecurityGroupIds"] == [{"Ref": "RuntimeSecurityGroup"}, {"Ref": "GatewayEndpointSecurityGroup"}]
+    assert endpoint["SecurityGroupIds"] == [{"Ref": "GatewayEndpointSecurityGroup"}]
 
 
 def test_resources_are_tagged_and_outputs_expose_the_runtime_group():

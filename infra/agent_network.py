@@ -21,7 +21,7 @@ def template():
             "ServiceName": sub("com.amazonaws.${AWS::Region}.bedrock-agentcore.gateway"),
             "VpcEndpointType": "Interface", "PrivateDnsEnabled": True,
             "VpcId": ref("VpcId"), "SubnetIds": ref("SubnetIds"),
-            "SecurityGroupIds": [ref("RuntimeSecurityGroup"), ref("GatewayEndpointSecurityGroup")],
+            "SecurityGroupIds": [ref("GatewayEndpointSecurityGroup")],
             "Tags": TAGS}},
     }
     return {"AWSTemplateFormatVersion": "2010-09-09",
