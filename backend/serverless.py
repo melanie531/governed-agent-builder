@@ -166,14 +166,18 @@ def worker_handler(event, context):
                                 and context.get_remaining_time_in_millis()
                                     > STATUS_WAIT_STEP_BUDGET_MS + STATUS_WAIT_SLEEP_MS):
                             # The guard arithmetic already accounts for the
-                            # sleep, so the step after it always starts with
-                            # more than the full 250s step budget and can never
-                            # be killed mid-call by the Lambda timeout. Each
-                            # delivery still consumes >=40s of wall time before
-                            # yielding (300s timeout - 260s floor), so with the
-                            # journey Runtime wait budget (RUNTIME_WAIT_BUDGET,
-                            # 700s -> in-process FAILED) a chain needs at most
-                            # ~14 hops, under Lambda's ~16-invocation cap.
+                            # sleep, so a drained step always starts with more
+                            # than the full 250s step budget; its readiness
+                            # polls are bounded by the dedicated 30s-read poll
+                            # client (a READY crossing additionally provisions
+                            # logs and, like any baseline step, still relies on
+                            # visibility redelivery plus claim-expiry recovery
+                            # if interrupted). Each delivery consumes >=40s of
+                            # wall time before yielding (300s timeout - 260s
+                            # floor), so with the journey Runtime wait budget
+                            # (RUNTIME_WAIT_BUDGET, 600s -> in-process FAILED)
+                            # a chain needs at most ~14 hops, under Lambda's
+                            # ~16-invocation recursion cap.
                             time.sleep(STATUS_WAIT_SLEEP_MS / 1000)
                             continue
                         boto3.client('sqs').send_message(QueueUrl=os.environ['JOB_QUEUE_URL'],
