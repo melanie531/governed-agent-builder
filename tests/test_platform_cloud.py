@@ -237,3 +237,75 @@ def test_registry_rejects_cross_account_before_sdk_call():
     with pytest.raises(HTTPException):
         adapter.registry()
     client.get_registry.assert_not_called()
+
+
+AU_ID = "au.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def au_cloud():
+    adapter, client = cloud()
+    adapter.settings["model_policy"] = "au"
+    return adapter, client
+
+
+def au_profile(model_id=AU_ID, regions=("ap-southeast-2", "ap-southeast-4"), model="anthropic.claude-sonnet-4-5-20250929-v1:0"):
+    return {**eligible_profile_response(model_id),
+            "models": [{"modelArn": f"arn:aws:bedrock:{region}::foundation-model/{model}"} for region in regions]}
+
+
+def test_au_policy_discovers_only_active_system_defined_au_profiles():
+    adapter, client = au_cloud()
+    client.list_inference_profiles.return_value = {"inferenceProfileSummaries": [
+        {"inferenceProfileId": AU_ID, "inferenceProfileName": "AU Claude Sonnet 4.5", "status": "ACTIVE", "type": "SYSTEM_DEFINED"},
+        {"inferenceProfileId": "global.anthropic.claude-sonnet-4-5-20250929-v1:0", "inferenceProfileName": "Global Claude Sonnet 4.5",
+         "status": "ACTIVE", "type": "SYSTEM_DEFINED"}]}
+    assert [row["id"] for row in adapter.models()] == [AU_ID]
+
+
+def test_au_policy_accepts_au_profile_with_australian_destinations_then_converses():
+    adapter, client = au_cloud()
+    client.get_inference_profile.return_value = au_profile()
+    adapter.session.client.return_value.converse.return_value = converse_response()
+    assert adapter.validate_model(AU_ID)["request_id"] == "req-1"
+    client.get_inference_profile.assert_called_once_with(inferenceProfileIdentifier=AU_ID)
+    assert adapter.session.client.return_value.converse.call_args.kwargs["modelId"] == AU_ID
+
+
+@pytest.mark.parametrize("model_id,profile", [
+    ("global.anthropic.claude-sonnet-4-5-20250929-v1:0", None),
+    (AU_ID, au_profile(regions=("ap-southeast-2", "us-east-1"))),
+    ("au.amazon.nova-pro-v1:0", None),
+    (AU_ID, au_profile(model="amazon.nova-lite-v1:0")),
+])
+def test_au_policy_rejects_global_foreign_destination_and_nova_without_converse(model_id, profile):
+    adapter, client = au_cloud()
+    client.get_inference_profile.return_value = profile or au_profile(model_id)
+    with pytest.raises(HTTPException) as excinfo:
+        adapter.validate_model(model_id)
+    assert excinfo.value.status_code == 422
+    assert excinfo.value.detail == ("Platform policy requires an active, system-defined Australia cross-region "
+        "inference profile (au.*) with Australian destination models; this model is not eligible.")
+    adapter.session.client.assert_not_called()
+
+
+def test_legacy_settings_without_model_policy_keep_accepting_global_profiles():
+    adapter, client = cloud()
+    assert "model_policy" not in adapter.settings
+    model_id = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    client.get_inference_profile.return_value = eligible_profile_response(model_id)
+    adapter.session.client.return_value.converse.return_value = converse_response()
+    assert adapter.validate_model(model_id)["request_id"] == "req-1"
+    with pytest.raises(HTTPException) as excinfo:
+        adapter.validate_model(AU_ID)
+    assert "global cross-region inference profile (global.*)" in excinfo.value.detail
+
+
+def test_unknown_model_policy_fails_closed_as_unavailable():
+    adapter, client = cloud()
+    adapter.settings["model_policy"] = "us"
+    for call in (adapter.models, lambda: adapter.validate_model(AU_ID)):
+        with pytest.raises(HTTPException) as excinfo:
+            call()
+        assert excinfo.value.status_code == 503
+    client.get_inference_profile.assert_not_called()
+    adapter.session.client.assert_not_called()
