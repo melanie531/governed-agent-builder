@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from foundation_harness.config import digest
+from .model_policy import model_policy, policy_description, policy_prefix, profile_eligible_for_policy
 
 
 def registry_descriptor(item):
@@ -44,7 +45,15 @@ class PlatformCloud:
         self.cache[key] = (time.time(), value)
         return value
 
+    def policy(self):
+        try:
+            return model_policy(self.settings)
+        except ValueError as error:
+            raise HTTPException(503, str(error)) from None
+
     def models(self):
+        prefix = policy_prefix(self.policy())
+
         def read():
             client = self.client("bedrock")
             rows = []
@@ -55,7 +64,7 @@ class PlatformCloud:
                              "provider": "Amazon Bedrock", "type": "Inference profile"}
                             for model in page["inferenceProfileSummaries"]
                             if model["status"] == "ACTIVE" and model.get("type") == "SYSTEM_DEFINED"
-                            and model["inferenceProfileId"].startswith("global."))
+                            and model["inferenceProfileId"].startswith(prefix))
                 token = page.get("nextToken")
                 if not token:
                     return sorted(rows, key=lambda item: item["name"])
@@ -158,10 +167,10 @@ class PlatformCloud:
             status="APPROVED" if approve else "REJECTED", statusReason=reason)["status"]
 
     def eligible_profile(self, model_id):
+        policy = self.policy()
         policy_error = HTTPException(422, "Platform policy requires an active, system-defined "
-                                     "global cross-region inference profile (global.*); "
-                                     "this model is not eligible.")
-        if not model_id.startswith("global."):
+                                     f"{policy_description(policy)}; this model is not eligible.")
+        if not model_id.startswith(policy_prefix(policy)):
             raise policy_error
         try:
             profile = self.client("bedrock").get_inference_profile(inferenceProfileIdentifier=model_id)
@@ -169,8 +178,7 @@ class PlatformCloud:
             if error.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
                 raise policy_error
             raise
-        if (profile.get("status") != "ACTIVE" or profile.get("type") != "SYSTEM_DEFINED"
-                or profile.get("inferenceProfileId") != model_id):
+        if not profile_eligible_for_policy(profile, model_id, policy):
             raise policy_error
 
     def validate_model(self, model_id):

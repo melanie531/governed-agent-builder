@@ -11,6 +11,7 @@ from .config import canonical, digest
 from .journey_mcp import GatewayMCP, GatewayRoutes, GatewayAuthorizationRequired, GatewayToolError
 from .journey_results import model_result
 from .journey_tools import model_schema, tool_arguments
+from .model_policy import model_id_matches_policy
 from .telemetry import ExecutionSpans
 
 
@@ -67,6 +68,10 @@ def _execute(manifest, user_input, session_id, *, model, gateway, publish=None, 
     if (not isinstance(user_input, str) or not user_input.strip() or len(user_input) > 4000
             or not isinstance(session_id, str) or not 33 <= len(session_id) <= 256):
         raise ValueError("Invalid invocation input or session")
+    # Manifests without a pinned policy predate it and keep today's behaviour; never substitute a model.
+    if "model_policy" in manifest and not model_id_matches_policy(manifest["model_id"], manifest["model_policy"]):
+        raise ValueError(f"This agent's model is not allowed under the platform model policy "
+                         f"({manifest['model_policy']}); revise the agent's model.")
     trace_run = RunTrace(manifest, session_id)
     started = time.monotonic()
     history = history or []

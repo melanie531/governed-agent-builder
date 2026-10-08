@@ -15,6 +15,7 @@ from botocore.exceptions import ClientError
 
 from foundation_harness.journey_mcp import decode_rpc_response
 from .mcp_onboarding import endpoint_origin
+from .network_policy import validate_network
 
 TOKEN_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Snowflake-Token"
 ACCESS_TOKEN_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Access-Token"
@@ -102,7 +103,9 @@ class PythonCloud:
             "agentRuntimeArtifact": {"codeConfiguration": {"code": {"s3": {
                 "bucket": artifact["bucket"], "prefix": artifact["key"], "versionId": artifact["version_id"]}},
                 "runtime": "PYTHON_3_13", "entryPoint": ["main.py"]}},
-            "roleArn": config["runtime_role"], "networkConfiguration": {"networkMode": "PUBLIC"},
+            "roleArn": config["runtime_role"],
+            # Pinned at creation; legacy states predate the receipt and were all created PUBLIC.
+            "networkConfiguration": validate_network(state.get("network") or {"networkMode": "PUBLIC"}),
             "protocolConfiguration": {"serverProtocol": "MCP"},
             "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 900},
             "tags": self.tags(state, config),
@@ -131,15 +134,16 @@ class PythonCloud:
         if len(matches) != 1:
             raise ValueError("Python Runtime identity is ambiguous")
         native_id = matches[0]["agentRuntimeId"]
+        expected_version = state.get("runtime_version", "1")
         arn = f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:runtime/{native_id}"
         if (not native_id.startswith(state["runtime_name"] + "-") or matches[0]["agentRuntimeArn"] != arn
-                or matches[0]["agentRuntimeVersion"] != "1"
-                or state.get("runtime_arn", arn) != arn or state.get("runtime_version", "1") != "1"):
+                or matches[0]["agentRuntimeVersion"] != expected_version
+                or state.get("runtime_arn", arn) != arn):
             raise ValueError("Python Runtime identity or version changed")
-        native = self.control.get_agent_runtime(agentRuntimeId=native_id, agentRuntimeVersion="1")
+        native = self.control.get_agent_runtime(agentRuntimeId=native_id, agentRuntimeVersion=expected_version)
         request = self.runtime_request(state, config)
         if (native.get("agentRuntimeArn") != arn or native.get("agentRuntimeId") != native_id
-                or native.get("agentRuntimeVersion") != "1" or native.get("authorizerConfiguration")
+                or native.get("agentRuntimeVersion") != expected_version or native.get("authorizerConfiguration")
                 or state.get("connection_mode") in ("IAM", "PACKAGE") and native.get("environmentVariables")
                 or not request.get("requestHeaderConfiguration") and native.get("requestHeaderConfiguration")
                 or any(native.get(k) != v for k, v in request.items() if k not in ("clientToken", "tags"))
@@ -150,12 +154,12 @@ class PythonCloud:
         if any(tags.get(k) != v for k, v in request["tags"].items()):
             raise ValueError("Python Runtime ownership or retention tags changed")
         if retiring and native["status"] in ("DELETING", "CREATE_FAILED", "UPDATE_FAILED", "DELETE_FAILED"):
-            return {"runtime_id": native_id, "runtime_arn": arn, "runtime_version": "1",
+            return {"runtime_id": native_id, "runtime_arn": arn, "runtime_version": expected_version,
                     "deleting": native["status"] == "DELETING"}
         if native["status"] != "READY":
             return {"pending": True}
         endpoint = self.control.get_agent_runtime_endpoint(agentRuntimeId=native_id, endpointName="DEFAULT")
-        if endpoint["agentRuntimeArn"] != arn or endpoint["liveVersion"] != "1" or endpoint.get("targetVersion", "1") != "1":
+        if endpoint["agentRuntimeArn"] != arn or endpoint["liveVersion"] != expected_version or endpoint.get("targetVersion", expected_version) != expected_version:
             raise ValueError("Python Runtime endpoint version changed")
         if endpoint["status"] != "READY":
             return {"pending": True}
@@ -163,7 +167,7 @@ class PythonCloud:
         if (endpoint["agentRuntimeEndpointArn"] != arn + "/runtime-endpoint/DEFAULT"
                 or native.get("workloadIdentityDetails", {}).get("workloadIdentityArn") != identity):
             raise ValueError("Python Runtime generated resource binding changed")
-        return {"runtime_id": native_id, "runtime_arn": arn, "runtime_version": "1"}
+        return {"runtime_id": native_id, "runtime_arn": arn, "runtime_version": expected_version}
 
     def generated_tags(self, runtime, required):
         identity = f"arn:aws:bedrock-agentcore:{self.settings['region']}:{self.settings['account']}:workload-identity-directory/default/workload-identity/{runtime['runtime_id']}"

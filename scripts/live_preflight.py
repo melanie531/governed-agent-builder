@@ -23,7 +23,7 @@ def validate_manifest(m):
         raise ValueError('Distinct Model and Tool Gateways required')
     if not m['runtime_role_arn'].startswith(f"arn:aws:iam::{m['target_account']}:role/"):
         raise ValueError('Runtime role target mismatch')
-    family = m['bedrock_model_id'].removeprefix('global.').removeprefix('us.').removeprefix('eu.').removeprefix('apac.')
+    family = m['bedrock_model_id'].removeprefix('global.').removeprefix('us.').removeprefix('eu.').removeprefix('apac.').removeprefix('au.')
     if not family.startswith(('anthropic.claude-', 'openai.gpt-')):
         raise ValueError('Only Bedrock Claude or Bedrock OpenAI are allowed')
 
@@ -52,7 +52,7 @@ def readonly(m, session):
     if not registry['registryArn'].startswith(f"arn:aws:bedrock-agentcore:{m['region']}:{m['target_account']}:"):
         raise ValueError('Registry target mismatch')
     bedrock = session.client('bedrock', region_name=m['region'])
-    if m['bedrock_model_id'].startswith(('global.', 'us.', 'eu.', 'apac.')):
+    if m['bedrock_model_id'].startswith(('global.', 'us.', 'eu.', 'apac.', 'au.')):
         bedrock.get_inference_profile(inferenceProfileIdentifier=m['bedrock_model_id'])
     else:
         bedrock.get_foundation_model(modelIdentifier=m['bedrock_model_id'])

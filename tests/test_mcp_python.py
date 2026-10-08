@@ -232,3 +232,21 @@ def test_python_package_overlays_only_main_and_never_executes_upload(tmp_path):
         assert archive.read("mcp/__init__.py") == b"approved dependency"
     with pytest.raises(ValueError, match="digest"):
         package(base, "0" * 64, source, output)
+
+
+@pytest.mark.parametrize("network", [None, {"networkMode": "VPC", "networkModeConfig": {
+    "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-runtime"]}}])
+def test_runtime_creation_pins_the_platform_network_receipt(setup, network):
+    _, cloud = enable(setup)
+    if network:
+        setup[2].settings["network"] = network
+    seen = []
+    write = cloud.write
+    cloud.write = lambda stage, state, config, source=None: (seen.append((stage, state.get("network"))), write(stage, state, config, source))[1]
+    value = create(setup)
+    drain(setup, value["job_id"])
+    with setup[1].tx() as db:
+        state = get(db, "mcp-python:" + value["id"])
+    pinned = network or {"networkMode": "PUBLIC"}
+    assert state["phase"] == "READY" and state["network"] == pinned
+    assert ("runtime", pinned) in seen

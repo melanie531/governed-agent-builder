@@ -555,6 +555,8 @@ def audit(state_path, runtime_id=None, existing=False, output=None, scoped_worke
     record("Gateway", {"ready": gateway["status"] == "READY", "iam_inbound": gateway["authorizerType"] == "AWS_IAM",
                        "retention_tag": c.list_tags_for_resource(resourceArn=gateway["gatewayArn"])["tags"].get("auto-delete") == "no"})
     record("GatewayIdentity", {"retention_tag": c.list_tags_for_resource(resourceArn=state["gateway_identity_tagged"])["tags"].get("auto-delete") == "no"})
+    from scripts.agent_network_audit import approved_network, business_agent_checks, runtime_network_checks
+    record("BusinessAgentNetwork", business_agent_checks(state))
     registry = client("agent-registry-control")
     reg = registry.get_registry(registryId=state["registry"]["registryId"])
     record("Registry", {"ready": reg["status"] == "READY", "manual_approval": not reg.get("approvalConfiguration", {}).get("autoApprovalRules"),
@@ -636,7 +638,8 @@ def audit(state_path, runtime_id=None, existing=False, output=None, scoped_worke
             for server in python_servers:
                 python_application_status.append({k: server.get(k) for k in ("id", "phase", "stage", "failure_code")})
                 try:
-                    record("PythonMcp/" + server["id"], python_resource_checks(python_cloud, server, python_config))
+                    record("PythonMcp/" + server["id"], {**python_resource_checks(python_cloud, server, python_config),
+                        **runtime_network_checks(python_cloud.control, server, approved_network(state))})
                 except Exception:
                     record("PythonMcp/" + server["id"], {"native_binding_verified": False})
     if runtime_id:
@@ -647,6 +650,9 @@ def audit(state_path, runtime_id=None, existing=False, output=None, scoped_worke
         record("TestAgentRuntime", {
             "ready": value["status"] == "READY",
             "iam_invocation": not value.get("authorizerConfiguration"),
+            # The test agent is pinned to the approved network, so its check stays strict.
+            **runtime_network_checks(c, {"runtime_id": runtime_id, "runtime_version": value["agentRuntimeVersion"],
+                                         "network": approved_network(state)}, approved_network(state)),
             "retention_tag": c.list_tags_for_resource(resourceArn=value["agentRuntimeArn"])["tags"].get("auto-delete") == "no"})
         record("TestAgentEndpoint", {
             "ready": endpoint["status"] == "READY" and endpoint["liveVersion"] == value["agentRuntimeVersion"],

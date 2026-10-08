@@ -123,6 +123,30 @@ def test_completed_rollback_requires_the_exact_reconciled_stack(tmp_path):
                          reconciled_rollback_stack_id=stacks["artifacts"]["StackId"])
 
 
+def test_create_failed_app_requires_the_exact_reconciled_stack(tmp_path):
+    stacks = {s: stack(s) for s in ("artifacts", "app")}
+    stacks["app"]["StackStatus"] = "CREATE_FAILED"
+    path = tmp_path / "fresh.json"
+    bound_file(path, stacks)
+    with pytest.raises(RuntimeError):
+        DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory)
+    DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory,
+                     reconciled_create_failed_stack_id=stacks["app"]["StackId"])
+    with pytest.raises(RuntimeError):
+        DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory,
+                         reconciled_create_failed_stack_id=stacks["artifacts"]["StackId"])
+
+
+def test_create_failed_artifacts_stack_is_never_reconciled(tmp_path):
+    stacks = {s: stack(s) for s in ("artifacts", "app")}
+    stacks["artifacts"]["StackStatus"] = "CREATE_FAILED"
+    path = tmp_path / "fresh.json"
+    bound_file(path, stacks)
+    with pytest.raises(RuntimeError):
+        DeploymentTarget(ACCOUNT, "approved-test", REGION, path, SDK(stacks=stacks).factory,
+                         reconciled_create_failed_stack_id=stacks["artifacts"]["StackId"])
+
+
 def test_imports_and_legacy_entrypoints_never_construct_sdk(monkeypatch):
     def forbidden(*a, **kw): raise AssertionError("Unexpected SDK construction")
     monkeypatch.setattr(boto3, "Session", forbidden)

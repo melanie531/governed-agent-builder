@@ -236,8 +236,15 @@ class PythonMcp:
             if not operation or (receipt is None and operation.get("retry_requested")):
                 if not operation and receipt is not None:
                     raise ValueError("Unexpected preexisting Python resource")
-                update(lambda current: current["operations"].update({
-                    stage: {"status": "INTENT", "retry_requested": False}}), release=False)
+                if stage == "runtime" and not state.get("network"):
+                    # Pin the platform network so reconciliation never floats with later settings changes.
+                    from .network_policy import validate_network
+                    state["network"] = validate_network(self.service.settings.get("network") or {"networkMode": "PUBLIC"})
+                def intent(current):
+                    if state.get("network"):
+                        current["network"] = state["network"]
+                    current["operations"][stage] = {"status": "INTENT", "retry_requested": False}
+                update(intent, release=False)
                 source = self.service.tx(lambda db: get(db, "mcp-python-source:" + state["id"])) if stage == "package" else None
                 self.cloud.write(stage, state, config, source)
                 update(lambda current: current["operations"][stage].update(status="ACKNOWLEDGED"), release=False)

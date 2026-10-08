@@ -449,7 +449,7 @@ class ModelGatewayCatalogProvider:
                 prefix, separator, model_id = qualified.partition('/')
                 if not separator or prefix != detail.get('name') or any(c in model_id for c in '*?[]/') or model.get('owned_by') != 'system':
                     continue
-                family = model_id.removeprefix('global.').removeprefix('us.').removeprefix('eu.').removeprefix('apac.')
+                family = model_id.removeprefix('global.').removeprefix('us.').removeprefix('eu.').removeprefix('apac.').removeprefix('au.')
                 if not family.startswith(('anthropic.claude-', 'openai.gpt-', 'claude-', 'gpt-')):
                     continue
                 rid = f'model:{self.gateway_id}:{target_id}:{model_id}'

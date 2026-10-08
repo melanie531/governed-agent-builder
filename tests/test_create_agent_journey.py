@@ -531,3 +531,36 @@ def test_repeated_evaluation_click_reuses_the_active_job(setup):
     second = journey.action(PERSONAS["alex"], saved["agent_id"],
                             VersionAction(version=1, idempotency_key=uuid4().hex), "evaluation")
     assert second["job_id"] == evaluation
+
+
+def test_au_policy_rejects_a_global_model_binding_with_a_policy_aware_message(setup):
+    journey, _ = setup
+    journey.settings["model_policy"] = "au"
+    with pytest.raises(HTTPException) as denied:
+        save(journey, deploy=False)
+    assert denied.value.status_code == 409
+    assert "Australia cross-region inference profile (au.*)" in denied.value.detail
+    assert "revise the agent" in denied.value.detail
+
+
+@pytest.mark.parametrize("model_id,allowed", [("au.anthropic.claude-sonnet-4-5-20250929-v1:0", True),
+                                              ("au.amazon.nova-pro-v1:0", False)])
+def test_au_policy_fail_fast_accepts_au_bindings_except_nova(setup, model_id, allowed):
+    journey, _ = setup
+    journey.settings["model_policy"] = "au"
+    rebind_catalog_model(journey, model_id)
+    if allowed:
+        assert save(journey, deploy=False)["version"] == 1
+    else:
+        with pytest.raises(HTTPException) as denied:
+            save(journey, deploy=False)
+        assert denied.value.status_code == 409
+
+
+def test_global_policy_rejects_au_bindings(setup):
+    journey, _ = setup
+    rebind_catalog_model(journey, "au.anthropic.claude-sonnet-4-5-20250929-v1:0")
+    with pytest.raises(HTTPException) as denied:
+        save(journey, deploy=False)
+    assert denied.value.status_code == 409
+    assert "global cross-region inference profile (global.*)" in denied.value.detail
