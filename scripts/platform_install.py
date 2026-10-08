@@ -58,7 +58,14 @@ def publish_catalog(db, settings, items, templates):
     put(db, "journey-platform", settings)
 
 
-def prepare(target):
+def prepare(target, *, worker_memory_size=None):
+    if worker_memory_size is not None and (
+            type(worker_memory_size) is not int or not 512 <= worker_memory_size <= 10240):
+        raise ValueError("Worker memory must be an integer from 512 to 10240 MiB")
+    existing = target.state.get("journeyPlatform")
+    if (existing and worker_memory_size is not None
+            and existing.get("worker_memory_size", 1024) != worker_memory_size):
+        raise RuntimeError("Installed worker memory differs; use a reviewed infrastructure update")
     store = DynamoStore(target.state["app"]["outputs"]["StateTable"], target.session.resource("dynamodb"))
     if target.state.get("journeyPlatform"):
         with store.tx() as db:
@@ -82,6 +89,8 @@ def prepare(target):
         "network": {"networkMode": "PUBLIC"}, "evaluator_id": evaluator["evaluatorId"],
         "evaluator_arn": evaluator["evaluatorArn"],
     }
+    if worker_memory_size is not None:
+        settings["worker_memory_size"] = worker_memory_size
     items, templates = starter_catalog()
     publication = {"settings": settings, "items": items, "templates": templates}
     marker = "platform-install:" + digest(publication)

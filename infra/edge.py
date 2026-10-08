@@ -8,7 +8,7 @@ import json
 
 
 def template():
-    tags = [{"Key": k, "Value": v} for k, v in {"project": "governed-agent-builder", "owner": "melanie531", "managedBy": "cloudformation"}.items()]
+    tags = [{"Key": k, "Value": v} for k, v in {"project": "governed-agent-builder", "managedBy": "cloudformation"}.items()]
     disabled_cache = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
     # AllViewer forwards Authorization and Host; the private proxy must validate the
     # configured distribution Host and set only its known origin for the app.

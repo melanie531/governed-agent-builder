@@ -352,53 +352,28 @@ Gateway credential-provider `configuration`. The same configuration is pinned as
 `journeyPlatform.mcp_onboarding` in target state for scoped IAM generation.
 Self-service credentials are stored separately as `mcp-auth:*` records.
 
-Python hosting has a separate protected `mcp-python-config` setting, so installing
-it does not alter existing Gateway registrations. Install it with the existing
-[`facade_deploy.py`](../examples/runtime-snowflake-mcp/facade_deploy.py) workflow:
-`plan`, `deploy`, then `configure`, using `--python-config <file>` and a retained
-`--state-dir <directory>`. The configuration contains:
+For a new installation, enable `package_uploads` in the
+[deployment configuration](deployment.md#choose-your-deployment-target). The
+installer builds and uploads the locked hosting bundle, derives the table,
+worker role and immutable artifact version, and configures the protected
+`mcp-python-config` setting. It does not alter existing Gateway registrations.
+Choose `package_reserved_concurrency` in that same file; `null` uses shared
+capacity. No Snowflake account or existing Snowflake Runtime is needed.
 
-```json
-{
-  "prefix": "studio-python-mcp",
-  "profile": "your-verified-profile",
-  "account": "123456789012",
-  "region": "us-east-1",
-  "bundle_name": "Snowflake MCP / Python 3.13",
-  "bundle_digest": "<sha256 of the approved ZIP>",
-  "python_onboarding": {
-    "table_name": "<existing Studio state table>",
-    "runtime_prefix": "studio_python_mcp",
-    "deployment_prefix": "<Studio credential prefix>",
-    "worker_role_name": "<existing Studio worker role>",
-    "artifact": {
-      "bucket": "<private versioned release bucket>",
-      "key": "mcp/python/bundles/<sha256>.zip",
-      "version_id": "<immutable S3 version>"
-    }
-  }
-}
-```
-
-First place the approved ZIP in that versioned key with encryption, its digest,
-and `auto-delete=no`; record the upload intent and verify the stored bytes.
-The bridge reserves ten Lambda executions per function by default. For an account
-whose Lambda quota cannot support that reservation, add
-`"reserved_concurrency": null` to this configuration to use its shared unreserved
-capacity, or specify an available positive reservation per function. The generated
-template uses the supplied artifact bucket and requires no CDK bootstrap stack.
-Use the example's locked dependencies for a new installation, or copy the exact
-version from the accepted Snowflake MCP Runtime. The installer checks the AWS
-account, existing table and worker, bundle bytes, authenticated bridge, native
-resource tags and terminal deployment states before `configure` enables uploads.
-Its managed deployment policy grants only the selected Runtime/package namespace.
+The installer calls
+[`facade_deploy.py`](../examples/runtime-snowflake-mcp/facade_deploy.py) internally.
+That component checks the AWS account, table/worker binding, bundle bytes,
+authenticated bridge and terminal deployment states before enabling uploads.
+It grants permissions only for the selected Runtime/package namespace and
+requires no CDK bootstrap stack. Adding hosting to an installed app is a
+[reviewed infrastructure upgrade](deployment.md#mcp-permission-changes).
 
 The app release moves worker onboarding permissions from its near-full inline
-policy set into `McpOnboardingPolicy`. The release installer verifies the native
-managed-policy retention tags before UI publication. Both the 6,144-byte managed
+policy set into `McpOnboardingPolicy`. The release installer manages and verifies
+policy metadata before UI publication. Both the 6,144-byte managed
 policy limit and the worker's 10,240-byte aggregate inline limit remain enforced.
-Update the existing machine Gateway's `McpCredentialUse` policy from
-`infra.mcp_onboarding.configure_gateway` when enabling 2LO.
+The initial installer configures the machine Gateway's `McpCredentialUse`
+permissions needed for service credentials.
 
 For release rollback, retain the previous frontend index version, exact Lambda
 packages and configuration hashes, CloudFormation templates and operation
@@ -413,7 +388,7 @@ authenticated CloudFront endpoint; Lambda Function URLs are never required.
 Registry uses **`agent-registry-control`** with `agent-registry` ARNs/IAM actions.
 MCP descriptors follow server.json schema 2025-12-11 and actual MCP discovery uses
 protocol 2025-03-26. The catalog pins record/version identity, discovery digest and
-Gateway binding. Use the [AWS Agent Registry console](https://console.aws.amazon.com/agent-registry/home?region=us-east-1#)
+Gateway binding. Use the [AWS Agent Registry console](https://console.aws.amazon.com/agent-registry/home)
 in the deployment account/region. The older Bedrock AgentCore Registry console is
 a separate inventory during [AWS's migration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry-faq.html).
 
@@ -421,7 +396,6 @@ Publication does not provide continuous monitoring of native Registry revocation
 Withdraw catalog availability when retiring a connection. Workspace visibility,
 agent ownership and upstream data privileges remain separate controls.
 
-See [deployment and rollback](deployment.md). Current acceptance receipts are in
-ignored `artifacts/mcp-connection-management/` and subsequent release directories;
-version-specific test counts and native IDs belong in those receipts, not in this
-operating procedure.
+See [deployment and rollback](deployment.md). Store acceptance results in the
+evidence directory for that installation; keep native IDs and release-specific
+test results in its receipts.

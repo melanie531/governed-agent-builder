@@ -14,7 +14,7 @@ def template(origin):
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/") or parsed.port not in (None, 443):
         raise ValueError("An exact HTTPS application origin is required")
     origin = origin.rstrip("/")
-    tags = {"project": "governed-agent-builder", "owner": "melanie531", "managedBy": "cloudformation", "auto-delete": "no"}
+    tags = {"project": "governed-agent-builder", "managedBy": "cloudformation", "auto-delete": "no"}
     resources = {
         "Pool": {"Type": "AWS::Cognito::UserPool", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain", "Properties": {
             "UserPoolName": "governed-agent-builder-studio", "UserPoolTags": tags,

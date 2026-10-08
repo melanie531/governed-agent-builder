@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-TAGS = [{"Key": k, "Value": v} for k, v in {"project": "governed-agent-builder", "owner": "melanie531", "managedBy": "cloudformation"}.items()]
+TAGS = [{"Key": k, "Value": v} for k, v in {"project": "governed-agent-builder", "managedBy": "cloudformation"}.items()]
 
 
 def network_template():
