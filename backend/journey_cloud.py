@@ -7,6 +7,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from foundation_harness.config import canonical, digest
+from .network_policy import validate_network
 
 
 class JourneyCloud:
@@ -72,6 +73,7 @@ class JourneyCloud:
         return value
 
     def create(self, manifest, token):
+        network = validate_network(self.settings["network"])
         location = self.write("journey/manifests/" + digest(manifest) + ".json", manifest)
         artifact = manifest["artifact"]
         request = {
@@ -81,7 +83,7 @@ class JourneyCloud:
                                "versionId": artifact["version_id"]}},
                 "runtime": "PYTHON_3_13", "entryPoint": ["main.py"]}},
             "roleArn": self.settings["runtime_role"],
-            "networkConfiguration": self.settings["network"],
+            "networkConfiguration": network,
             "protocolConfiguration": {"serverProtocol": "HTTP"},
             "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 900},
             "environmentVariables": {"JOURNEY_MANIFEST": json.dumps(location, separators=(",", ":"))},
