@@ -85,3 +85,34 @@ def test_small_template_still_uses_inline_template_body(monkeypatch):
     assert len(requests) == 1
     assert "TemplateURL" not in requests[0]
     assert len(requests[0]["TemplateBody"].encode()) <= LIMIT
+
+
+def test_preflight_validates_oversized_app_template_via_template_url(monkeypatch):
+    validated, uploads = [], []
+
+    def put_object(**kwargs):
+        uploads.append(kwargs)
+        return {"VersionId": "test-version"}
+
+    body = oversized_template()
+    monkeypatch.setattr(serverless_deploy, "template", lambda **kwargs: copy.deepcopy(body))
+    monkeypatch.setattr(serverless_deploy, "TARGET", SimpleNamespace(
+        check_stacks=lambda: None, check_stack=lambda _: None, save=lambda *args: None,
+        state={"artifacts": {"outputs": {"Bucket": "synthetic-releases"}}},
+        binding={"region": "us-west-2"}))
+    monkeypatch.setattr(serverless_deploy, "CF", SimpleNamespace(
+        validate_template=lambda **kw: validated.append(kw)))
+    monkeypatch.setattr(serverless_deploy, "SESSION", SimpleNamespace(
+        client=lambda service: SimpleNamespace(put_object=put_object)))
+    monkeypatch.setattr(serverless_deploy, "save", lambda *args: None)
+
+    serverless_deploy.preflight()
+
+    assert len(validated) == 2
+    assert "TemplateBody" in validated[0]  # artifacts template stays inline
+    assert "TemplateBody" not in validated[1]
+    content = json.dumps(body, separators=(",", ":")).encode()
+    key = "templates/governed-agent-builder-serverless-app/" + hashlib.sha256(content).hexdigest() + ".json"
+    assert validated[1]["TemplateURL"] == (
+        "https://synthetic-releases.s3.us-west-2.amazonaws.com/" + key + "?versionId=test-version")
+    assert [u["Key"] for u in uploads] == [key]

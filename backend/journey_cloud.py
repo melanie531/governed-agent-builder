@@ -7,7 +7,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from foundation_harness.config import canonical, digest
-from .network_policy import validate_network
+from .network_policy import networks_equivalent, validate_network
 
 
 class JourneyCloud:
@@ -132,12 +132,13 @@ class JourneyCloud:
         version = runtime["agentRuntimeVersion"]
         native = self.control.get_agent_runtime(agentRuntimeId=runtime_id, agentRuntimeVersion=version)
         tags = self.control.list_tags_for_resource(resourceArn=arn)["tags"]
-        expected_fields = ("agentRuntimeArtifact", "roleArn", "networkConfiguration",
+        expected_fields = ("agentRuntimeArtifact", "roleArn",
                            "protocolConfiguration", "lifecycleConfiguration", "environmentVariables")
         if (native.get("agentRuntimeId") != runtime_id or native.get("agentRuntimeArn") != arn
                 or native.get("agentRuntimeVersion") != version
                 or native.get("agentRuntimeName") != request["agentRuntimeName"]
                 or native.get("status") not in ("CREATING", "UPDATING", "READY")
+                or not networks_equivalent(native.get("networkConfiguration"), request["networkConfiguration"])
                 or any(native.get(field) != request[field] for field in expected_fields)
                 or any(tags.get(key) != value for key, value in request["tags"].items())):
             raise ValueError("Existing named Runtime differs from this agent deployment; operator review required")

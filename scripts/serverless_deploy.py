@@ -50,7 +50,7 @@ def preflight():
                 "Live application template differs from the target configuration. "
                 "Restore the complete bound state or use a scoped, reviewed infrastructure release.")
     for name, current in (("artifacts", artifacts_template()), ("app", body)):
-        CF.validate_template(TemplateBody=json.dumps(current, separators=(",", ":")))
+        CF.validate_template(**template_input(name, current))
     save("preflight", {"accountMatch": True, "noVpcDependencies": True, "cloudFormationValidated": True, "time": time.time()})
     print("Preflight PASS: explicit STS account and bound stack identities, no VPC dependency, both templates AWS-validated", flush=True)
 

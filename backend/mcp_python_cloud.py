@@ -15,7 +15,7 @@ from botocore.exceptions import ClientError
 
 from foundation_harness.journey_mcp import decode_rpc_response
 from .mcp_onboarding import endpoint_origin
-from .network_policy import validate_network
+from .network_policy import networks_equivalent, validate_network
 
 TOKEN_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Snowflake-Token"
 ACCESS_TOKEN_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Access-Token"
@@ -146,7 +146,8 @@ class PythonCloud:
                 or native.get("agentRuntimeVersion") != expected_version or native.get("authorizerConfiguration")
                 or state.get("connection_mode") in ("IAM", "PACKAGE") and native.get("environmentVariables")
                 or not request.get("requestHeaderConfiguration") and native.get("requestHeaderConfiguration")
-                or any(native.get(k) != v for k, v in request.items() if k not in ("clientToken", "tags"))
+                or not networks_equivalent(native.get("networkConfiguration"), request["networkConfiguration"])
+                or any(native.get(k) != v for k, v in request.items() if k not in ("clientToken", "tags", "networkConfiguration"))
                 or native["status"] not in (("CREATING", "READY", "DELETING", "CREATE_FAILED", "UPDATE_FAILED", "DELETE_FAILED")
                                            if retiring else ("CREATING", "READY"))):
             raise ValueError("Python Runtime deployment binding changed")
