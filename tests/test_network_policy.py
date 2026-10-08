@@ -52,3 +52,21 @@ def test_networks_equivalent_ignores_service_reported_vpc_fields():
     different = {"networkMode": "VPC", "networkModeConfig": {
         "subnets": ["subnet-c"], "securityGroups": ["sg-1"], "requireServiceS3Endpoint": False}}
     assert not networks_equivalent(different, requested)
+
+
+def test_networks_equivalent_fails_closed_on_unexpected_service_fields():
+    from backend.network_policy import networks_equivalent
+    requested = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-1"]}}
+    enforced = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-1"],
+        "requireServiceS3Endpoint": True}}
+    assert not networks_equivalent(enforced, requested)
+    unknown_config_field = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-1"],
+        "futureEnforcementFlag": "off"}}
+    assert not networks_equivalent(unknown_config_field, requested)
+    unknown_top_level_field = {"networkMode": "VPC", "networkModeConfig": {
+        "subnets": ["subnet-a", "subnet-b"], "securityGroups": ["sg-1"]},
+        "futureBlock": {}}
+    assert not networks_equivalent(unknown_top_level_field, requested)
