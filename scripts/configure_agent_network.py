@@ -30,6 +30,27 @@ def described(call, key, field, names, label):
     return found
 
 
+def gateway_service(ec2, region, subnets):
+    from botocore.exceptions import ClientError
+    service = f"com.amazonaws.{region}.bedrock-agentcore.gateway"
+    try:
+        details = ec2.describe_vpc_endpoint_services(ServiceNames=[service])["ServiceDetails"]
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "InvalidServiceName":
+            raise
+        details = []
+    details = [d for d in details if d["ServiceName"] == service]
+    if not details:
+        raise RuntimeError(f"AgentCore Gateway PrivateLink service {service} is not available in region {region}; "
+                           "choose a region where AgentCore Gateway supports VPC endpoints")
+    supported = set(details[0].get("AvailabilityZones", []))
+    unsupported = [f"{s['SubnetId']} ({s['AvailabilityZone']})" for s in subnets if s["AvailabilityZone"] not in supported]
+    if unsupported:
+        raise RuntimeError(f"subnet(s) {', '.join(unsupported)} are in Availability Zones {service} does not support "
+                           f"(supported: {', '.join(sorted(supported))}); choose subnets in supported zones")
+    return f"PrivateLink service {service} is available in Availability Zones {', '.join(sorted({s['AvailabilityZone'] for s in subnets}))}"
+
+
 def plan(target, vpc_id, subnets, groups):
     from backend.network_policy import validate_network
     network = validate_network({"networkMode": "VPC", "networkModeConfig": {"subnets": subnets, "securityGroups": groups}})
@@ -38,6 +59,12 @@ def plan(target, vpc_id, subnets, groups):
     if [v["VpcId"] for v in vpcs] != [vpc_id] or vpcs[0].get("OwnerId", target.binding["account"]) != target.binding["account"]:
         raise RuntimeError(f"VPC {vpc_id} was not found in account {target.binding['account']}")
     validations = [f"VPC {vpc_id} exists in account {target.binding['account']} region {target.binding['region']}"]
+    # Private DNS for the Gateway interface endpoint needs both; report, never modify the VPC.
+    for attribute, flag in (("enableDnsSupport", "--enable-dns-support"), ("enableDnsHostnames", "--enable-dns-hostnames")):
+        if not ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute=attribute)[attribute[0].upper() + attribute[1:]]["Value"]:
+            raise RuntimeError(f"VPC {vpc_id} has {attribute} disabled; the private AgentCore Gateway endpoint needs it. "
+                               f"Enable it with: aws ec2 modify-vpc-attribute --vpc-id {vpc_id} {flag} '{{\"Value\":true}}'")
+    validations.append(f"VPC {vpc_id} has enableDnsSupport and enableDnsHostnames enabled")
     found = described(ec2.describe_subnets, "Subnets", "SubnetIds", subnets, "subnets")
     outside = [s["SubnetId"] for s in found if s["VpcId"] != vpc_id]
     if outside or len(found) != len(set(subnets)):
@@ -46,6 +73,7 @@ def plan(target, vpc_id, subnets, groups):
     if len(zones) < 2:
         raise RuntimeError("Runtime subnets must span at least two Availability Zones")
     validations.append(f"{len(found)} subnets belong to {vpc_id} across Availability Zones {', '.join(sorted(zones))}")
+    validations.append(gateway_service(ec2, target.binding["region"], found))
     found = described(ec2.describe_security_groups, "SecurityGroups", "GroupIds", groups, "security groups")
     outside = [g["GroupId"] for g in found if g["VpcId"] != vpc_id]
     if outside or len(found) != len(set(groups)):

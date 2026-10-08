@@ -15,6 +15,7 @@ from scripts import configure_agent_network as configure
 from tests.bootstrap_support import Target
 
 ROOT = Path(__file__).resolve().parents[1]
+GATEWAY_SERVICE = "com.amazonaws.us-east-1.bedrock-agentcore.gateway"
 CREDENTIALS = {"aws_access_key_id": "testing", "aws_secret_access_key": "testing", "region_name": "us-east-1"}
 
 
@@ -33,10 +34,18 @@ def aws():
             AttributeDefinitions=[{"AttributeName": key, "AttributeType": "S"} for key in ("pk", "sk")])
         store = DynamoStore("test-state", resource)
         store.initialize()
+        ec2.modify_vpc_attribute(VpcId=vpc, EnableDnsHostnames={"Value": True})
         target = Target()
         target.session = session
         target.state["app"] = {"outputs": {"StateTable": "test-state"}}
-        yield SimpleNamespace(target=target, ec2=ec2, vpc=vpc, subnets=subnets, group=group, store=store)
+        # Moto has no AgentCore Gateway PrivateLink service; stub the read-only lookup.
+        services = {GATEWAY_SERVICE: ["us-east-1a", "us-east-1b"]}
+        def endpoint_services(params, **_):
+            details = [{"ServiceName": name, "AvailabilityZones": zones}
+                       for name, zones in services.items() if name in params["body"].values()]
+            return SimpleNamespace(status_code=200), {"ServiceDetails": details, "ServiceNames": [d["ServiceName"] for d in details]}
+        session.events.register("before-call.ec2.DescribeVpcEndpointServices", endpoint_services)
+        yield SimpleNamespace(target=target, ec2=ec2, vpc=vpc, subnets=subnets, group=group, store=store, services=services)
 
 
 def expected(aws, subnets=None):
@@ -167,6 +176,37 @@ def test_public_main_route_table_applies_to_unassociated_subnets(aws):
     aws.ec2.create_route(RouteTableId=main, DestinationCidrBlock="0.0.0.0/0", GatewayId=igw)
     with pytest.raises(RuntimeError, match="public subnet"):
         configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=False)
+
+
+def test_plan_validates_vpc_dns_and_the_gateway_privatelink_service(aws):
+    validations = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=False)["validations"]
+    assert any("enableDnsSupport" in v and "enableDnsHostnames" in v for v in validations)
+    assert any(GATEWAY_SERVICE in v and "us-east-1a" in v and "us-east-1b" in v for v in validations)
+
+
+def test_gateway_privatelink_service_missing_in_region_is_an_actionable_error(aws):
+    aws.services.clear()
+    with pytest.raises(RuntimeError, match=f"{GATEWAY_SERVICE} is not available in region us-east-1"):
+        configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert aws.target.saves == []
+
+
+def test_subnet_in_an_az_the_gateway_service_does_not_support_is_rejected(aws):
+    aws.services[GATEWAY_SERVICE] = ["us-east-1a", "us-east-1c"]
+    with pytest.raises(RuntimeError, match=f"{aws.subnets[1]} \\(us-east-1b\\)"):
+        configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert aws.target.saves == []
+
+
+@pytest.mark.parametrize("attribute,flag", [("EnableDnsSupport", "--enable-dns-support"),
+                                            ("EnableDnsHostnames", "--enable-dns-hostnames")])
+def test_vpc_dns_attribute_disabled_is_an_actionable_error_and_the_vpc_is_not_modified(aws, attribute, flag):
+    aws.ec2.modify_vpc_attribute(VpcId=aws.vpc, **{attribute: {"Value": False}})
+    with pytest.raises(RuntimeError, match=f"modify-vpc-attribute --vpc-id {aws.vpc} {flag}"):
+        configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    key = attribute[0].lower() + attribute[1:]
+    assert aws.ec2.describe_vpc_attribute(VpcId=aws.vpc, Attribute=key)[attribute]["Value"] is False
+    assert aws.target.saves == []
 
 
 @pytest.mark.parametrize("subnets,groups", [([], ["sg-1"]), (["subnet-a"], []), (["subnet-a", ""], ["sg-1"])])
