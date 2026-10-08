@@ -27,9 +27,16 @@ def networks_equivalent(a, b):
 
 
 def reported_network(network):
-    """Drop service-added VPC fields (e.g. requireServiceS3Endpoint) that AgentCore returns but requests never send."""
+    """Drop only the known-harmless service-reported VPC default (requireServiceS3Endpoint=False).
+
+    Requests never send it and the service reports False by default. Any other
+    service-added field or value (including requireServiceS3Endpoint=True) is
+    kept, so validate_network rejects the shape and equivalence fails closed
+    into the existing operator-review errors.
+    """
     if (not isinstance(network, dict) or network.get("networkMode") != "VPC"
             or not isinstance(network.get("networkModeConfig"), dict)):
         return network
-    config = {k: v for k, v in network["networkModeConfig"].items() if k in ("subnets", "securityGroups")}
-    return {"networkMode": "VPC", "networkModeConfig": config}
+    config = {k: v for k, v in network["networkModeConfig"].items()
+              if k != "requireServiceS3Endpoint" or v is not False}
+    return {**network, "networkModeConfig": config}

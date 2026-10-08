@@ -18,6 +18,12 @@ class JourneyCloud:
         self.session = session or boto3.Session(region_name=settings["region"])
         sdk = Config(connect_timeout=5, read_timeout=210, retries={"total_max_attempts": 1})
         self.control = self.session.client("bedrock-agentcore-control", config=sdk)
+        # Status polls run inside the worker's bounded in-process wait drain
+        # (serverless.STATUS_WAIT_STEP_BUDGET_MS): a poll slower than 30s is
+        # treated as "not READY yet", never as a step that may outlive the
+        # Lambda invocation.
+        self.poll_control = self.session.client("bedrock-agentcore-control",
+            config=Config(connect_timeout=5, read_timeout=30, retries={"total_max_attempts": 1}))
         self.data = self.session.client("bedrock-agentcore", config=sdk)
         self.s3 = self.session.client("s3", config=sdk)
 
@@ -145,8 +151,19 @@ class JourneyCloud:
         return {"id": runtime_id, "arn": arn, "version": version, "manifest": location,
                 **({"gateway_force_auth_v1": True} if (manifest or {}).get("gateway_force_auth_v1") is True else {})}
 
-    def ready(self, binding):
-        result = self.control.get_agent_runtime(agentRuntimeId=binding["id"], agentRuntimeVersion=binding["version"])
+    def ready(self, binding, poll=False):
+        # poll=True bounds each control call to the poll client's 30s read
+        # timeout and reports a timed-out status read as "not READY yet" so a
+        # drained worker step always fits its 250s budget. Non-poll callers
+        # keep the full 210s single-attempt behavior unchanged.
+        from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
+        control = self.poll_control if poll else self.control
+        try:
+            result = control.get_agent_runtime(agentRuntimeId=binding["id"], agentRuntimeVersion=binding["version"])
+        except (ConnectTimeoutError, ReadTimeoutError):
+            if poll:
+                return False
+            raise
         if result["agentRuntimeArn"] != binding["arn"] or result["agentRuntimeVersion"] != binding["version"]:
             raise ValueError("Runtime version binding mismatch")
         if json.loads(result.get("environmentVariables", {}).get("JOURNEY_MANIFEST", "{}")) != binding["manifest"]:
@@ -156,7 +173,11 @@ class JourneyCloud:
         if result["status"] != "READY":
             return False
         try:
-            endpoint = self.control.get_agent_runtime_endpoint(agentRuntimeId=binding["id"], endpointName="DEFAULT")
+            endpoint = control.get_agent_runtime_endpoint(agentRuntimeId=binding["id"], endpointName="DEFAULT")
+        except (ConnectTimeoutError, ReadTimeoutError):
+            if poll:
+                return False
+            raise
         except ClientError as exc:
             if exc.response["Error"]["Code"] == "ResourceNotFoundException":
                 return False
