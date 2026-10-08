@@ -11,10 +11,28 @@ from scripts.journey_platform import wait
 
 STACK = "governed-agent-builder-agentcore-runtime-prerequisites"
 TAGS = {"auto-delete": "no", "project": "governed-agent-builder"}
+NETWORK_ROLE, NETWORK_SERVICE = "AWSServiceRoleForBedrockAgentCoreNetwork", "network.bedrock-agentcore.amazonaws.com"
+
+
+def network_prerequisite(target, iam):
+    """VPC Runtimes need the AgentCore network role; PUBLIC targets never read or create it."""
+    network = (target.state.get("journeyPlatform") or {}).get("network") or target.state.get("agentNetwork") or {}
+    if network.get("networkMode") != "VPC":
+        return
+    expected = f"arn:aws:iam::{target.binding['account']}:role/aws-service-role/{NETWORK_SERVICE}/{NETWORK_ROLE}"
+    try:
+        role = iam.get_role(RoleName=NETWORK_ROLE)["Role"]
+    except iam.exceptions.NoSuchEntityException:
+        iam.create_service_linked_role(AWSServiceName=NETWORK_SERVICE)
+        role = iam.get_role(RoleName=NETWORK_ROLE)["Role"]
+    if role["Arn"] != expected:
+        raise ValueError("Existing AgentCore network service-linked role identity differs")
+    target.save("agentcoreNetworkPrerequisite", {"role": NETWORK_ROLE, "arn": expected})
 
 
 def install(target):
     iam, cf = target.session.client("iam"), target.cf
+    network_prerequisite(target, iam)
     operation = target.state.get("platformOperations", {}).get("runtime-prerequisites")
     if operation:
         request = operation["request"]
