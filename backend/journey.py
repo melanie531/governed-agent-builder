@@ -594,7 +594,12 @@ class Journey:
                 return {"phase": "WAIT_RUNTIME", "binding": binding, "wait_started": time.time()}
             if phase in ("WAIT_RUNTIME", "SMOKE"):
                 started = state.get("wait_started") or state.get("created")
-                if started is not None and time.time() > started + RUNTIME_WAIT_BUDGET:
+                # A recovered step (expired claim after an interrupted delivery,
+                # e.g. a READY crossing killed mid-call) gets one poll before the
+                # budget applies: the Runtime may have become READY during the
+                # visibility wait, and completing beats failing a finished deploy.
+                if (not recovery and started is not None
+                        and time.time() > started + RUNTIME_WAIT_BUDGET):
                     raise HTTPException(504, "The Runtime did not become READY within the deployment wait budget. Review the Runtime, then retry the deployment.")
                 if not self.cloud.ready(state["binding"], poll=True):
                     return {"phase": "WAIT_RUNTIME"}

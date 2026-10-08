@@ -20,19 +20,19 @@ from .app import ACTIVE, TERMINAL, create_app
 from .dynamo_store import DynamoStore
 from .hosted_auth import HostedAuth, PENDING_COOKIE
 
-# Job stages that only poll a resource status between steps: journey and
-# foundation Runtime readiness (WAIT_RUNTIME) and MCP Python Runtime/log
-# provisioning (DEPLOYING). worker_handler drains these in-process instead of
-# spending one SQS self-requeue hop per 10-second poll, because Lambda's
-# recursive loop detection terminates a Lambda->SQS->same-Lambda chain at
-# ~16 invocations (observed live: a ~5 minute VPC Runtime creation needs ~30
-# hops and was dropped, visible only as RecursiveInvocationsDropped).
-# A drained step may still make one full cloud step (journey control SDK
-# read_timeout=210s, single attempt), so sleeping is allowed only while the
-# remaining time covers the sleep PLUS the same 250-second step budget the
-# cleanup drain reserves. Every step therefore starts with at least 250s,
-# exactly like a fresh delivery under the established convention.
-STATUS_WAIT_STAGES = ('WAIT_RUNTIME', 'DEPLOYING')
+# Deploy stages that only poll Runtime readiness between steps. worker_handler
+# drains journey deploy WAIT_RUNTIME in-process instead of spending one SQS
+# self-requeue hop per 10-second poll, because Lambda's recursive loop
+# detection terminates a Lambda->SQS->same-Lambda chain at ~16 invocations
+# (observed live: a ~5 minute VPC Runtime creation needs ~30 hops and was
+# dropped, visible only as RecursiveInvocationsDropped). Journey polls run on
+# a dedicated bounded client (read 30s, timeouts mean 'not READY yet'), so a
+# drained step always fits the same 250-second step budget the cleanup drain
+# reserves. MCP Python DEPLOYING and foundation WAIT_RUNTIME steps are NOT
+# drained: their steps chain multiple 55-65s reads with no whole-step bound,
+# so they keep one hop per poll and remain exposed to the recursion cap for
+# slow Runtimes (documented residual; needs their own bounded poll paths).
+STATUS_WAIT_STAGES = ('WAIT_RUNTIME',)
 STATUS_WAIT_STEP_BUDGET_MS = 250000
 STATUS_WAIT_SLEEP_MS = 10000
 
@@ -161,7 +161,8 @@ def worker_handler(event, context):
                             # Reserve room for the SDK's 210-second timeout and
                             # persistence. Paid calls always yield to the queue.
                             continue
-                        if (latest['stage'] in STATUS_WAIT_STAGES and step_index < 24
+                        if (latest['stage'] in STATUS_WAIT_STAGES and live.get('kind') == 'deploy'
+                                and step_index < 24
                                 and context.get_remaining_time_in_millis()
                                     > STATUS_WAIT_STEP_BUDGET_MS + STATUS_WAIT_SLEEP_MS):
                             # The guard arithmetic already accounts for the

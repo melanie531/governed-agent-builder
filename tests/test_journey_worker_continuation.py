@@ -254,6 +254,23 @@ def test_legacy_wait_state_without_wait_started_still_hits_the_budget(tmp_path, 
     assert "wait budget" in journey.result(PERSONAS["alex"], saved["job_id"])["error"]
 
 
+def test_recovered_wait_step_gets_one_poll_before_the_budget_applies(tmp_path, monkeypatch):
+    # A delivery killed mid-crossing leaves an expired claim; the recovered
+    # step may find the Runtime READY and must complete the deploy rather than
+    # fail it on an elapsed budget.
+    from backend.journey import RUNTIME_WAIT_BUDGET
+    journey, cloud, saved, event, messages = runtime_wait_fixture(tmp_path, monkeypatch)
+    journey.step(saved["job_id"])  # QUEUED -> WAIT_RUNTIME
+    with journey.store.tx() as db:
+        state = get(db, "journey-job:" + saved["job_id"])
+        state["wait_started"] = time.time() - RUNTIME_WAIT_BUDGET - 60  # budget elapsed
+        state["claim"] = {"token": "interrupted-delivery", "expires": time.time() - 1}
+        put(db, "journey-job:" + saved["job_id"], state)
+    cloud.ready_result = True
+    journey.step(saved["job_id"])
+    assert journey.result(PERSONAS["alex"], saved["job_id"])["phase"] == "DEPLOYED"
+
+
 def test_poll_ready_bounds_control_calls_and_maps_timeouts_to_not_ready():
     # Executes the REAL readiness method: the poll client must be bounded
     # (connect 5s / read 30s / single attempt) and a timed-out poll must mean
