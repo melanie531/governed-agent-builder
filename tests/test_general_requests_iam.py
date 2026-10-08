@@ -42,6 +42,14 @@ def test_template_changes_only_business_leadingkeys_logout_tags_and_bundled_font
     csp = expected['Resources']['Headers']['Properties']['ResponseHeadersPolicyConfig']['SecurityHeadersConfig']['ContentSecurityPolicy']
     csp['ContentSecurityPolicy'] = csp['ContentSecurityPolicy'].replace(
         "img-src 'self' data:;", "img-src 'self' data:; font-src 'self' data:;")
+    # Account-global CloudFront resource names carry the region suffix so a
+    # second-region installation in the same account cannot collide.
+    expected['Resources']['OAC']['Properties']['OriginAccessControlConfig']['Name'] = {
+        'Fn::Sub': '${AWS::StackName}-s3-${AWS::Region}'}
+    expected['Resources']['SPA']['Properties']['Name'] = {
+        'Fn::Sub': '${AWS::StackName}-spa-${AWS::Region}'}
+    expected['Resources']['Headers']['Properties']['ResponseHeadersPolicyConfig']['Name'] = {
+        'Fn::Sub': '${AWS::StackName}-headers-${AWS::Region}'}
     # Retention tagging is the only additional deployment-wide change. Its
     # supported types and required values have independent contract coverage.
     for name, resource in new['Resources'].items():

@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "aws-cdk-lib>=2.200,<3"]
+dev = ["pytest>=8,<10", "aws-cdk-lib>=2.200,<3", "fastapi>=0.115,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
