@@ -10,6 +10,7 @@ from pathlib import Path
 from backend.dynamo_store import DynamoStore
 from backend.foundation_runs import get, put
 from backend.live_catalog import grant_scope
+from backend.network_policy import validate_network
 from foundation_harness.config import digest
 from scripts import journey_platform as journey
 from scripts.bootstrap_support import Journal, gateway, stack
@@ -67,6 +68,8 @@ def prepare(target):
         print("Platform already configured; existing catalog and connections preserved", flush=True)
         return
 
+    # Explicit choice from scripts/configure_agent_network.py; fresh installs without one stay PUBLIC.
+    network = validate_network(target.state.get("agentNetwork") or {"networkMode": "PUBLIC"})
     bucket, key, artifact = journey.upload(target)
     outputs = stack(target, bucket, key)
     control = target.session.client("bedrock-agentcore-control")
@@ -79,7 +82,7 @@ def prepare(target):
         "artifact": artifact, "runtime_role": outputs["RuntimeRole"],
         "gateway_id": gw["id"], "gateway_url": gw["url"],
         "bucket": outputs["EvidenceBucket"], "log_group": outputs["TraceLogGroup"],
-        "network": {"networkMode": "PUBLIC"}, "evaluator_id": evaluator["evaluatorId"],
+        "network": network, "evaluator_id": evaluator["evaluatorId"],
         "evaluator_arn": evaluator["evaluatorArn"],
     }
     items, templates = starter_catalog()
