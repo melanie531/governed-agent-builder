@@ -15,6 +15,7 @@ from foundation_harness.config import canonical, digest
 from . import journey_catalog as catalog
 from . import journey_lifecycle as lifecycle
 from .foundation_runs import get, put
+from .model_policy import model_id_matches_policy, model_policy, policy_description
 from .journey_schema import AgentDefinition, InvokeAgent, ResumeInvocation, SaveAgent, VersionAction, DeletePreview, DeleteAgent
 
 TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED", "AUTHORIZATION_REQUIRED"}
@@ -85,8 +86,15 @@ class Journey:
             if binding["type"] not in ("bedrock-converse", "mcp-server", "mcp", "instructions"):
                 raise HTTPException(409, "This capability needs a compatible Foundation Harness")
             # Cheap fail-fast only; the authoritative eligibility gate is PlatformCloud.eligible_profile (platform validation/publication), and catalog resolution already requires approved + validated + granted components, so a forged binding cannot arrive via governed paths.
-            if binding["type"] == "bedrock-converse" and not binding["model_id"].startswith("global."):
-                raise HTTPException(409, "Platform policy requires a global cross-region inference profile; revise the agent to use a global model from the AI Catalog")
+            if binding["type"] == "bedrock-converse":
+                try:
+                    policy = model_policy(self.settings)
+                except ValueError as error:
+                    raise HTTPException(503, str(error)) from None
+                if not model_id_matches_policy(binding["model_id"], policy):
+                    description = policy_description(policy)
+                    raise HTTPException(409, f"Platform policy requires {'an' if description[0] in 'aeiouAEIOU' else 'a'} {description}; "
+                                        "revise the agent to use a model allowed by this policy from the AI Catalog")
             if binding["type"] in ("mcp", "mcp-server") and binding["gateway_id"] != self.settings["gateway_id"]:
                 from .mcp_gateway_oauth import gateway_configuration
                 try:
