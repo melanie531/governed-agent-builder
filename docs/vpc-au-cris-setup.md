@@ -19,9 +19,9 @@ offline test suite was run.
 
 - `uv`, Python 3.12 or later, and the AWS CLI v2 with a named profile for the
   target account (`aws sts get-caller-identity --profile <profile>` succeeds).
-- An existing VPC with at least two **private** subnets in different
-  Availability Zones. Private means no `0.0.0.0/0` route to an internet gateway;
-  NAT or VPC endpoints are acceptable.
+- A VPC with `enableDnsSupport` and `enableDnsHostnames` on, and at least two
+  **private** subnets in AZs that offer `com.amazonaws.<region>.bedrock-agentcore.gateway`.
+  Private means no `0.0.0.0/0` route to an internet gateway; NAT or VPC endpoints are fine.
 - For `au`: the deployment region can reach the `au.*` profiles you intend to use.
 
 ```sh
@@ -56,8 +56,9 @@ GAB_TARGET=(--expected-account "$GAB_ACCOUNT" --profile "$GAB_PROFILE"
 
 **cloud step — NOT RUN in this change's validation.** This stack is separate
 from the application stack. It creates only an egress-only Runtime security
-group, and an AgentCore Gateway interface endpoint with private DNS that admits
-TLS from that group.
+group, and an AgentCore Gateway interface endpoint with private DNS. The
+endpoint carries only its own security group, which admits TLS from the Runtime
+group.
 
 ```sh
 .venv/bin/python -m infra.agent_network > artifacts/agent-network.json
@@ -87,9 +88,13 @@ read-only plan:
 ```
 
 Expected output is JSON with `"network"` (`networkMode: VPC`), `"validations"`,
-`"would_write"` and `"applied": false`. The plan checks four things:
+`"would_write"`, `"before"`/`"after"` (previous and new `agentNetwork` and, when
+installed, `journeyPlatform.network`) and `"applied": false`. The plan checks:
 - the VPC belongs to the bound account and region;
+- `enableDnsSupport` and `enableDnsHostnames` are on (else it prints the
+  `aws ec2 modify-vpc-attribute` fix; it never changes the VPC);
 - the subnets are in that VPC and span at least two AZs;
+- the Gateway PrivateLink service exists in the region and in each subnet's AZ;
 - the security groups are in that VPC;
 - no subnet routes `0.0.0.0/0` to an `igw-`.
 
@@ -99,6 +104,8 @@ never falls back to `PUBLIC`.
 Apply the same arguments with `--apply`. The apply records `agentNetwork`. On an
 installed platform it also updates `journeyPlatform.network` and the live
 `journey-platform` settings together. It refuses if those two already disagree.
+Its output adds `"existing_runtimes"` (each uploaded MCP Runtime and its pinned
+network); it never retires, deletes or migrates them.
 
 - **Fresh installation:** apply after `serverless_deploy deploy` and before
   `agentcore_prerequisites` and `journey_platform prepare` (docs/deployment.md).
@@ -162,16 +169,19 @@ Run the audit and confirm the result before relying on a change:
 
 ### Migrating existing Runtimes (separate manual step, NOT automated)
 
-These settings apply to Runtimes created **after** the change. Existing
-business-agent and MCP Runtimes keep their original network and pinned model
-policy. Nothing migrates them automatically.
+Settings apply only to Runtimes created **after** the change. Each uploaded MCP
+Runtime records its network at creation; older Runtimes were created `PUBLIC`
+and are pinned `PUBLIC`. Later checks use the pinned network, so a VPC switch
+does not break them. Business-agent Runtimes keep their network and model
+policy too. Nothing migrates automatically.
 
 1. Business agents: revise each agent in Studio. Pick an allowed model under
    `au`. Deploy a new version, then retire the previous version.
-2. Uploaded MCP servers: upload the package again so that a new Runtime is
-   created with the VPC network, then delete the old server.
-3. Run the audit. `BusinessAgentNetwork` and `runtime_network_approved` on each
-   `PythonMcp/*` record must pass.
+2. Uploaded MCP servers (listed in `existing_runtimes`): after the apply,
+   re-upload each package so a new VPC Runtime is created, then retire the old server.
+3. Run the audit. `BusinessAgentNetwork` and `runtime_network_pinned` on each
+   `PythonMcp/*` record must pass; `runtime_network_platform` is informational
+   (`differs…` until re-uploaded).
 
 A deployed agent whose manifest pins `au` fails closed if its model does not
 match that policy: "This agent's model is not allowed under the platform model
@@ -181,9 +191,9 @@ policy (au); revise the agent's model." It never substitutes another model.
 
 - [ ] Offline suite passes on the checked-out branch.
 - [ ] Network stack outputs `RuntimeSecurityGroupId` and `GatewayEndpointId`.
-- [ ] `configure_agent_network` plan shows all validations; `--apply` reports `"applied": true`.
+- [ ] Network plan shows all validations; `--apply` reports `"applied": true` and `existing_runtimes`.
 - [ ] `agentcore_prerequisites` verified `AWSServiceRoleForBedrockAgentCoreNetwork`.
 - [ ] `configure_model_policy --policy au --apply` reports `"applied": true`.
 - [ ] Model discovery lists only `au.*`; validating a `global.*` model is rejected.
 - [ ] A new agent with an `au.*` model deploys and answers; its Runtime shows `networkMode: VPC`.
-- [ ] The audit passes, including `BusinessAgentNetwork` and `runtime_network_approved`.
+- [ ] The audit passes, including `BusinessAgentNetwork` and `runtime_network_pinned`.
