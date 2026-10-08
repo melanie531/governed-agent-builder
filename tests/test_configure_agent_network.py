@@ -87,6 +87,19 @@ def test_apply_updates_bound_state_and_live_platform_record_consistently(aws):
     assert live(aws) == aws.target.state["journeyPlatform"]
 
 
+def test_apply_receipt_reports_previous_and_new_network_values(aws):
+    seed_platform(aws)
+    aws.target.state["agentNetwork"] = {"networkMode": "PUBLIC"}
+    result = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert result["before"] == {"agentNetwork": {"networkMode": "PUBLIC"}, "journeyPlatform.network": {"networkMode": "PUBLIC"}}
+    assert result["after"] == {"agentNetwork": expected(aws), "journeyPlatform.network": expected(aws)}
+
+
+def test_receipt_before_installation_has_no_platform_values(aws):
+    result = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert result["before"] == {"agentNetwork": None} and result["after"] == {"agentNetwork": expected(aws)}
+
+
 def test_apply_before_installation_records_only_the_agent_network_choice(aws):
     configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
     assert aws.target.state["agentNetwork"] == expected(aws)
@@ -106,8 +119,10 @@ def test_apply_resumes_after_live_record_was_already_updated(aws):
     settings = seed_platform(aws)
     with aws.store.tx() as db:
         put(db, "journey-platform", {**settings, "network": expected(aws)})
-    configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    result = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
     assert aws.target.state["journeyPlatform"]["network"] == expected(aws) == live(aws)["network"]
+    assert result["before"]["journeyPlatform.network"] == {"networkMode": "PUBLIC"}
+    assert result["after"]["journeyPlatform.network"] == expected(aws)
 
 
 def test_apply_lists_existing_runtimes_with_their_pinned_network_and_changes_none(aws):

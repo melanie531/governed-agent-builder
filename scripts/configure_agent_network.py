@@ -108,7 +108,12 @@ def run(target, vpc_id, subnets, groups, *, apply):
     installed = bool(target.state.get("journeyPlatform"))
     writes = ["deployment state agentNetwork"] + (
         ["deployment state journeyPlatform.network", "live journey-platform settings network"] if installed else [])
-    result = {"network": network, "validations": validations, "would_write": writes, "applied": False}
+    before, after = {"agentNetwork": target.state.get("agentNetwork")}, {"agentNetwork": network}
+    if installed:
+        before["journeyPlatform.network"] = target.state["journeyPlatform"].get("network")
+        after["journeyPlatform.network"] = network
+    result = {"network": network, "validations": validations, "would_write": writes,
+              "before": before, "after": after, "applied": False}
     if apply:
         if installed:
             from backend.dynamo_store import DynamoStore
