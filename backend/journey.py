@@ -142,6 +142,8 @@ class Journey:
                 "owner": definition["owner"], "workspace": definition["workspace"], "name": definition["name"],
                 "definition_digest": definition["digest"], "prompt": definition["prompt"],
                 "model_id": model["model_id"], "supports_temperature": model.get("supports_temperature", True),
+                # Only non-default policies are pinned, so global/legacy manifests stay byte-identical.
+                **({"model_policy": model_policy(self.settings)} if model_policy(self.settings) != "global" else {}),
                 "output_format": definition["output_format"],
                 "skill_instructions": [resolved[cid]["binding"]["instructions"] for cid in definition["skills"]],
                 "capability_versions": definition["component_versions"],
