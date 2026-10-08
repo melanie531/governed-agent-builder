@@ -37,9 +37,9 @@ def template(*, foundation_deployment=None, foundation_producer=None, journey=No
         "DispatchFailures": {"Type": "AWS::SQS::Queue", "DeletionPolicy": "Retain", "Properties": {"SqsManagedSseEnabled": True, "MessageRetentionPeriod": 1209600}},
         "Jobs": {"Type": "AWS::SQS::Queue", "Properties": {"SqsManagedSseEnabled": True, "VisibilityTimeout": 360, "MessageRetentionPeriod": 86400, "RedrivePolicy": {"deadLetterTargetArn": attr("DeadLetters"), "maxReceiveCount": 5}}},
         "Api": {"Type": "AWS::ApiGatewayV2::Api", "Properties": {"Name": "governed-agent-builder-serverless", "ProtocolType": "HTTP", "DisableExecuteApiEndpoint": False}},
-        "OAC": {"Type": "AWS::CloudFront::OriginAccessControl", "Properties": {"OriginAccessControlConfig": {"Name": sub("${AWS::StackName}-s3"), "OriginAccessControlOriginType": "s3", "SigningBehavior": "always", "SigningProtocol": "sigv4"}}},
-        "SPA": {"Type": "AWS::CloudFront::Function", "Properties": {"Name": sub("${AWS::StackName}-spa"), "AutoPublish": True, "FunctionConfig": {"Comment": "Static UI routes only", "Runtime": "cloudfront-js-2.0"}, "FunctionCode": "function handler(event) { var r=event.request; if (r.uri.indexOf('.')===-1) r.uri='/index.html'; return r; }"}},
-        "Headers": {"Type": "AWS::CloudFront::ResponseHeadersPolicy", "Properties": {"ResponseHeadersPolicyConfig": {"Name": sub("${AWS::StackName}-headers"), "SecurityHeadersConfig": {
+        "OAC": {"Type": "AWS::CloudFront::OriginAccessControl", "Properties": {"OriginAccessControlConfig": {"Name": sub("${AWS::StackName}-s3-${AWS::Region}"), "OriginAccessControlOriginType": "s3", "SigningBehavior": "always", "SigningProtocol": "sigv4"}}},
+        "SPA": {"Type": "AWS::CloudFront::Function", "Properties": {"Name": sub("${AWS::StackName}-spa-${AWS::Region}"), "AutoPublish": True, "FunctionConfig": {"Comment": "Static UI routes only", "Runtime": "cloudfront-js-2.0"}, "FunctionCode": "function handler(event) { var r=event.request; if (r.uri.indexOf('.')===-1) r.uri='/index.html'; return r; }"}},
+        "Headers": {"Type": "AWS::CloudFront::ResponseHeadersPolicy", "Properties": {"ResponseHeadersPolicyConfig": {"Name": sub("${AWS::StackName}-headers-${AWS::Region}"), "SecurityHeadersConfig": {
             "ContentTypeOptions": {"Override": True}, "FrameOptions": {"FrameOption": "DENY", "Override": True},
             "ReferrerPolicy": {"ReferrerPolicy": "no-referrer", "Override": True},
             "StrictTransportSecurity": {"AccessControlMaxAgeSec": 31536000, "IncludeSubdomains": True, "Override": True},

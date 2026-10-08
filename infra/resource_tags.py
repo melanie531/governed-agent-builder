@@ -1,4 +1,5 @@
 """Retention tags for supported CloudFormation resources in the managed stacks."""
+import copy
 
 # CloudFormation uses maps for HTTP APIs/stages and a distinct Cognito property.
 # Policies, routes, permissions and the other untaggable resources are omitted.
@@ -30,6 +31,31 @@ def apply_resource_tags(resources):
                 tag for tag in props.get(field, []) if tag["Key"] != "auto-delete"
             ] + [{"Key": "auto-delete", "Value": "no"}]
     return resources
+
+
+def retain_legacy_pool_owner_tag(previous, proposed):
+    """Carry one legacy Cognito ``owner`` tag from a verified live template.
+
+    Earlier installations tagged the user pool with a personal ``owner``
+    entry that the provider-neutral rendering no longer emits. Updating with
+    the new rendering would silently strip that live tag, and the strict
+    template-identity reviews rightly reject the difference. This copies
+    exactly ``Resources/Pool/Properties/UserPoolTags/owner`` — a plain
+    string only — from the live template read from the already identity
+    checked target stack into a deep copy of the proposed rendering. It
+    never adopts any other live content, never mutates its inputs, and adds
+    nothing when the live template has no owner tag (fresh installations).
+    The tag is retained for compatibility only; it grants nothing.
+    """
+    value = (previous.get("Resources", {}).get("Pool", {}).get("Properties", {})
+             .get("UserPoolTags", {}).get("owner")) if isinstance(previous, dict) else None
+    pool = proposed.get("Resources", {}).get("Pool", {}).get("Properties", {})
+    if (not isinstance(value, str) or not isinstance(pool.get("UserPoolTags"), dict)
+            or "owner" in pool["UserPoolTags"]):
+        return proposed
+    retained = copy.deepcopy(proposed)
+    retained["Resources"]["Pool"]["Properties"]["UserPoolTags"]["owner"] = value
+    return retained
 
 
 def validate_resource_tags(resources):

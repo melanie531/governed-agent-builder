@@ -10,14 +10,14 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from backend.dynamo_store import DynamoStore
 from backend.foundation_runs import get, put
 from foundation_harness.config import digest
-from infra.resource_tags import validate_resource_tags
+from infra.resource_tags import retain_legacy_pool_owner_tag, validate_resource_tags
 from infra.serverless import template
+from scripts.bootstrap_support import NO_RETRIES, retry_cloudformation_reads
 from scripts.deployment_target import DeploymentTarget, target_arguments
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,7 +119,7 @@ class Release:
         self.path = self.evidence / "release-receipt.json"
         saved = json.loads(args.state.read_text())
         self.receipt = json.loads(self.path.read_text()) if self.path.exists() else {
-            "authorization": "User explicitly requested the existing UI and removal of the preview",
+            "authorization": "Explicit target-bound Studio deployment",
             "stack_id": saved["app"]["stackId"], "operations": {}}
         recovery = self.receipt["stack_id"] if any(k.startswith("execute-") for k in self.receipt["operations"]) else None
         self.target = DeploymentTarget(args.expected_account, args.profile, args.region, args.state,
@@ -140,8 +140,9 @@ class Release:
 
     def client(self, name):
         if name not in self.clients:
-            self.clients[name] = self.target.session.client(name, config=Config(
-                retries={"total_max_attempts": 1}, connect_timeout=5, read_timeout=60))
+            self.clients[name] = self.target.session.client(name, config=NO_RETRIES)
+            if name == "cloudformation":
+                retry_cloudformation_reads(self.clients[name])
         return self.clients[name]
 
     def save(self):
@@ -303,6 +304,8 @@ class Release:
         previous = cf.get_template(StackName=stack_id)["TemplateBody"]
         previous = json.loads(previous) if isinstance(previous, str) else previous
         body = template(journey=self.state["journeyPlatform"])
+        # Reviewed and submitted identically; see retain_legacy_pool_owner_tag.
+        body = retain_legacy_pool_owner_tag(previous, body)
         if self.state["journeyPlatform"].get("mcp_package_upload"):
             settings = self.state["journeyPlatform"]
             gateway = self.client("bedrock-agentcore-control").get_gateway(gatewayIdentifier=settings["gateway_id"])
@@ -375,6 +378,17 @@ class Release:
         outputs = {o["OutputKey"]: o["OutputValue"] for o in current["Outputs"]}
         if outputs != self.state["app"]["outputs"]:
             raise ValueError("Existing application identity changed")
+        self.tag_policies()
+        self.verify_functions(body, physical, sha)
+        self.target.save("releaseSha256", sha)
+        self.target.save("app", {"stackId": stack_id, "status": current["StackStatus"], "outputs": outputs})
+        self.receipt["deployment_verified"] = True
+        self.save()
+
+    def tag_policies(self):
+        """Apply managed-policy metadata as part of deployment, never a user step."""
+        cf = self.client("cloudformation")
+        stack_id = self.state["app"]["stackId"]
         resources = cf.list_stack_resources(StackName=stack_id)["StackResourceSummaries"]
         required = {"auto-delete": "no", "project": "governed-agent-builder",
                     "deployment": self.state["journeyPlatform"]["mcp_onboarding"]["credential_prefix"]}
@@ -401,6 +415,9 @@ class Release:
                 self.receipt["managed_policy"] = receipt
             else:
                 self.receipt["package_policies"][logical] = receipt
+        self.save()
+
+    def verify_functions(self, body, physical, sha):
         self.receipt["functions"] = {}
         for logical, resource in body["Resources"].items():
             if resource["Type"] != "AWS::Lambda::Function":
@@ -410,9 +427,6 @@ class Release:
                     or live["State"] != "Active" or live["LastUpdateStatus"] != "Successful"):
                 raise RuntimeError("A Studio function has not reached the verified canonical release")
             self.receipt["functions"][logical] = {"name": physical[logical], "sha256": sha}
-        self.target.save("releaseSha256", sha)
-        self.target.save("app", {"stackId": stack_id, "status": current["StackStatus"], "outputs": outputs})
-        self.receipt["deployment_verified"] = True
         self.save()
 
     def publish(self):

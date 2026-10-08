@@ -140,6 +140,24 @@ def test_prepare_of_existing_install_does_not_publish_or_call_provider(monkeypat
     install.prepare(value.target)
 
 
+@pytest.mark.parametrize("memory", [True, 256, 10241, "512"])
+def test_worker_memory_is_validated_before_any_installation_write(memory):
+    from scripts.platform_install import prepare
+    with pytest.raises(ValueError, match="memory"):
+        prepare(SimpleNamespace(), worker_memory_size=memory)
+
+
+def test_explicit_worker_memory_cannot_silently_change_an_installed_platform(monkeypatch, tmp_path):
+    from scripts import platform_install as install
+    value, store = release(monkeypatch, tmp_path)
+    monkeypatch.setattr(install, "DynamoStore", lambda *args: store)
+    value.target.state = value.state
+    with pytest.raises(RuntimeError, match="memory"):
+        install.prepare(value.target, worker_memory_size=512)
+    with store.tx() as db:
+        assert get(db, "journey-platform") == PLATFORM
+
+
 @pytest.mark.parametrize("lost_ack", [False, True])
 def test_empty_gateway_creation_and_reconnect_never_create_credentials_or_targets(lost_ack):
     from scripts.bootstrap_support import gateway, TAGS
@@ -172,7 +190,8 @@ def test_audit_does_not_require_temporary_qa_accounts():
     assert normalized["qa-business"] == state["journeyQA"]
 
 
-def test_fresh_prepare_publishes_generic_catalog_to_real_dynamo_boundary(monkeypatch):
+@pytest.mark.parametrize("worker_memory_size", [None, 512])
+def test_fresh_prepare_publishes_generic_catalog_to_real_dynamo_boundary(monkeypatch, worker_memory_size):
     import boto3
     from moto import mock_aws
     from backend.dynamo_store import DynamoStore
@@ -198,13 +217,14 @@ def test_fresh_prepare_publishes_generic_catalog_to_real_dynamo_boundary(monkeyp
         target.session = SimpleNamespace(resource=lambda _: resource, client=lambda _: control)
         artifact = {"bucket": "test-artifacts", "key": "test.zip", "version_id": "test-version", "sha256": "a" * 64}
         monkeypatch.setattr(install.journey, "upload", lambda _: ("test-artifacts", "test.zip", artifact))
-        install.prepare(target)
-        install.prepare(target)
+        install.prepare(target, worker_memory_size=worker_memory_size)
+        install.prepare(target, worker_memory_size=worker_memory_size)
         assert target.cf.body == template()
         assert len(target.cf.writes) == 1
         assert [op for op, _ in control.calls] == ["CreateGateway", "TagResource"]
         assert not any(key in target.state for key in ("journeyCredential", "snowflakeConfig", "journeyTargets"))
         assert target.state["journeyPlatform"]["admin_enabled"]
+        assert target.state["journeyPlatform"].get("worker_memory_size") == worker_memory_size
         with store.tx() as db:
             assert {r["kind"] for r in records(db)} == {"skill"}
             assert all(t["tools"] == [] for t in templates(db))

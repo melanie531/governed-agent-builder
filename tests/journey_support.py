@@ -26,7 +26,7 @@ class OfflineCloud:
         self.created.setdefault(token, copy.deepcopy(manifest))
         return {"id": token, "arn": "offline:runtime:" + token, "version": "1"}
 
-    def ready(self, binding):
+    def ready(self, binding, poll=False):
         return self.ready_result
 
     def provision_runtime_logs(self, binding):

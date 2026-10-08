@@ -28,6 +28,6 @@ onboarding publishes discovered tools through AWS Agent Registry; DynamoDB keeps
 workspace visibility and execution bindings. Secrets Manager and AgentCore Identity
 hold credentials for Gateway injection. No PAT reaches an agent prompt.
 
-All supported deployed resources carry `auto-delete=no`. Persistent resources and
-release artifacts are retained, encrypted and access-controlled. Use the deployment
+Persistent resources and release artifacts are retained, encrypted and
+access-controlled. Installers manage resource ownership metadata. Use the deployment
 guide for template checks, scoped changes, authenticated acceptance and rollback.

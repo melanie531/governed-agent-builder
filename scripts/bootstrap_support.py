@@ -12,13 +12,35 @@ import tempfile
 import time
 
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ConnectionClosedError, ConnectTimeoutError, EndpointConnectionError, ReadTimeoutError
 from foundation_harness.config import digest
 from scripts.deployment_target import DeploymentTarget
 from scripts import journey_platform as journey
 
 TAGS = {"project": "governed-agent-builder", "journey": "create-agent", "auto-delete": "no"}
-NO_RETRIES = Config(retries={"total_max_attempts": 1, "mode": "standard"}, connect_timeout=5, read_timeout=60)
+# This also bounds TLS negotiation from an operator's workstation. A five-second
+# limit interrupted healthy CloudFormation deployments on slower connections.
+NO_RETRIES = Config(retries={"total_max_attempts": 1, "mode": "standard"}, connect_timeout=30, read_timeout=60)
+
+CF_READ_OPERATIONS = (
+    "DescribeStacks", "DescribeStackEvents", "DescribeStackResources", "GetTemplate",
+    "ListStacks", "ListStackResources", "DescribeChangeSet", "ListChangeSets", "ValidateTemplate",
+)
+
+
+def retry_cloudformation_reads(client):
+    """Retry transport failures only for named, read-only CloudFormation APIs."""
+    def retry(*, attempts, caught_exception=None, operation=None, **kwargs):
+        if attempts < 3 and isinstance(caught_exception, (
+                ConnectionClosedError, ConnectTimeoutError, EndpointConnectionError, ReadTimeoutError)):
+            print("Retrying CloudFormation read after network interruption: " + operation.name, flush=True)
+            return attempts
+        return None
+
+    for operation in CF_READ_OPERATIONS:
+        client.meta.events.register("needs-retry.cloudformation." + operation, retry,
+                                    unique_id="studio-install-read-" + operation)
+    return client
 
 
 class PendingOperation(RuntimeError):
@@ -214,6 +236,8 @@ class NoRetrySession:
     def client(self, service, **kwargs):
         kwargs["config"] = kwargs.get("config", Config()).merge(NO_RETRIES)
         client = self.session.client(service, **kwargs)
+        if service == "cloudformation":
+            retry_cloudformation_reads(client)
         return UploadClient(client, self.target) if service == "s3" else client
 
     def resource(self, service, **kwargs):

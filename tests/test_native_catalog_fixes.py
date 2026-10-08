@@ -201,3 +201,17 @@ def test_cached_native_snapshot_rechecks_workspace_routes(tmp_path, monkeypatch)
         assert client.get('/api/catalog/'+rid+'/versions/1.0.0').status_code == 404
         assert client.post('/api/requests', json={'component_id': rid, 'reason': 'Hidden request attempt'}).status_code == 404
         assert len(p.client.calls) == calls
+
+
+def au_models(model_id):
+    detail = target({'connector': {'source': {'connectorId': 'bedrock-mantle'}}})
+    model = {'id': 'bedrock-mantle/' + model_id, 'owned_by': 'system'}
+    class Client:
+        def get_gateway_target(self, **kw): return detail
+    return ModelGatewayCatalogProvider(Client(), 'synthetic-gateway', 'us-west-2',
+        model_policy(detail, [model_id]), lambda: {'data': [model]}, ('synthetic-target',), GATEWAY_ARN)
+
+
+def test_au_prefixed_route_is_recognized_with_its_prefix_preserved():
+    rows = au_models('au.anthropic.claude-test').records()
+    assert [row['model_id'] for row in rows] == ['bedrock-mantle/au.anthropic.claude-test']

@@ -1,0 +1,9 @@
+{
+  "account": "123456789012",
+  "profile": "your-deployment-profile",
+  "region": "us-west-2",
+  "worker_memory_size": 512,
+  "package_reserved_concurrency": null,
+  "user_oauth": true,
+  "package_uploads": true
+}

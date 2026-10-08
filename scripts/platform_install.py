@@ -10,6 +10,7 @@ from pathlib import Path
 from backend.dynamo_store import DynamoStore
 from backend.foundation_runs import get, put
 from backend.live_catalog import grant_scope
+from backend.network_policy import validate_network
 from foundation_harness.config import digest
 from scripts import journey_platform as journey
 from scripts.bootstrap_support import Journal, gateway, stack
@@ -58,7 +59,14 @@ def publish_catalog(db, settings, items, templates):
     put(db, "journey-platform", settings)
 
 
-def prepare(target):
+def prepare(target, *, worker_memory_size=None):
+    if worker_memory_size is not None and (
+            type(worker_memory_size) is not int or not 512 <= worker_memory_size <= 10240):
+        raise ValueError("Worker memory must be an integer from 512 to 10240 MiB")
+    existing = target.state.get("journeyPlatform")
+    if (existing and worker_memory_size is not None
+            and existing.get("worker_memory_size", 1024) != worker_memory_size):
+        raise RuntimeError("Installed worker memory differs; use a reviewed infrastructure update")
     store = DynamoStore(target.state["app"]["outputs"]["StateTable"], target.session.resource("dynamodb"))
     if target.state.get("journeyPlatform"):
         with store.tx() as db:
@@ -67,6 +75,8 @@ def prepare(target):
         print("Platform already configured; existing catalog and connections preserved", flush=True)
         return
 
+    # Explicit choice from scripts/configure_agent_network.py; fresh installs without one stay PUBLIC.
+    network = validate_network(target.state.get("agentNetwork") or {"networkMode": "PUBLIC"})
     bucket, key, artifact = journey.upload(target)
     outputs = stack(target, bucket, key)
     control = target.session.client("bedrock-agentcore-control")
@@ -79,9 +89,11 @@ def prepare(target):
         "artifact": artifact, "runtime_role": outputs["RuntimeRole"],
         "gateway_id": gw["id"], "gateway_url": gw["url"],
         "bucket": outputs["EvidenceBucket"], "log_group": outputs["TraceLogGroup"],
-        "network": {"networkMode": "PUBLIC"}, "evaluator_id": evaluator["evaluatorId"],
+        "network": network, "evaluator_id": evaluator["evaluatorId"],
         "evaluator_arn": evaluator["evaluatorArn"],
     }
+    if worker_memory_size is not None:
+        settings["worker_memory_size"] = worker_memory_size
     items, templates = starter_catalog()
     publication = {"settings": settings, "items": items, "templates": templates}
     marker = "platform-install:" + digest(publication)

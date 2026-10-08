@@ -73,9 +73,10 @@ def test_every_supported_resource_has_retention_tag_with_cfn_property_shape(kind
             if key == "UserPoolTags":
                 assert "Tags" not in props
                 assert tags.items() >= {
-                    "project": "governed-agent-builder", "owner": "melanie531",
+                    "project": "governed-agent-builder",
                     "managedBy": "cloudformation",
                 }.items()
+                assert "owner" not in tags
         else:
             assert resource_type in UNTAGGABLE_TYPES, f"Review tag support for {resource_type}"
             assert "Tags" not in props and "UserPoolTags" not in props, name

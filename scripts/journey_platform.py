@@ -38,7 +38,7 @@ def wait(read, *, timeout=900):
 
 def upload(target):
     bucket = target.state["artifacts"]["outputs"]["Bucket"]
-    source = ROOT / "artifacts/serverless-release.zip"
+    source = getattr(target, "package_path", ROOT / "artifacts/serverless-release.zip")
     sha = hashlib.sha256(source.read_bytes()).hexdigest()
     key = f"releases/{sha}/lambda.zip"
     from botocore.config import Config
@@ -50,7 +50,7 @@ def upload(target):
         request_checksum_calculation="when_required", response_checksum_validation="when_required",
         s3={"payload_signing_enabled": True}))
     transfer = TransferConfig(multipart_threshold=5 * 1024 * 1024, multipart_chunksize=5 * 1024 * 1024, max_concurrency=2)
-    runtime = ROOT / "artifacts/journey-runtime.zip"
+    runtime = getattr(target, "runtime_package_path", ROOT / "artifacts/journey-runtime.zip")
     with zipfile.ZipFile(source) as original, zipfile.ZipFile(runtime, "w", zipfile.ZIP_DEFLATED) as output:
         for info in original.infolist():
             if info.filename.startswith(("backend/", "scripts/", "tools/", "foundations/")) or info.filename == "uv.lock":
@@ -86,6 +86,7 @@ def upload(target):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["prepare", "activate", "publish-ui"])
+    parser.add_argument("--worker-memory-size", type=int, help="First installation worker memory in MiB (512–10240)")
     target_arguments(parser)
     args = parser.parse_args()
     from scripts.bootstrap_support import PlatformTarget, NoRetrySession
@@ -94,7 +95,7 @@ def main():
         target.session = NoRetrySession(target.session, target)
         target.cf = target.session.client("cloudformation")
         from scripts.platform_install import prepare
-        prepare(target)
+        prepare(target, worker_memory_size=args.worker_memory_size)
     else:
         from scripts import serverless_deploy as release
         release.TARGET, release.SESSION, release.CF, release.STATE = target, target.session, target.cf, target.path

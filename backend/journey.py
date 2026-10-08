@@ -15,10 +15,18 @@ from foundation_harness.config import canonical, digest
 from . import journey_catalog as catalog
 from . import journey_lifecycle as lifecycle
 from .foundation_runs import get, put
+from .model_policy import model_id_matches_policy, model_policy, policy_description
 from .journey_schema import AgentDefinition, InvokeAgent, ResumeInvocation, SaveAgent, VersionAction, DeletePreview, DeleteAgent
 
 TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED", "AUTHORIZATION_REQUIRED"}
 PREFIX = "journey-job:"
+# Maximum seconds a deploy may stay in WAIT_RUNTIME before failing in-process.
+# Bounds the worker's SQS self-requeue chain: each chain hop consumes at least
+# ~50s of this window (see serverless.STATUS_WAIT_STEP_BUDGET_MS), so 600s
+# needs at most ~12 wait hops plus the create and terminal deliveries, under
+# Lambda's ~16-invocation recursive loop cap with margin. A VPC Runtime
+# creation is ~5 minutes live; 600s still leaves ~2x headroom.
+RUNTIME_WAIT_BUDGET = 600
 
 
 def job_state(db, job_id):
@@ -85,8 +93,15 @@ class Journey:
             if binding["type"] not in ("bedrock-converse", "mcp-server", "mcp", "instructions"):
                 raise HTTPException(409, "This capability needs a compatible Foundation Harness")
             # Cheap fail-fast only; the authoritative eligibility gate is PlatformCloud.eligible_profile (platform validation/publication), and catalog resolution already requires approved + validated + granted components, so a forged binding cannot arrive via governed paths.
-            if binding["type"] == "bedrock-converse" and not binding["model_id"].startswith("global."):
-                raise HTTPException(409, "Platform policy requires a global cross-region inference profile; revise the agent to use a global model from the AI Catalog")
+            if binding["type"] == "bedrock-converse":
+                try:
+                    policy = model_policy(self.settings)
+                except ValueError as error:
+                    raise HTTPException(503, str(error)) from None
+                if not model_id_matches_policy(binding["model_id"], policy):
+                    description = policy_description(policy)
+                    raise HTTPException(409, f"Platform policy requires {'an' if description[0] in 'aeiouAEIOU' else 'a'} {description}; "
+                                        "revise the agent to use a model allowed by this policy from the AI Catalog")
             if binding["type"] in ("mcp", "mcp-server") and binding["gateway_id"] != self.settings["gateway_id"]:
                 from .mcp_gateway_oauth import gateway_configuration
                 try:
@@ -134,6 +149,8 @@ class Journey:
                 "owner": definition["owner"], "workspace": definition["workspace"], "name": definition["name"],
                 "definition_digest": definition["digest"], "prompt": definition["prompt"],
                 "model_id": model["model_id"], "supports_temperature": model.get("supports_temperature", True),
+                # Only non-default policies are pinned, so global/legacy manifests stay byte-identical.
+                **({"model_policy": model_policy(self.settings)} if model_policy(self.settings) != "global" else {}),
                 "output_format": definition["output_format"],
                 "skill_instructions": [resolved[cid]["binding"]["instructions"] for cid in definition["skills"]],
                 "capability_versions": definition["component_versions"],
@@ -574,9 +591,17 @@ class Journey:
             if phase == "QUEUED":
                 manifest = self.transaction(lambda db: get(db, "journey-manifest:" + definition["digest"]))
                 binding = self.cloud.create(manifest, digest([definition["digest"], "deploy"]))
-                return {"phase": "WAIT_RUNTIME", "binding": binding}
+                return {"phase": "WAIT_RUNTIME", "binding": binding, "wait_started": time.time()}
             if phase in ("WAIT_RUNTIME", "SMOKE"):
-                if not self.cloud.ready(state["binding"]):
+                started = state.get("wait_started") or state.get("created")
+                # A recovered step (expired claim after an interrupted delivery,
+                # e.g. a READY crossing killed mid-call) gets one poll before the
+                # budget applies: the Runtime may have become READY during the
+                # visibility wait, and completing beats failing a finished deploy.
+                if (not recovery and started is not None
+                        and time.time() > started + RUNTIME_WAIT_BUDGET):
+                    raise HTTPException(504, "The Runtime did not become READY within the deployment wait budget. Review the Runtime, then retry the deployment.")
+                if not self.cloud.ready(state["binding"], poll=True):
                     return {"phase": "WAIT_RUNTIME"}
                 self.cloud.provision_runtime_logs(state["binding"])
                 return {"phase": "DEPLOYED"}
