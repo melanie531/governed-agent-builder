@@ -104,7 +104,8 @@ class PythonCloud:
                 "bucket": artifact["bucket"], "prefix": artifact["key"], "versionId": artifact["version_id"]}},
                 "runtime": "PYTHON_3_13", "entryPoint": ["main.py"]}},
             "roleArn": config["runtime_role"],
-            "networkConfiguration": validate_network(self.settings.get("network") or {"networkMode": "PUBLIC"}),
+            # Pinned at creation; legacy states predate the receipt and were all created PUBLIC.
+            "networkConfiguration": validate_network(state.get("network") or {"networkMode": "PUBLIC"}),
             "protocolConfiguration": {"serverProtocol": "MCP"},
             "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 900},
             "tags": self.tags(state, config),

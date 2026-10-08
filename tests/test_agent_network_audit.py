@@ -31,11 +31,23 @@ def test_business_agent_network_must_match_the_approved_configuration():
 
 
 @pytest.mark.parametrize("live,expected", [(REORDERED, True), (PUBLIC, False), (None, False)])
-def test_mcp_runtime_live_network_is_compared_at_its_bound_version(live, expected):
+def test_mcp_runtime_live_network_is_compared_to_its_pinned_receipt_at_its_bound_version(live, expected):
     control = Control(live)
-    server = {"runtime_id": "python_abc-123", "runtime_version": "2"}
-    assert runtime_network_checks(control, server, VPC) == {"runtime_network_approved": expected}
+    server = {"runtime_id": "python_abc-123", "runtime_version": "2", "network": VPC}
+    checks = runtime_network_checks(control, server, VPC)
+    assert checks["runtime_network_pinned"] is expected
     assert control.calls == [{"agentRuntimeId": "python_abc-123", "agentRuntimeVersion": "2"}]
+
+
+def test_legacy_public_runtime_on_a_vpc_platform_passes_with_an_informational_mismatch():
+    checks = runtime_network_checks(Control(PUBLIC), {"runtime_id": "python_legacy-1"}, VPC)
+    assert checks["runtime_network_pinned"] is True
+    assert "differs" in checks["runtime_network_platform"] and all(checks.values())
+
+
+def test_runtime_matching_the_approved_network_reports_it():
+    checks = runtime_network_checks(Control(REORDERED), {"runtime_id": "x", "network": VPC}, VPC)
+    assert checks == {"runtime_network_pinned": True, "runtime_network_platform": "matches approved network"}
 
 
 def test_servers_without_a_runtime_or_being_retired_are_not_read():

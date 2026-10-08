@@ -101,6 +101,29 @@ def test_apply_resumes_after_live_record_was_already_updated(aws):
     assert aws.target.state["journeyPlatform"]["network"] == expected(aws) == live(aws)["network"]
 
 
+def test_apply_lists_existing_runtimes_with_their_pinned_network_and_changes_none(aws):
+    seed_platform(aws)
+    vpc = expected(aws)
+    servers = {"legacy": {"id": "legacy", "name": "Legacy", "phase": "READY", "runtime_id": "python_legacy-1"},
+               "pinned": {"id": "pinned", "name": "Pinned", "phase": "READY", "network": vpc},
+               "gone": {"id": "gone", "name": "Gone", "phase": "DELETED"}}
+    with aws.store.tx() as db:
+        for sid, server in servers.items():
+            put(db, "mcp-python:" + sid, server)
+    result = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert sorted(result["existing_runtimes"]["runtimes"], key=lambda r: r["id"]) == [
+        {"id": "legacy", "name": "Legacy", "network": {"networkMode": "PUBLIC"}, "pinned": "legacy-PUBLIC"},
+        {"id": "pinned", "name": "Pinned", "network": vpc, "pinned": "receipt"}]
+    assert "retire and re-upload" in result["existing_runtimes"]["note"]
+    with aws.store.tx() as db:
+        assert {sid: get(db, "mcp-python:" + sid) for sid in servers} == servers
+
+
+def test_apply_before_installation_skips_runtime_enumeration(aws):
+    result = configure.run(aws.target, aws.vpc, aws.subnets[:2], [aws.group], apply=True)
+    assert "existing_runtimes" not in result
+
+
 def test_subnets_in_a_single_availability_zone_are_rejected(aws):
     with pytest.raises(RuntimeError, match="two Availability Zones"):
         configure.run(aws.target, aws.vpc, [aws.subnets[0], aws.subnets[2]], [aws.group], apply=True)

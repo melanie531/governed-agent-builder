@@ -19,25 +19,26 @@ def cloud_with(network):
     return PythonCloud(settings, boto3.Session(aws_access_key_id="test", aws_secret_access_key="test", region_name="us-west-2"))
 
 
-def test_vpc_platform_network_is_passed_into_the_runtime_request():
+def test_pinned_vpc_receipt_is_passed_into_the_runtime_request_regardless_of_settings():
     _, state, _, _, _ = native()
-    cloud = cloud_with(VPC)
-    request = cloud.runtime_request(state, CONFIG)
+    cloud = cloud_with(None)
+    request = cloud.runtime_request({**state, "network": VPC}, CONFIG)
     assert request["networkConfiguration"] == VPC
     validate_parameters(request, cloud.control.meta.service_model.operation_model("CreateAgentRuntime").input_shape)
 
 
-def test_legacy_settings_without_network_keep_public_mode():
+@pytest.mark.parametrize("settings", [None, VPC])
+def test_legacy_state_without_a_receipt_keeps_public_mode_even_on_a_vpc_platform(settings):
     _, state, _, _, _ = native()
-    assert cloud_with(None).runtime_request(state, CONFIG)["networkConfiguration"] == {"networkMode": "PUBLIC"}
+    assert cloud_with(settings).runtime_request(state, CONFIG)["networkConfiguration"] == {"networkMode": "PUBLIC"}
 
 
 @pytest.mark.parametrize("network", [{"networkMode": "VPC"}, {"networkMode": "PRIVATE"},
                                      {"networkMode": "VPC", "networkModeConfig": {"subnets": [], "securityGroups": ["sg-1"]}}])
-def test_present_but_invalid_network_raises_instead_of_deploying_public(network):
+def test_present_but_invalid_receipt_raises_instead_of_deploying_public(network):
     _, state, _, _, _ = native()
     with pytest.raises(ValueError, match="network"):
-        cloud_with(network).runtime_request(state, CONFIG)
+        cloud_with(None).runtime_request({**state, "network": network}, CONFIG)
 
 
 def stub_reconciliation(control, original, runtime, endpoint, version, tags=None):
@@ -50,9 +51,31 @@ def stub_reconciliation(control, original, runtime, endpoint, version, tags=None
             "agentRuntimeId": original["agentRuntimeId"], "endpointName": "DEFAULT"})
 
 
-def test_live_network_differing_from_configured_network_is_a_binding_change():
+def test_legacy_public_runtime_still_reconciles_after_the_platform_switches_to_vpc():
     _, state, _, original, endpoint = native()
     cloud = cloud_with(VPC)
+    with Stubber(cloud.control) as control:
+        stub_reconciliation(control, original, original, endpoint, "1", cloud.tags(state, CONFIG))
+        assert cloud.runtime(state, CONFIG) == {"runtime_id": original["agentRuntimeId"],
+            "runtime_arn": original["agentRuntimeArn"], "runtime_version": "1"}
+        control.assert_no_pending_responses()
+
+
+def test_vpc_receipt_reconciles_against_vpc_even_when_settings_are_public():
+    _, state, _, original, endpoint = native()
+    state = {**state, "network": VPC}
+    cloud = cloud_with(None)
+    runtime = {**copy.deepcopy(original), "networkConfiguration": VPC}
+    with Stubber(cloud.control) as control:
+        stub_reconciliation(control, original, runtime, endpoint, "1", cloud.tags(state, CONFIG))
+        assert cloud.runtime(state, CONFIG)["runtime_id"] == original["agentRuntimeId"]
+        control.assert_no_pending_responses()
+
+
+def test_live_network_differing_from_the_pinned_receipt_is_a_binding_change():
+    _, state, _, original, endpoint = native()
+    state = {**state, "network": VPC}
+    cloud = cloud_with(None)
     runtime = copy.deepcopy(original)
     runtime["networkConfiguration"] = {"networkMode": "PUBLIC"}
     with Stubber(cloud.control) as control:

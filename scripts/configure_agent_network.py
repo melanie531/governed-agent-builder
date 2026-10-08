@@ -3,7 +3,8 @@
 The default is a read-only plan. --apply records the validated network as the
 installation choice (agentNetwork) and, for an installed platform, updates the
 bound journeyPlatform and live journey-platform settings together. It never
-writes a PUBLIC fallback and never changes existing Runtimes.
+writes a PUBLIC fallback and never changes existing Runtimes: each keeps the
+network pinned at its creation, and apply lists them for manual migration.
 """
 import argparse
 import json
@@ -62,6 +63,18 @@ def plan(target, vpc_id, subnets, groups):
     return network, validations
 
 
+def existing_runtimes(db):
+    """Report, never change, the network each uploaded MCP Runtime keeps after a platform switch."""
+    runtimes = []
+    for row in db.select("settings"):
+        if row["key"].startswith("mcp-python:") and (state := json.loads(row["body"])).get("phase") != "DELETED":
+            runtimes.append({"id": state["id"], "name": state.get("name"),
+                "network": state.get("network") or {"networkMode": "PUBLIC"},
+                "pinned": "receipt" if state.get("network") else "legacy-PUBLIC"})
+    return {"runtimes": runtimes, "note": "existing Runtimes keep their pinned network; to migrate, retire and "
+            "re-upload each one after apply (manual, not automated)"}
+
+
 def run(target, vpc_id, subnets, groups, *, apply):
     network, validations = plan(target, vpc_id, subnets, groups)
     installed = bool(target.state.get("journeyPlatform"))
@@ -80,6 +93,7 @@ def run(target, vpc_id, subnets, groups, *, apply):
                 if get(db, "journey-platform") not in (bound, updated):
                     raise RuntimeError("Live platform settings differ; reconcile the bound state first")
                 put(db, "journey-platform", updated)
+                result["existing_runtimes"] = existing_runtimes(db)
             target.save("journeyPlatform", updated)
         target.save("agentNetwork", network)
         result["applied"] = True

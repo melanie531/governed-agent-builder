@@ -650,8 +650,9 @@ def audit(state_path, runtime_id=None, existing=False, output=None, scoped_worke
         record("TestAgentRuntime", {
             "ready": value["status"] == "READY",
             "iam_invocation": not value.get("authorizerConfiguration"),
-            **runtime_network_checks(c, {"runtime_id": runtime_id, "runtime_version": value["agentRuntimeVersion"]},
-                                     approved_network(state)),
+            # The test agent is pinned to the approved network, so its check stays strict.
+            **runtime_network_checks(c, {"runtime_id": runtime_id, "runtime_version": value["agentRuntimeVersion"],
+                                         "network": approved_network(state)}, approved_network(state)),
             "retention_tag": c.list_tags_for_resource(resourceArn=value["agentRuntimeArn"])["tags"].get("auto-delete") == "no"})
         record("TestAgentEndpoint", {
             "ready": endpoint["status"] == "READY" and endpoint["liveVersion"] == value["agentRuntimeVersion"],

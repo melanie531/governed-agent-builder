@@ -12,8 +12,13 @@ def business_agent_checks(state):
 
 
 def runtime_network_checks(control, server, approved):
+    """Live network must match the Runtime's pinned receipt (legacy: PUBLIC); an approved-network
+    mismatch is reported but does not fail, since existing Runtimes migrate only by retire and re-upload."""
     if not server.get("runtime_id") or server.get("deletion"):
         return {}
     native = control.get_agent_runtime(agentRuntimeId=server["runtime_id"],
                                        agentRuntimeVersion=server.get("runtime_version", "1"))
-    return {"runtime_network_approved": networks_equivalent(native.get("networkConfiguration"), approved)}
+    live = native.get("networkConfiguration")
+    return {"runtime_network_pinned": networks_equivalent(live, server.get("network") or {"networkMode": "PUBLIC"}),
+            "runtime_network_platform": "matches approved network" if networks_equivalent(live, approved)
+                else "differs from approved network; retire and re-upload to migrate"}
