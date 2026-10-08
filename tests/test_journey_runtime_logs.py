@@ -83,7 +83,7 @@ def test_deployment_cannot_be_marked_ready_when_log_provisioning_fails():
     journey = object.__new__(Journey)
     def denied(binding):
         raise PermissionError("Log provisioning denied")
-    journey.cloud = SimpleNamespace(ready=lambda binding: True, provision_runtime_logs=denied)
+    journey.cloud = SimpleNamespace(ready=lambda binding, poll=False: True, provision_runtime_logs=denied)
     with pytest.raises(PermissionError, match="Log provisioning denied"):
         journey.perform({"kind": "deploy", "phase": "WAIT_RUNTIME", "binding": BINDING}, {}, None, False)
 
@@ -93,7 +93,7 @@ def test_deployment_marks_ready_without_invoking_a_tool_even_for_an_old_smoke_jo
     journey = object.__new__(Journey)
     calls = []
     journey.cloud = SimpleNamespace(
-        ready=lambda binding: calls.append(("ready", binding)) or True,
+        ready=lambda binding, poll=False: calls.append(("ready", binding)) or True,
         provision_runtime_logs=lambda binding: calls.append(("logs", binding)),
         invoke=lambda *args, **kwargs: pytest.fail("Deploy must not invoke the agent"),
     )

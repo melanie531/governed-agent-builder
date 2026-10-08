@@ -250,3 +250,44 @@ def test_runtime_creation_pins_the_platform_network_receipt(setup, network):
     pinned = network or {"networkMode": "PUBLIC"}
     assert state["phase"] == "READY" and state["network"] == pinned
     assert ("runtime", pinned) in seen
+
+
+def test_python_runtime_wait_drains_in_process_under_recursion_cap(setup, monkeypatch):
+    # A slow (e.g. VPC) Runtime that stays pending for 30 polls previously cost
+    # one SQS self-requeue hop per poll, exceeding Lambda's ~16-invocation
+    # recursive loop cap. The DEPLOYING wait must now drain in-process.
+    from backend import serverless
+
+    service, cloud = enable(setup)
+    value = create(setup)
+    polls = {"pending": 0}
+    original_read = cloud.read
+    def read(stage, state, config):
+        receipt = original_read(stage, state, config)
+        if stage == "runtime" and receipt is not None and polls["pending"] < 30:
+            polls["pending"] += 1
+            return {"pending": True}
+        return receipt
+    cloud.read = read
+    monkeypatch.setattr(serverless, "application", lambda **_: setup[0].app)
+    messages = []
+    monkeypatch.setattr(serverless.boto3, "client",
+                        lambda _: SimpleNamespace(send_message=lambda **kw: messages.append(kw)))
+    monkeypatch.setenv("JOB_QUEUE_URL", "synthetic-python-queue")
+    monkeypatch.setattr(serverless.time, "sleep", lambda seconds: None)
+    event = {"Records": [{"messageId": "python-deploy", "body": json.dumps({"job_id": value["job_id"]})}]}
+    context = SimpleNamespace(get_remaining_time_in_millis=lambda: 300000)
+    path = "/api/admin/mcp/python/" + value["id"]
+    deliveries = 0
+    while setup[0].get(path).json()["phase"] != "READY":
+        assert serverless.worker_handler(event, context) == {"batchItemFailures": []}
+        deliveries += 1
+        assert deliveries < 16, "Lambda drops recursively queued invocations at the native limit"
+    assert polls["pending"] == 30
+    assert deliveries <= 6
+    # Draining never replayed a guarded cloud write, and a duplicate delivery
+    # of the finished job is a no-op.
+    assert cloud.writes == ["package", "runtime", "logs"]
+    before = len(messages)
+    assert serverless.worker_handler(event, context) == {"batchItemFailures": []}
+    assert len(messages) == before and cloud.writes == ["package", "runtime", "logs"]

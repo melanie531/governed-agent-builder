@@ -20,6 +20,13 @@ from .journey_schema import AgentDefinition, InvokeAgent, ResumeInvocation, Save
 
 TERMINAL = {"DEPLOYED", "SUCCEEDED", "PASSED", "FAILED_QUALITY", "FAILED", "ERROR", "UNKNOWN", "STALE", "DELETED", "DELETE_FAILED", "AUTHORIZATION_REQUIRED"}
 PREFIX = "journey-job:"
+# Maximum seconds a deploy may stay in WAIT_RUNTIME before failing in-process.
+# Bounds the worker's SQS self-requeue chain: each chain hop consumes at least
+# ~50s of this window (see serverless.STATUS_WAIT_STEP_BUDGET_MS), so 600s
+# needs at most ~12 wait hops plus the create and terminal deliveries, under
+# Lambda's ~16-invocation recursive loop cap with margin. A VPC Runtime
+# creation is ~5 minutes live; 600s still leaves ~2x headroom.
+RUNTIME_WAIT_BUDGET = 600
 
 
 def job_state(db, job_id):
@@ -584,9 +591,12 @@ class Journey:
             if phase == "QUEUED":
                 manifest = self.transaction(lambda db: get(db, "journey-manifest:" + definition["digest"]))
                 binding = self.cloud.create(manifest, digest([definition["digest"], "deploy"]))
-                return {"phase": "WAIT_RUNTIME", "binding": binding}
+                return {"phase": "WAIT_RUNTIME", "binding": binding, "wait_started": time.time()}
             if phase in ("WAIT_RUNTIME", "SMOKE"):
-                if not self.cloud.ready(state["binding"]):
+                started = state.get("wait_started") or state.get("created")
+                if started is not None and time.time() > started + RUNTIME_WAIT_BUDGET:
+                    raise HTTPException(504, "The Runtime did not become READY within the deployment wait budget. Review the Runtime, then retry the deployment.")
+                if not self.cloud.ready(state["binding"], poll=True):
                     return {"phase": "WAIT_RUNTIME"}
                 self.cloud.provision_runtime_logs(state["binding"])
                 return {"phase": "DEPLOYED"}
